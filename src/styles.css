@@ -431,6 +431,31 @@ button { cursor: pointer; }
   padding: 60px 20px 95px;
 }
 
+.account-orders {
+  max-width: 900px;
+  margin: auto;
+  padding: 56px 20px 90px;
+}
+
+.account-orders h1 { margin: 0 0 24px; font-size: 34px; }
+.account-order-list { display: grid; gap: 12px; }
+.account-order {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-right: 5px solid var(--line);
+}
+.account-order.status-new { border-right-color: #6a7b76; }
+.account-order.status-processing { border-right-color: #d8a400; }
+.account-order.status-delivered { border-right-color: var(--success); }
+.account-order.status-cancelled { border-right-color: var(--danger); }
+.account-order small { display: block; color: var(--muted); font-size: 10px; margin-top: 4px; }
+.account-order-status { font-weight: 700; color: var(--primary); }
+
 .checkout-head h1 { margin: 0; font-size: 32px; }
 
 .checkout-layout {
@@ -940,4 +965,8 @@ button { cursor: pointer; }
   .checkout { padding: 32px 14px 64px; }
   .checkout-head h1 { font-size: 28px; }
   .receipt { padding: 16px; }
+  .account-orders { padding: 32px 14px 64px; }
+  .account-orders h1 { font-size: 28px; }
+  .account-order { grid-template-columns: 1fr auto; padding: 15px; gap: 10px; }
+  .account-order > strong:last-child { grid-column: 1 / -1; }
 }

@@ -101,6 +101,7 @@ db.exec(`
     discountAmount REAL NOT NULL,
     deliveryFee REAL NOT NULL,
     finalTotal REAL NOT NULL,
+    accountId INTEGER,
     status TEXT NOT NULL DEFAULT 'new',
     isRead INTEGER NOT NULL DEFAULT 0,
     createdAt TEXT NOT NULL
@@ -155,6 +156,7 @@ ensureColumn('site_settings', 'heroDescription', 'TEXT');
 ensureColumn('site_settings', 'heroImageUrl', 'TEXT');
 ensureColumn('site_settings', 'heroButtonText', 'TEXT');
 ensureColumn('site_settings', 'maintenanceMode', 'INTEGER DEFAULT 0');
+ensureColumn('orders', 'accountId', 'INTEGER');
 
 const administratorEmail = 'hausain12moh@gmail.com';
 const administratorPassword = 'Hussain_20_12';
@@ -393,6 +395,8 @@ app.get('/api/orders/unread-count', (req, res) => {
 });
 app.post('/api/orders', (req, res) => {
   if (getSiteSettings().maintenanceMode) return res.status(503).json({ error: 'الطلبات متوقفة مؤقتاً بسبب الصيانة' });
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول لإرسال الطلب' });
   const b = req.body;
   if (!b.customerName || !b.province || !b.address || !b.nearestLandmark || !b.phoneNumber || !b.items?.length) {
     return res.status(400).json({ error: 'يرجى إكمال الحقول المطلوبة' });
@@ -410,9 +414,16 @@ app.post('/api/orders', (req, res) => {
     };
   });
 
-  const result = db.prepare('INSERT INTO orders (items,customerName,province,address,nearestLandmark,phoneNumber,subtotal,discountCode,discountAmount,deliveryFee,finalTotal,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(JSON.stringify(enrichedItems), b.customerName, b.province, b.address, b.nearestLandmark, b.phoneNumber, Number(b.subtotal || 0), b.discountCode || '', Number(b.discountAmount || 0), Number(b.deliveryFee || 0), Number(b.finalTotal || 0), new Date().toISOString());
+  const result = db.prepare('INSERT INTO orders (items,customerName,province,address,nearestLandmark,phoneNumber,subtotal,discountCode,discountAmount,deliveryFee,finalTotal,accountId,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(JSON.stringify(enrichedItems), b.customerName, b.province, b.address, b.nearestLandmark, b.phoneNumber, Number(b.subtotal || 0), b.discountCode || '', Number(b.discountAmount || 0), Number(b.deliveryFee || 0), Number(b.finalTotal || 0), session.accountId, new Date().toISOString());
   res.status(201).json({ id: result.lastInsertRowid });
+});
+
+app.get('/api/account/orders', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
+  const orders = db.prepare('SELECT * FROM orders WHERE accountId = ? ORDER BY datetime(createdAt) DESC').all(session.accountId);
+  res.json(orders.map((order) => ({ ...order, items: JSON.parse(order.items), isRead: Boolean(order.isRead) })));
 });
 
 app.patch('/api/orders/:id', (req, res) => {

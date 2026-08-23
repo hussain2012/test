@@ -152,6 +152,7 @@ function App() {
         <Route path="/" element={<Store />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/login" element={<Login />} />
         <Route path="/admin/*" element={<Admin />} />
         <Route path="*" element={<Store />} />
@@ -172,6 +173,7 @@ function StoreNav({ settings }) {
       <nav>
         <Link to="/">المتجر</Link>
         <Link to="/login">تسجيل الدخول</Link>
+        {localStorage.getItem('sessionToken') && <Link to="/my-orders">طلباتي</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
       </nav>
     </header>
@@ -378,6 +380,7 @@ function Checkout() {
   const [discount, setDiscount] = useState(null);
   const [error, setError] = useState('');
   const [done, setDone] = useState(null);
+  const navigate = useNavigate();
 
   const delivery = form.province && form.province !== 'بغداد' ? 5000 : 3000;
   const discountAmount = discount ? (discount.type === 'percentage' ? subtotal * Number(discount.value || 0) / 100 : Math.min(Number(discount.value || 0), subtotal)) : 0;
@@ -406,6 +409,7 @@ function Checkout() {
     event.preventDefault();
     setError('');
     if (settings.maintenanceMode) return setError('الطلبات متوقفة مؤقتاً بسبب الصيانة');
+    if (!localStorage.getItem('sessionToken')) return navigate('/login');
 
     if (!/^07\d{9}$/.test(form.phoneNumber)) return setError('يرجى إدخال رقم هاتف عراقي صحيح');
     if (!form.customerName || !form.province || !form.address || !form.nearestLandmark) return setError('يرجى إكمال جميع الحقول المطلوبة');
@@ -427,7 +431,7 @@ function Checkout() {
 
     const res = await fetch(`${API}/orders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...adminHeaders() },
       body: JSON.stringify(payload),
     });
 
@@ -506,11 +510,43 @@ function Checkout() {
               ))}
               <div className="totals">
                 <div><span>السعر الاجمالي</span><strong>{money(subtotal)}</strong></div>
-                <div><span>الخصم</span><strong>- {money(discountAmount)}</strong></div>
+                <div><span>الخصم {discount ? `(${discount.type === 'percentage' ? `${discount.value}%` : money(discount.value)})` : ''}</span><strong>- {money(discountAmount)}</strong></div>
                 <div><span>التوصيل</span><strong>{money(delivery)}</strong></div>
                 <div className="total-row"><span>السعر الاجمالي</span><strong>{money(total)}</strong></div>
               </div>
             </aside>
+          </div>
+        )}
+      </main>
+    </>
+  );
+}
+
+function MyOrders() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API}/account/orders`, { headers: adminHeaders() })
+      .then((res) => res.ok ? res.json() : [])
+      .then(setOrders)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statusLabels = { new: 'جديد', processing: 'قيد التجهيز', delivered: 'تم التوصيل', cancelled: 'ملغي' };
+  return (
+    <>
+      <StoreNav settings={useSiteSettings()} />
+      <main className="account-orders">
+        <p className="eyebrow">حسابي</p>
+        <h1>طلباتي</h1>
+        {loading ? <div className="empty">جاري تحميل الطلبات...</div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
+          <div className="account-order-list">
+            {orders.map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
+              <div><strong>طلب #{order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div>
+              <span className="account-order-status">{statusLabels[order.status] || order.status}</span>
+              <strong>{money(order.finalTotal)}</strong>
+            </article>)}
           </div>
         )}
       </main>
