@@ -102,7 +102,7 @@ db.exec(`
     deliveryFee REAL NOT NULL,
     finalTotal REAL NOT NULL,
     accountId INTEGER,
-    status TEXT NOT NULL DEFAULT 'new',
+    status TEXT NOT NULL DEFAULT 'processing',
     isRead INTEGER NOT NULL DEFAULT 0,
     createdAt TEXT NOT NULL
   );
@@ -414,8 +414,8 @@ app.post('/api/orders', (req, res) => {
     };
   });
 
-  const result = db.prepare('INSERT INTO orders (items,customerName,province,address,nearestLandmark,phoneNumber,subtotal,discountCode,discountAmount,deliveryFee,finalTotal,accountId,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(JSON.stringify(enrichedItems), b.customerName, b.province, b.address, b.nearestLandmark, b.phoneNumber, Number(b.subtotal || 0), b.discountCode || '', Number(b.discountAmount || 0), Number(b.deliveryFee || 0), Number(b.finalTotal || 0), session.accountId, new Date().toISOString());
+  const result = db.prepare('INSERT INTO orders (items,customerName,province,address,nearestLandmark,phoneNumber,subtotal,discountCode,discountAmount,deliveryFee,finalTotal,accountId,status,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(JSON.stringify(enrichedItems), b.customerName, b.province, b.address, b.nearestLandmark, b.phoneNumber, Number(b.subtotal || 0), b.discountCode || '', Number(b.discountAmount || 0), Number(b.deliveryFee || 0), Number(b.finalTotal || 0), session.accountId, 'processing', new Date().toISOString());
   res.status(201).json({ id: result.lastInsertRowid });
 });
 

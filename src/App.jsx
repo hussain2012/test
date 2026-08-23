@@ -543,9 +543,9 @@ function MyOrders() {
         {loading ? <div className="empty">جاري تحميل الطلبات...</div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
             {orders.map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
-              <div><strong>طلب #{order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div>
-              <span className="account-order-status">{statusLabels[order.status] || order.status}</span>
-              <strong>{money(order.finalTotal)}</strong>
+              <div className="account-order-heading"><div><strong>طلب #{order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
+              <div className="account-order-items">{(order.items || []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
+              <div className="account-order-totals"><span>المجموع {money(order.subtotal)}</span><span>الخصم - {money(order.discountAmount)}</span><span>التوصيل {money(order.deliveryFee)}</span><strong>الإجمالي {money(order.finalTotal)}</strong></div>
             </article>)}
           </div>
         )}
