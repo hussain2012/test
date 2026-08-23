@@ -181,6 +181,7 @@ function StoreNav({ settings }) {
 function Store() {
   const settings = useSiteSettings();
   const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('الكل');
 
@@ -194,7 +195,8 @@ function Store() {
     fetch(`${API}/products`)
       .then((res) => res.json())
       .then(setProducts)
-      .catch(() => setProducts([]));
+      .catch(() => setProducts([]))
+      .finally(() => setLoading(false));
   }, []);
 
   const categories = ['الكل', ...new Set(products.map((product) => product.category || 'عام'))];
@@ -227,7 +229,6 @@ function Store() {
             <div>
               <p className="eyebrow">المجموعة الحالية</p>
               <h2>منتجات تستحق مكاناً في يومك</h2>
-              <span className="currency-note">الأسعار بالدينار العراقي (د.ع)</span>
             </div>
             <div className="filters">
               <input aria-label="بحث" placeholder="ابحث عن منتج..." value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -237,8 +238,12 @@ function Store() {
             </div>
           </div>
 
-          {!products.length ? (
+          {loading ? (
             <div className="empty">جاري تحميل المنتجات...</div>
+          ) : !products.length ? (
+            <div className="empty">لا توجد منتجات</div>
+          ) : !visibleProducts.length ? (
+            <div className="empty">لا توجد منتجات مطابقة للبحث</div>
           ) : (
             <div className="product-grid">
               {visibleProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} />)}
@@ -649,7 +654,6 @@ function Overview() {
         <div><span>الزيارات</span><strong>{stats.totalViews || 0}</strong><small>الرئيسية: {stats.homeViews || 0} | المنتجات: {stats.productViews || 0}</small></div>
         <div className="highlight"><span>صافي الأرباح</span><strong>{money(stats.totalProfit)}</strong><small>الطلبات الملغاة لا تُحتسب خسارة</small></div>
       </div>
-      <div className="dashboard-note"><strong>كيف تقرأ الأرقام؟</strong><span>المبيعات والأرباح محسوبة من الطلبات التي حالتها “تم التوصيل” فقط. كل المبالغ معروضة بالدينار العراقي.</span></div>
     </div>
   );
 }
@@ -1015,7 +1019,6 @@ function AnalyticsAdmin() {
       <div className="product-stat"><span>أعلى ربح</span><strong>{stats.highestProfitProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.highestProfitProduct ? money(stats.highestProfitProduct.profit) : 'بعد إكمال الطلبات'}</small></div>
       <div className="product-stat"><span>أقل ربح</span><strong>{stats.lowestProfitProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.lowestProfitProduct ? money(stats.lowestProfitProduct.profit) : 'بعد إكمال الطلبات'}</small></div>
       <div className="product-stat"><span>الأكثر إلغاءً</span><strong>{stats.mostCancelledProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.mostCancelledProduct ? `${stats.mostCancelledProduct.cancelledQuantity} قطعة` : 'بعد وجود طلبات ملغاة'}</small></div>
-      <div className="analytics-explainer"><strong>طريقة الحساب</strong><small>الإيراد والربح يعتمدان على الطلبات المسلمة فقط. الطلبات الملغاة لا تُسجل كخسائر، بل تظهر في إحصائية الإلغاء حسب المنتج.</small></div>
     </div>
   );
 }
