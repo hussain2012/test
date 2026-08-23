@@ -581,12 +581,17 @@ button { cursor: pointer; }
   padding: 30px 26px;
   box-shadow: 0 20px 40px rgba(18, 59, 53, 0.08);
   border: 1px solid rgba(18, 59, 53, 0.05);
+  display: grid;
+  gap: 14px;
 }
 
-.login-card h1 { margin: 0 0 10px; font-size: 30px; }
-.login-card > p:not(.eyebrow) { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
-.login-card .primary.full { width: 100%; }
-.back { display: block; text-align: center; margin-top: 16px; color: var(--accent); font-weight: 700; }
+.login-card h1 { margin: 0; font-size: 30px; }
+.login-card > p:not(.eyebrow) { color: var(--muted); font-size: 13px; margin: 0 0 4px; line-height: 1.8; }
+.login-card .field-label { min-width: 0; }
+.login-card .field-label input { min-width: 0; width: 100%; min-height: 46px; }
+.login-card .field-label input[type='email'], .login-card .field-label input[type='tel'] { direction: ltr; text-align: left; }
+.login-card .primary.full { width: 100%; min-height: 48px; margin-top: 2px; }
+.back { display: block; text-align: center; margin-top: 2px; color: var(--accent); font-weight: 700; }
 .auth-switch {
   display: block;
   width: 100%;
@@ -920,14 +925,13 @@ button { cursor: pointer; }
   .stats strong { font-size: 28px; }
   .login-page { display: block; min-height: 100svh; padding: 22px 14px 34px; }
   .login-page .brand { position: static; display: block; width: fit-content; margin: 0 auto 24px; font-size: 28px; }
-  .login-card { width: 100%; padding: 24px 18px; box-shadow: 0 12px 28px rgba(18, 59, 53, 0.08); }
+  .login-card { width: 100%; max-width: 430px; margin: 0 auto; padding: 24px 18px; box-shadow: 0 12px 28px rgba(18, 59, 53, 0.08); gap: 12px; }
   .login-card h1 { font-size: 28px; }
   .login-card > p:not(.eyebrow) { line-height: 1.7; margin-bottom: 18px; }
   .login-card .field-label { gap: 7px; }
-  .login-card input { min-height: 46px; }
-  .login-card .primary.full { min-height: 48px; }
-  .auth-switch { min-height: 42px; }
-  .back { margin-top: 12px; }
+  .login-card .primary.full { min-height: 50px; }
+  .auth-switch { min-height: 44px; }
+  .back { margin-top: 4px; }
   .detail-page { padding: 32px 14px 64px; }
   .detail-image-wrap { padding: 8px; }
   .detail-image-wrap > .image-empty, .detail-image-wrap > img { height: min(78vw, 360px); }
