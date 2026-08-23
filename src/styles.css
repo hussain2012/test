@@ -206,13 +206,6 @@ button { cursor: pointer; }
 
 .section-head h2 { margin: 0; font-size: 30px; }
 
-.currency-note {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .filters {
   display: flex;
   gap: 12px;
@@ -681,16 +674,6 @@ button { cursor: pointer; }
 .stats .highlight span, .stats .highlight strong, .stats .highlight small { color: #fff; }
 
 .dashboard-overview { display: grid; gap: 18px; }
-.dashboard-note, .analytics-explainer {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 16px 18px;
-  background: var(--paper-soft);
-  border-right: 3px solid var(--accent);
-  color: var(--text);
-}
-.dashboard-note span, .analytics-explainer small { color: var(--muted); font-size: 12px; line-height: 1.7; }
 .success-message { color: var(--success); font-size: 12px; margin: 0; }
 .active-status { color: var(--success) !important; font-weight: 700; }
 .inactive-status { color: var(--danger) !important; font-weight: 700; }
