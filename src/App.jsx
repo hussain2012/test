@@ -364,11 +364,16 @@ function ProductDetailPage() {
   );
 }
 
-function Field({ label, name, type = 'text', value, onChange, placeholder, required = true }) {
+function Field({ label, name, type = 'text', value, onChange, placeholder, required = true, allowReveal = false, onKeyDown }) {
+  const [revealed, setRevealed] = useState(false);
+  const inputType = allowReveal && revealed ? 'text' : type;
   return (
     <label className="field-label">
       {label}
-      <input name={name} type={type} value={value} onChange={onChange} placeholder={placeholder} required={required} />
+      <span className="input-with-action">
+        <input name={name} type={inputType} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} required={required} />
+        {allowReveal && <button type="button" className="reveal-password" onClick={() => setRevealed((current) => !current)} aria-label={revealed ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}>{revealed ? 'إخفاء' : 'إظهار'}</button>}
+      </span>
     </label>
   );
 }
@@ -560,6 +565,7 @@ function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [capsLock, setCapsLock] = useState(false);
   const navigate = useNavigate();
 
   const submit = async (event) => {
@@ -603,7 +609,8 @@ function Login() {
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
         <p>{mode === 'login' ? 'سجّل الدخول بالبريد الإلكتروني أو رقم الهاتف.' : 'أنشئ حساباً بالبريد الإلكتروني أو رقم الهاتف.'}</p>
         <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
-        <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />
+        {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
@@ -926,7 +933,7 @@ function OrdersAdmin() {
         <article className={`order-card status-${order.status} ${order.isRead ? '' : 'unread-order'}`} key={order.id}>
           <div className="order-card-head">
             <div>
-              <span className="order-id">طلب #{order.accountOrderNumber || order.id}</span>
+              <span className="order-id">طلب #{order.id}</span>
               <small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small>
               {!order.isRead && <b className="unread-badge">طلب غير مقروء</b>}
             </div>
