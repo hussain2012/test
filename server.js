@@ -10,7 +10,18 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = 3000;
-const db = new DatabaseSync(path.join(__dirname, 'catalog.db'));
+const persistentDataDir = '/data';
+let databasePath = path.join(__dirname, 'catalog.db');
+const isRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID);
+if (isRailway) {
+  try {
+    fs.mkdirSync(persistentDataDir, { recursive: true });
+    databasePath = path.join(persistentDataDir, 'catalog.db');
+  } catch {
+    // Fall back to the project directory when the persistent volume is unavailable.
+  }
+}
+const db = new DatabaseSync(databasePath);
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({ dest: uploadDir });
@@ -23,9 +34,9 @@ const verifyPassword = (password, storedHash) => {
   const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
   return crypto.timingSafeEqual(Buffer.from(derivedKey, 'hex'), Buffer.from(key, 'hex'));
 };
+const getSession = (req) => sessions.get(req.headers['x-admin-token']);
 const isAdminRequest = (req) => {
-  const session = sessions.get(req.headers['x-admin-token']);
-  return session?.role === 'admin';
+  return getSession(req)?.role === 'admin';
 };
 
 const ensureColumn = (table, column, definition) => {
@@ -115,6 +126,20 @@ db.exec(`
     passwordHash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'customer',
     createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS account_carts (
+    accountId INTEGER PRIMARY KEY,
+    items TEXT NOT NULL DEFAULT '[]',
+    updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (accountId) REFERENCES accounts(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS account_coupons (
+    accountId INTEGER NOT NULL,
+    discountId INTEGER NOT NULL,
+    savedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (accountId, discountId),
+    FOREIGN KEY (accountId) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (discountId) REFERENCES discounts(id) ON DELETE CASCADE
   );
 `);
 
@@ -225,6 +250,40 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   sessions.delete(req.headers['x-admin-token']);
   res.status(204).end();
+});
+
+app.get('/api/account/cart', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول لحفظ السلة' });
+  const row = db.prepare('SELECT items FROM account_carts WHERE accountId = ?').get(session.accountId);
+  let items = [];
+  try { items = JSON.parse(row?.items || '[]'); } catch { items = []; }
+  res.json({ items: Array.isArray(items) ? items : [] });
+});
+
+app.put('/api/account/cart', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول لحفظ السلة' });
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+  db.prepare(`INSERT INTO account_carts (accountId, items, updatedAt) VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(accountId) DO UPDATE SET items=excluded.items, updatedAt=CURRENT_TIMESTAMP`).run(session.accountId, JSON.stringify(items));
+  res.json({ ok: true, items });
+});
+
+app.get('/api/account/coupons', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
+  const coupons = db.prepare(`SELECT d.* FROM discounts d JOIN account_coupons ac ON ac.discountId = d.id WHERE ac.accountId = ? ORDER BY ac.savedAt DESC`).all(session.accountId);
+  res.json(coupons.map((coupon) => ({ ...coupon, active: Boolean(coupon.active) })));
+});
+
+app.post('/api/account/coupons/:code', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
+  const coupon = db.prepare('SELECT * FROM discounts WHERE code = ? AND active = 1').get(String(req.params.code).toUpperCase());
+  if (!coupon) return res.status(404).json({ error: 'كود الخصم غير صالح أو غير فعال' });
+  db.prepare('INSERT OR IGNORE INTO account_coupons (accountId, discountId) VALUES (?, ?)').run(session.accountId, coupon.id);
+  res.status(201).json({ ...coupon, active: Boolean(coupon.active), saved: true });
 });
 
 app.get('/api/site-settings', (req, res) => res.json(getSiteSettings()));

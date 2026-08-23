@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, createContext, useContext } from 'react';
+﻿import { useEffect, useRef, useState, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -33,6 +33,7 @@ const CartContext = createContext();
 const useCart = () => useContext(CartContext);
 
 function CartProvider({ children }) {
+  const accountCartLoaded = useRef(!localStorage.getItem('sessionToken'));
   const [cart, setCart] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('cart') || '[]');
@@ -43,7 +44,35 @@ function CartProvider({ children }) {
 
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(cart));
+    if (!accountCartLoaded.current || !localStorage.getItem('sessionToken')) return;
+    fetch(`${API}/account/cart`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+      body: JSON.stringify({ items: cart }),
+    }).catch(() => {});
   }, [cart]);
+
+  useEffect(() => {
+    const loadAccountCart = async () => {
+      const token = localStorage.getItem('sessionToken');
+      if (!token) {
+        accountCartLoaded.current = true;
+        return;
+      }
+      accountCartLoaded.current = false;
+      try {
+        const response = await fetch(`${API}/account/cart`, { headers: adminHeaders() });
+        if (!response.ok) return;
+        const data = await response.json();
+        setCart(Array.isArray(data.items) ? data.items : []);
+      } finally {
+        accountCartLoaded.current = true;
+      }
+    };
+    loadAccountCart();
+    window.addEventListener('account-session-changed', loadAccountCart);
+    return () => window.removeEventListener('account-session-changed', loadAccountCart);
+  }, []);
 
   const addItem = (product, quantity = 1) => {
     const sellingPrice = Number(product.discountedPrice ?? product.price ?? 0);
@@ -356,7 +385,16 @@ function Checkout() {
     const res = await fetch(`${API}/discounts/validate/${encodeURIComponent(form.discountCode.trim())}`);
     const data = await res.json();
     setDiscount(data || null);
-    if (!data) setError('كود الخصم غير صالح أو غير فعال');
+    if (!data) {
+      setError('كود الخصم غير صالح أو غير فعال');
+      return;
+    }
+    if (localStorage.getItem('sessionToken')) {
+      fetch(`${API}/account/coupons/${encodeURIComponent(data.code)}`, {
+        method: 'POST',
+        headers: adminHeaders(),
+      }).catch(() => {});
+    }
   };
 
   const submitOrder = async (event) => {
@@ -507,6 +545,7 @@ function Login() {
     localStorage.setItem('sessionToken', data.token);
     localStorage.setItem('accountRole', data.role);
     localStorage.setItem('accountIdentifier', data.identifier);
+    window.dispatchEvent(new Event('account-session-changed'));
     if (data.role === 'admin') navigate('/admin');
     else navigate('/');
   };
@@ -565,7 +604,7 @@ function Admin() {
         <Link className={page === 'discounts' ? 'active' : ''} to="/admin/discounts">أكواد الخصم</Link>
         <Link className={page === 'analytics' ? 'active' : ''} to="/admin/analytics">الإحصائيات</Link>
         <Link className={page === 'settings' ? 'active' : ''} to="/admin/settings">إعدادات المتجر</Link>
-        <button type="button" className="logout" onClick={async () => { await fetch(`${API}/auth/logout`, { method: 'POST', headers: adminHeaders() }); localStorage.removeItem('sessionToken'); localStorage.removeItem('accountRole'); localStorage.removeItem('accountIdentifier'); navigate('/'); }}>تسجيل الخروج</button>
+        <button type="button" className="logout" onClick={async () => { await fetch(`${API}/auth/logout`, { method: 'POST', headers: adminHeaders() }); localStorage.removeItem('sessionToken'); localStorage.removeItem('accountRole'); localStorage.removeItem('accountIdentifier'); window.dispatchEvent(new Event('account-session-changed')); navigate('/'); }}>تسجيل الخروج</button>
       </aside>
 
       <section className="admin-content">
