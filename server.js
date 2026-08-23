@@ -102,6 +102,7 @@ db.exec(`
     deliveryFee REAL NOT NULL,
     finalTotal REAL NOT NULL,
     accountId INTEGER,
+    accountOrderNumber INTEGER,
     status TEXT NOT NULL DEFAULT 'processing',
     isRead INTEGER NOT NULL DEFAULT 0,
     createdAt TEXT NOT NULL
@@ -157,6 +158,15 @@ ensureColumn('site_settings', 'heroImageUrl', 'TEXT');
 ensureColumn('site_settings', 'heroButtonText', 'TEXT');
 ensureColumn('site_settings', 'maintenanceMode', 'INTEGER DEFAULT 0');
 ensureColumn('orders', 'accountId', 'INTEGER');
+ensureColumn('orders', 'accountOrderNumber', 'INTEGER');
+
+const ordersMissingAccountNumbers = db.prepare('SELECT id, accountId FROM orders WHERE accountId IS NOT NULL AND accountOrderNumber IS NULL ORDER BY accountId, datetime(createdAt), id').all();
+const accountOrderCounters = new Map();
+ordersMissingAccountNumbers.forEach((order) => {
+  const nextNumber = (accountOrderCounters.get(order.accountId) || 0) + 1;
+  accountOrderCounters.set(order.accountId, nextNumber);
+  db.prepare('UPDATE orders SET accountOrderNumber = ? WHERE id = ?').run(nextNumber, order.id);
+});
 
 const administratorEmail = 'hausain12moh@gmail.com';
 const administratorPassword = 'Hussain_20_12';
@@ -387,7 +397,7 @@ app.get('/api/discounts/validate/:code', (req, res) => {
 
 app.get('/api/orders', (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  res.json(db.prepare('SELECT * FROM orders ORDER BY datetime(createdAt) DESC').all().map((o) => ({ ...o, items: JSON.parse(o.items), isRead: Boolean(o.isRead) })));
+  res.json(db.prepare('SELECT * FROM orders ORDER BY datetime(createdAt) DESC').all().map((o) => ({ ...o, items: JSON.parse(o.items), isRead: Boolean(o.isRead), accountOrderNumber: o.accountOrderNumber || null })));
 });
 app.get('/api/orders/unread-count', (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
@@ -414,8 +424,9 @@ app.post('/api/orders', (req, res) => {
     };
   });
 
-  const result = db.prepare('INSERT INTO orders (items,customerName,province,address,nearestLandmark,phoneNumber,subtotal,discountCode,discountAmount,deliveryFee,finalTotal,accountId,status,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(JSON.stringify(enrichedItems), b.customerName, b.province, b.address, b.nearestLandmark, b.phoneNumber, Number(b.subtotal || 0), b.discountCode || '', Number(b.discountAmount || 0), Number(b.deliveryFee || 0), Number(b.finalTotal || 0), session.accountId, 'processing', new Date().toISOString());
+  const accountOrderNumber = db.prepare('SELECT COALESCE(MAX(accountOrderNumber), 0) + 1 AS nextNumber FROM orders WHERE accountId = ?').get(session.accountId).nextNumber;
+  const result = db.prepare('INSERT INTO orders (items,customerName,province,address,nearestLandmark,phoneNumber,subtotal,discountCode,discountAmount,deliveryFee,finalTotal,accountId,accountOrderNumber,status,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(JSON.stringify(enrichedItems), b.customerName, b.province, b.address, b.nearestLandmark, b.phoneNumber, Number(b.subtotal || 0), b.discountCode || '', Number(b.discountAmount || 0), Number(b.deliveryFee || 0), Number(b.finalTotal || 0), session.accountId, accountOrderNumber, 'processing', new Date().toISOString());
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
@@ -429,6 +440,7 @@ app.get('/api/account/orders', (req, res) => {
       ...order,
       items: JSON.parse(order.items),
       isRead: Boolean(order.isRead),
+      accountOrderNumber: order.accountOrderNumber || null,
       discountType: discount?.type || null,
       discountValue: discount?.value || 0,
     };

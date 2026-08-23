@@ -543,7 +543,7 @@ function MyOrders() {
         {loading ? <div className="empty">جاري تحميل الطلبات...</div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
             {orders.map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
-              <div className="account-order-heading"><div><strong>طلب #{order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
+              <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
               <div className="account-order-items">{(order.items || []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
               <div className="account-order-totals"><span>المجموع: {money(order.subtotal)}</span><span>الخصم {order.discountValue ? `(${order.discountType === 'percentage' ? `${order.discountValue}%` : money(order.discountValue)})` : ''}: - {money(order.discountAmount)}</span><span>التوصيل: {money(order.deliveryFee)}</span><strong>الإجمالي: {money(order.finalTotal)}</strong></div>
             </article>)}
@@ -926,7 +926,7 @@ function OrdersAdmin() {
         <article className={`order-card status-${order.status} ${order.isRead ? '' : 'unread-order'}`} key={order.id}>
           <div className="order-card-head">
             <div>
-              <span className="order-id">طلب #{order.id}</span>
+              <span className="order-id">طلب #{order.accountOrderNumber || order.id}</span>
               <small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small>
               {!order.isRead && <b className="unread-badge">طلب غير مقروء</b>}
             </div>
