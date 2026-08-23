@@ -423,7 +423,16 @@ app.get('/api/account/orders', (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
   const orders = db.prepare('SELECT * FROM orders WHERE accountId = ? ORDER BY datetime(createdAt) DESC').all(session.accountId);
-  res.json(orders.map((order) => ({ ...order, items: JSON.parse(order.items), isRead: Boolean(order.isRead) })));
+  res.json(orders.map((order) => {
+    const discount = order.discountCode ? db.prepare('SELECT type, value FROM discounts WHERE code = ?').get(order.discountCode) : null;
+    return {
+      ...order,
+      items: JSON.parse(order.items),
+      isRead: Boolean(order.isRead),
+      discountType: discount?.type || null,
+      discountValue: discount?.value || 0,
+    };
+  }));
 });
 
 app.patch('/api/orders/:id', (req, res) => {
