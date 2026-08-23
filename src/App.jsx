@@ -1,7 +1,8 @@
 ﻿import { useEffect, useState, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 
-const API = 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+const API = `${API_BASE_URL}/api`;
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const defaultSettings = {
   storeName: 'نسق',
