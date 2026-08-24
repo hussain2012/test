@@ -129,6 +129,10 @@ db.exec(`
     role TEXT NOT NULL DEFAULT 'customer',
     createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS admin_invites (
+    identifier TEXT PRIMARY KEY,
+    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE TABLE IF NOT EXISTS account_carts (
     accountId INTEGER PRIMARY KEY,
     items TEXT NOT NULL DEFAULT '[]',
@@ -240,8 +244,11 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف عراقياً، وكلمة مرور من 6 أحرف على الأقل' });
   }
   try {
-    const result = db.prepare('INSERT INTO accounts (identifier, passwordHash, role) VALUES (?, ?, ?)').run(identifier, hashPassword(password), 'customer');
-    res.status(201).json({ id: result.lastInsertRowid, identifier, role: 'customer' });
+    const invited = db.prepare('SELECT identifier FROM admin_invites WHERE identifier = ?').get(identifier);
+    const role = invited ? 'admin' : 'customer';
+    const result = db.prepare('INSERT INTO accounts (identifier, passwordHash, role) VALUES (?, ?, ?)').run(identifier, hashPassword(password), role);
+    if (invited) db.prepare('DELETE FROM admin_invites WHERE identifier = ?').run(identifier);
+    res.status(201).json({ id: result.lastInsertRowid, identifier, role });
   } catch {
     res.status(409).json({ error: 'هذا الحساب مسجل مسبقاً' });
   }
@@ -261,6 +268,39 @@ app.post('/api/auth/login', (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   sessions.delete(req.headers['x-admin-token']);
+  res.status(204).end();
+});
+
+app.get('/api/admin/admins', (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  const admins = db.prepare("SELECT id, identifier, createdAt FROM accounts WHERE role = 'admin' ORDER BY id").all();
+  const invites = db.prepare('SELECT identifier, createdAt FROM admin_invites ORDER BY createdAt DESC').all();
+  res.json({ admins, invites });
+});
+
+app.post('/api/admin/admins', (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  const identifier = String(req.body.identifier || '').trim().toLowerCase();
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+  const isPhone = /^07\d{9}$/.test(identifier);
+  if (!isEmail && !isPhone) return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف عراقياً صحيحاً' });
+  const account = db.prepare('SELECT id, role FROM accounts WHERE identifier = ?').get(identifier);
+  if (account?.role === 'admin') return res.status(409).json({ error: 'هذا الحساب مشرف مسبقاً' });
+  if (account) {
+    db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(account.id);
+    return res.json({ identifier, role: 'admin', promoted: true });
+  }
+  db.prepare('INSERT OR IGNORE INTO admin_invites (identifier) VALUES (?)').run(identifier);
+  res.status(201).json({ identifier, role: 'admin', invited: true });
+});
+
+app.delete('/api/admin/admins/:identifier', (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  const identifier = String(req.params.identifier || '').toLowerCase();
+  if (identifier === administratorEmail) return res.status(400).json({ error: 'لا يمكن حذف المدير الرئيسي' });
+  const account = db.prepare('SELECT id FROM accounts WHERE identifier = ? AND role = ?').get(identifier, 'admin');
+  if (account) db.prepare("UPDATE accounts SET role = 'customer' WHERE id = ?").run(account.id);
+  db.prepare('DELETE FROM admin_invites WHERE identifier = ?').run(identifier);
   res.status(204).end();
 });
 

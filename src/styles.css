@@ -725,6 +725,8 @@ button { cursor: pointer; }
 
 .dashboard-overview { display: grid; gap: 18px; }
 .success-message { color: var(--success); font-size: 12px; margin: 0; }
+.admin-help { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+.manager-row { grid-template-columns: 1.5fr 1fr auto; }
 .active-status { color: var(--success) !important; font-weight: 700; }
 .inactive-status { color: var(--danger) !important; font-weight: 700; }
 

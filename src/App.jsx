@@ -640,6 +640,7 @@ function Admin() {
     discounts: 'أكواد الخصم',
     analytics: 'الإحصائيات',
     settings: 'إعدادات المتجر',
+    admins: 'المشرفون',
   };
 
   return (
@@ -652,6 +653,7 @@ function Admin() {
         <Link className={page === 'discounts' ? 'active' : ''} to="/admin/discounts">أكواد الخصم</Link>
         <Link className={page === 'analytics' ? 'active' : ''} to="/admin/analytics">الإحصائيات</Link>
         <Link className={page === 'settings' ? 'active' : ''} to="/admin/settings">إعدادات المتجر</Link>
+        <Link className={page === 'admins' ? 'active' : ''} to="/admin/admins">المشرفون</Link>
         <button type="button" className="logout" onClick={async () => { await fetch(`${API}/auth/logout`, { method: 'POST', headers: adminHeaders() }); localStorage.removeItem('sessionToken'); localStorage.removeItem('accountRole'); localStorage.removeItem('accountIdentifier'); window.dispatchEvent(new Event('account-session-changed')); navigate('/'); }}>تسجيل الخروج</button>
       </aside>
 
@@ -664,7 +666,7 @@ function Admin() {
           <Link to="/" className="view-store">عرض المتجر ↗</Link>
         </div>
 
-        {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'analytics' ? <AnalyticsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : <Overview />}
+        {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'analytics' ? <AnalyticsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : page === 'admins' ? <AdminsAdmin /> : <Overview />}
       </section>
     </div>
   );
@@ -1062,6 +1064,58 @@ function AnalyticsAdmin() {
       <div className="product-stat"><span>أعلى ربح</span><strong>{stats.highestProfitProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.highestProfitProduct ? money(stats.highestProfitProduct.profit) : 'بعد إكمال الطلبات'}</small></div>
       <div className="product-stat"><span>أقل ربح</span><strong>{stats.lowestProfitProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.lowestProfitProduct ? money(stats.lowestProfitProduct.profit) : 'بعد إكمال الطلبات'}</small></div>
       <div className="product-stat"><span>الأكثر إلغاءً</span><strong>{stats.mostCancelledProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.mostCancelledProduct ? `${stats.mostCancelledProduct.cancelledQuantity} قطعة` : 'بعد وجود طلبات ملغاة'}</small></div>
+    </div>
+  );
+}
+
+function AdminsAdmin() {
+  const [data, setData] = useState({ admins: [], invites: [] });
+  const [identifier, setIdentifier] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const load = () => adminFetch(`${API}/admin/admins`).then((res) => res.json()).then(setData);
+  useEffect(() => { load(); }, []);
+
+  const addAdmin = async (event) => {
+    event.preventDefault();
+    setMessage('');
+    setError('');
+    const response = await adminFetch(`${API}/admin/admins`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(result.error || 'تعذر إضافة المشرف');
+      return;
+    }
+    setIdentifier('');
+    setMessage(result.promoted ? 'تم تحويل الحساب إلى مشرف' : 'تم حفظ الدعوة، سيصبح مشرفاً عند إنشاء الحساب');
+    load();
+  };
+
+  const removeAdmin = async (value) => {
+    await adminFetch(`${API}/admin/admins/${encodeURIComponent(value)}`, { method: 'DELETE' });
+    load();
+  };
+
+  return (
+    <div className="admin-managers">
+      <form className="admin-form compact" onSubmit={addAdmin}>
+        <h2>إضافة مشرف</h2>
+        <p className="admin-help">أدخل البريد أو الرقم. سيستخدم المشرف كلمة مرور حسابه الخاصة.</p>
+        <input type="text" inputMode="email" placeholder="البريد الإلكتروني أو رقم الهاتف" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
+        <button type="submit" className="primary">إضافة المشرف</button>
+        {message && <p className="success-message">{message}</p>}
+        {error && <p className="error">{error}</p>}
+      </form>
+      <div className="admin-table">
+        <div className="table-title"><h2>المشرفون</h2><span>{data.admins.length} مشرف</span></div>
+        {data.admins.map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong><span>مشرف</span><button type="button" className="danger" onClick={() => removeAdmin(admin.identifier)}>إزالة</button></div>)}
+      </div>
+      {!!data.invites.length && <div className="admin-table"><div className="table-title"><h2>الدعوات المعلقة</h2></div>{data.invites.map((invite) => <div className="table-row manager-row" key={invite.identifier}><strong>{invite.identifier}</strong><span>بانتظار التسجيل</span><button type="button" className="danger" onClick={() => removeAdmin(invite.identifier)}>إلغاء</button></div>)}</div>}
     </div>
   );
 }
