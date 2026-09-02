@@ -708,8 +708,8 @@ function Overview() {
         <div><span>مبيعات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong><small>مقارنة بالشهر السابق: {stats.growth || 0}%</small></div>
         <div><span>الطلبات الكلية</span><strong>{stats.orderStats?.total || 0}</strong><small>جديد: {stats.orderStats?.new || 0} | قيد التجهيز: {stats.orderStats?.processing || 0}</small></div>
         <div><span>طلبات مكتملة</span><strong>{stats.orderStats?.delivered || 0}</strong><small>الأرباح المحققة: {money(stats.totalProfit)}</small></div>
-        <div><span>الزيارات</span><strong>{stats.totalViews || 0}</strong><small>الرئيسية: {stats.homeViews || 0} | المنتجات: {stats.productViews || 0}</small></div>
-        <div className="highlight"><span>صافي الأرباح</span><strong>{money(stats.totalProfit)}</strong><small>الطلبات الملغاة لا تُحتسب خسارة</small></div>
+        <div><span>الزيارات</span><strong>{stats.totalViews || 0}</strong></div>
+        <div className="highlight"><span>صافي الأرباح</span><strong>{money(stats.totalProfit)}</strong></div>
       </div>
     </div>
   );

@@ -957,7 +957,8 @@ button { cursor: pointer; }
   .product-info p { height: auto; min-height: 0; max-height: 48px; line-height: 1.7; }
   .product-bottom { align-items: flex-end; }
   .mini-button { min-height: 38px; padding-inline: 8px; }
-  .stats { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats > div { min-height: 150px; display: flex; flex-direction: column; justify-content: center; }
   .table-row, .product-row, .discount-row, .manager-row { grid-template-columns: 1fr; }
   .table-row > * { min-width: 0; word-break: break-word; }
   .admin-form, .settings-form { grid-template-columns: 1fr; padding: 18px 14px; }
