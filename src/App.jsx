@@ -561,7 +561,17 @@ function Login() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [capsLock, setCapsLock] = useState(false);
+  const [accountCount, setAccountCount] = useState(0);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch(`${API}/auth/account-count`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data && typeof data.count === 'number') setAccountCount(data.count);
+      })
+      .catch(() => {});
+  }, []);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -582,6 +592,12 @@ function Login() {
       setMessage('تم إنشاء الحساب. يمكنك تسجيل الدخول الآن.');
       setMode('login');
       setPassword('');
+      fetch(`${API}/auth/account-count`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((countData) => {
+          if (countData && typeof countData.count === 'number') setAccountCount(countData.count);
+        })
+        .catch(() => {});
       return;
     }
     localStorage.setItem('sessionToken', data.token);
@@ -600,8 +616,12 @@ function Login() {
     <main className="login-page">
       <Link to="/" className="brand">نسق</Link>
       <form className="login-card" onSubmit={submit}>
-        <p className="eyebrow">حساب نسق</p>
+        <div className="auth-mode-switch" role="tablist" aria-label="تبديل نوع الحساب">
+          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button>
+          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button>
+        </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
+        <p className="account-counter">عدد الحسابات المسجلة: <strong>{accountCount}</strong></p>
         <p>{mode === 'login' ? 'سجّل الدخول بالبريد الإلكتروني أو رقم الهاتف.' : 'أنشئ حساباً بالبريد الإلكتروني أو رقم الهاتف.'}</p>
         <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />
@@ -609,9 +629,6 @@ function Login() {
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
-        <button type="button" className="auth-switch" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setMessage(''); }}>
-          {mode === 'login' ? 'إنشاء حساب جديد' : 'لديك حساب؟ تسجيل الدخول'}
-        </button>
         <Link to="/" className="back">العودة للمتجر</Link>
       </form>
     </main>

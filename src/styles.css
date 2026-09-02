@@ -23,8 +23,9 @@ body {
   font-family: 'Cairo', sans-serif;
   background: var(--bg);
   color: var(--text);
+  overflow-x: hidden;
 }
-img { max-width: 100%; display: block; }
+img, svg, video { max-width: 100%; display: block; height: auto; }
 .image-empty {
   display: grid;
   place-items: center;
@@ -603,30 +604,51 @@ button { cursor: pointer; }
 .login-card {
   width: min(100%, 430px);
   background: #fff;
-  padding: 30px 26px;
+  padding: 28px 22px;
   box-shadow: 0 20px 40px rgba(18, 59, 53, 0.08);
   border: 1px solid rgba(18, 59, 53, 0.05);
   display: grid;
-  gap: 14px;
+  gap: 12px;
+}
+
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--paper-soft);
+}
+
+.auth-mode-switch button {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  padding: 10px 8px;
+  font-weight: 700;
+  transition: 0.2s ease;
+}
+
+.auth-mode-switch button.active {
+  background: var(--primary);
+  color: #fff;
 }
 
 .login-card h1 { margin: 0; font-size: 30px; }
+.account-counter {
+  margin: -2px 0 0;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.account-counter strong { font-size: 14px; }
 .login-card > p:not(.eyebrow) { color: var(--muted); font-size: 13px; margin: 0 0 4px; line-height: 1.8; }
 .login-card .field-label { min-width: 0; }
 .login-card .field-label input { min-width: 0; width: 100%; min-height: 46px; }
 .login-card .field-label input[type='email'], .login-card .field-label input[type='tel'] { direction: ltr; text-align: left; }
 .login-card .primary.full { width: 100%; min-height: 48px; margin-top: 2px; }
 .back { display: block; text-align: center; margin-top: 2px; color: var(--accent); font-weight: 700; }
-.auth-switch {
-  display: block;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--primary);
-  font-size: 13px;
-  font-weight: 700;
-  padding: 8px;
-}
 .login-card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .admin-shell {
@@ -901,12 +923,12 @@ button { cursor: pointer; }
   .admin-side .brand, .admin-side .logout { grid-column: 1 / -1; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .table-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .product-row, .discount-row, .manager-row { grid-template-columns: 1fr; }
   .table-title { display: block; }
   .admin-form { gap: 12px; }
 }
 
 @media (max-width: 620px) {
-  body { overflow-x: hidden; }
   .nav {
     height: auto;
     min-height: 72px;
@@ -936,6 +958,8 @@ button { cursor: pointer; }
   .product-bottom { align-items: flex-end; }
   .mini-button { min-height: 38px; padding-inline: 8px; }
   .stats { grid-template-columns: 1fr; }
+  .table-row, .product-row, .discount-row, .manager-row { grid-template-columns: 1fr; }
+  .table-row > * { min-width: 0; word-break: break-word; }
   .admin-form, .settings-form { grid-template-columns: 1fr; padding: 18px 14px; }
   .admin-form h2 { font-size: 20px; }
   .admin-form .primary, .admin-form .secondary-button { width: 100%; }
@@ -951,14 +975,17 @@ button { cursor: pointer; }
   .order-card-head { flex-direction: column; }
   .order-card-head select { width: 100%; }
   .stats strong { font-size: 28px; }
-  .login-page { display: block; min-height: 100svh; padding: 22px 14px 34px; }
-  .login-page .brand { position: static; display: block; width: fit-content; margin: 0 auto 24px; font-size: 28px; }
-  .login-card { width: 100%; max-width: 430px; margin: 0 auto; padding: 24px 18px; box-shadow: 0 12px 28px rgba(18, 59, 53, 0.08); gap: 12px; }
-  .login-card h1 { font-size: 28px; }
-  .login-card > p:not(.eyebrow) { line-height: 1.7; margin-bottom: 18px; }
+  .login-page { display: block; min-height: 100svh; padding: 18px 12px 24px; }
+  .login-page .brand { position: static; display: block; width: fit-content; margin: 0 auto 18px; font-size: 26px; }
+  .login-card { width: 100%; max-width: 430px; margin: 0 auto; padding: 18px 16px; box-shadow: 0 12px 28px rgba(18, 59, 53, 0.08); gap: 10px; }
+  .auth-mode-switch { gap: 6px; }
+  .auth-mode-switch button { padding: 9px 6px; font-size: 12px; }
+  .login-card h1 { font-size: 26px; }
+  .account-counter { font-size: 11px; }
+  .login-card > p:not(.eyebrow) { line-height: 1.7; margin-bottom: 8px; }
   .login-card .field-label { gap: 7px; }
-  .login-card .primary.full { min-height: 50px; }
-  .auth-switch { min-height: 44px; }
+  .login-card .primary.full { min-height: 48px; }
+
   .back { margin-top: 4px; }
   .detail-page { padding: 32px 14px 64px; }
   .detail-image-wrap { padding: 8px; }

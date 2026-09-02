@@ -254,6 +254,11 @@ app.post('/api/auth/register', (req, res) => {
   }
 });
 
+app.get('/api/auth/account-count', (req, res) => {
+  const count = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
+  res.json({ count });
+});
+
 app.post('/api/auth/login', (req, res) => {
   const identifier = String(req.body.identifier || '').trim().toLowerCase();
   const password = String(req.body.password || '');
