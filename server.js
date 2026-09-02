@@ -241,7 +241,7 @@ app.post('/api/auth/register', (req, res) => {
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
   const isPhone = /^07\d{9}$/.test(identifier);
   if ((!isEmail && !isPhone) || password.length < 6) {
-    return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف عراقياً، وكلمة مرور من 6 أحرف على الأقل' });
+    return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف صحيحا، وكلمة مرور من 6 أحرف على الأقل' });
   }
   try {
     const invited = db.prepare('SELECT identifier FROM admin_invites WHERE identifier = ?').get(identifier);
@@ -283,7 +283,7 @@ app.post('/api/admin/admins', (req, res) => {
   const identifier = String(req.body.identifier || '').trim().toLowerCase();
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
   const isPhone = /^07\d{9}$/.test(identifier);
-  if (!isEmail && !isPhone) return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف عراقياً صحيحاً' });
+  if (!isEmail && !isPhone) return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف صحيحاً' });
   const account = db.prepare('SELECT id, role FROM accounts WHERE identifier = ?').get(identifier);
   if (account?.role === 'admin') return res.status(409).json({ error: 'هذا الحساب مشرف مسبقاً' });
   if (account) {
@@ -302,6 +302,39 @@ app.delete('/api/admin/admins/:identifier', (req, res) => {
   if (account) db.prepare("UPDATE accounts SET role = 'customer' WHERE id = ?").run(account.id);
   db.prepare('DELETE FROM admin_invites WHERE identifier = ?').run(identifier);
   res.status(204).end();
+});
+
+app.post('/api/admin/transfer-ownership', (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+
+  const session = getSession(req);
+  const currentIdentifier = String(session?.identifier || '').trim().toLowerCase();
+  const newOwner = String(req.body.newOwner || '').trim().toLowerCase();
+
+  if (currentIdentifier !== administratorEmail) {
+    return res.status(403).json({ error: 'فقط المدير الرئيسي يمكنه تحويل الملكية' });
+  }
+
+  if (!newOwner || newOwner === currentIdentifier) {
+    return res.status(400).json({ error: 'اختر حساباً آخر غير حساب المدير الحالي' });
+  }
+
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newOwner);
+  const isPhone = /^07\d{9}$/.test(newOwner);
+  if (!isEmail && !isPhone) {
+    return res.status(400).json({ error: 'أدخل بريد إلكتروني أو رقم هاتف صحيحاً' });
+  }
+
+  const targetAccount = db.prepare('SELECT id, role FROM accounts WHERE identifier = ?').get(newOwner);
+  if (!targetAccount) {
+    db.prepare('INSERT OR IGNORE INTO admin_invites (identifier) VALUES (?)').run(newOwner);
+    return res.status(202).json({ message: 'تم حفظ الحساب كدعوة، وسيصبح مديراً عند التسجيل' });
+  }
+
+  db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(targetAccount.id);
+  db.prepare("UPDATE accounts SET role = 'customer' WHERE identifier = ?").run(currentIdentifier);
+
+  res.json({ message: 'تم تحويل الملكية بنجاح', newOwner });
 });
 
 app.get('/api/account/cart', (req, res) => {
@@ -533,25 +566,6 @@ app.get('/api/admin/analytics', (req, res) => {
     return sum + orderProfit;
   }, 0);
 
-  const productStats = {};
-  [...deliveredOrders, ...cancelledOrders].forEach((order) => {
-    JSON.parse(order.items || '[]').forEach((item) => {
-      const key = String(item.productId);
-      const current = productStats[key] || { productId: item.productId, name: item.name, soldQuantity: 0, cancelledQuantity: 0, profit: 0 };
-      const quantity = Number(item.quantity || 0);
-      if (order.status === 'cancelled') current.cancelledQuantity += quantity;
-      if (order.status === 'delivered') {
-        current.soldQuantity += quantity;
-        current.profit += (Number(item.price || 0) - Number(item.costPrice || 0)) * quantity;
-      }
-      productStats[key] = current;
-    });
-  });
-  const productsSummary = Object.values(productStats).map((item) => ({ ...item, profit: Number(item.profit.toFixed(2)) }));
-  const highestProfitProduct = productsSummary.reduce((best, item) => !best || item.profit > best.profit ? item : best, null);
-  const lowestProfitProduct = productsSummary.reduce((worst, item) => !worst || item.profit < worst.profit ? item : worst, null);
-  const mostCancelledProduct = productsSummary.reduce((most, item) => !most || item.cancelledQuantity > most.cancelledQuantity ? item : most, null);
-
   res.json({
     totalViews: homeViews + productViews,
     homeViews,
@@ -562,16 +576,37 @@ app.get('/api/admin/analytics', (req, res) => {
     growth,
     totalProfit,
     totalLosses: 0,
-    highestProfitProduct,
-    lowestProfitProduct,
-    mostCancelledProduct,
-    productsSummary,
   });
 });
 
 app.get('/api/admin/site-settings', (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   res.json(getSiteSettings());
+});
+
+app.post('/api/admin/reset-store', (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+
+  db.exec(`
+    DELETE FROM products;
+    DELETE FROM discounts;
+    DELETE FROM orders;
+    DELETE FROM page_views;
+    DELETE FROM account_carts;
+    DELETE FROM account_coupons;
+    DELETE FROM admin_invites;
+    DELETE FROM site_settings;
+    DELETE FROM sqlite_sequence WHERE name IN ('products', 'discounts', 'orders', 'page_views', 'site_settings', 'account_carts', 'account_coupons');
+  `);
+
+  db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(defaultSiteSettings.storeName, defaultSiteSettings.tagline, defaultSiteSettings.logoUrl, defaultSiteSettings.heroTitle, defaultSiteSettings.heroDescription, defaultSiteSettings.heroImageUrl, defaultSiteSettings.heroButtonText, 0);
+
+  if (!db.prepare('SELECT COUNT(*) as count FROM discounts').get().count) {
+    db.prepare('INSERT INTO discounts (code, type, value, active) VALUES (?, ?, ?, 1)').run('NASAQ10', 'percentage', 10);
+  }
+
+  res.json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
 });
 
 app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCount: 1 }, { name: 'heroImage', maxCount: 1 }]), (req, res) => {

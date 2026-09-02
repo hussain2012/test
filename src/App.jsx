@@ -214,15 +214,10 @@ function Store() {
       <StoreNav settings={settings} />
       <main>
         {settings.maintenanceMode && <div className="maintenance-banner">المتجر في وضع الصيانة: يمكنك تصفح المنتجات، والطلبات متوقفة مؤقتاً.</div>}
-        <section className="hero">
-          <div>
-            <p className="eyebrow">{settings.tagline}</p>
+        <section className="hero hero-text-only">
+          <div className="hero-copy">
             <h1>{settings.heroTitle}</h1>
             <p>{settings.heroDescription}</p>
-            <a href="#catalog" className="primary">{settings.heroButtonText} <span>←</span></a>
-          </div>
-          <div className="hero-art">
-            <ProductImage src={settings.heroImageUrl} alt={settings.heroTitle} />
           </div>
         </section>
 
@@ -660,7 +655,7 @@ function Admin() {
       <section className="admin-content">
         <div className="admin-top">
           <div>
-            <p className="eyebrow">صباح الخير</p>
+            <p className="eyebrow"></p>
             <h1>{titleMap[page] || 'لوحة الإدارة'}</h1>
           </div>
           <Link to="/" className="view-store">عرض المتجر ↗</Link>
@@ -1044,7 +1039,7 @@ function DiscountsAdmin() {
 }
 
 function AnalyticsAdmin() {
-  const [stats, setStats] = useState({ totalViews: 0, homeViews: 0, productViews: 0, currentRevenue: 0, lastRevenue: 0, growth: 0, totalProfit: 0, totalLosses: 0, orderStats: {}, highestProfitProduct: null, lowestProfitProduct: null, mostCancelledProduct: null });
+  const [stats, setStats] = useState({ totalViews: 0, homeViews: 0, productViews: 0, currentRevenue: 0, lastRevenue: 0, growth: 0, totalProfit: 0, totalLosses: 0, orderStats: {} });
 
   useEffect(() => {
     adminFetch(`${API}/admin/analytics`)
@@ -1061,9 +1056,6 @@ function AnalyticsAdmin() {
       <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong><small>مقارنة بالشهر الماضي</small></div>
       <div><span>الأرباح</span><strong>{money(stats.totalProfit)}</strong><small>مجموع ربح الطلبات المسلمة</small></div>
       <div><span>الملغاة</span><strong>{stats.orderStats?.cancelled || 0}</strong><small>لا تُحتسب خسارة مالية</small></div>
-      <div className="product-stat"><span>أعلى ربح</span><strong>{stats.highestProfitProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.highestProfitProduct ? money(stats.highestProfitProduct.profit) : 'بعد إكمال الطلبات'}</small></div>
-      <div className="product-stat"><span>أقل ربح</span><strong>{stats.lowestProfitProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.lowestProfitProduct ? money(stats.lowestProfitProduct.profit) : 'بعد إكمال الطلبات'}</small></div>
-      <div className="product-stat"><span>الأكثر إلغاءً</span><strong>{stats.mostCancelledProduct?.name || 'لا توجد بيانات'}</strong><small>{stats.mostCancelledProduct ? `${stats.mostCancelledProduct.cancelledQuantity} قطعة` : 'بعد وجود طلبات ملغاة'}</small></div>
     </div>
   );
 }
@@ -1071,6 +1063,7 @@ function AnalyticsAdmin() {
 function AdminsAdmin() {
   const [data, setData] = useState({ admins: [], invites: [] });
   const [identifier, setIdentifier] = useState('');
+  const [transferTarget, setTransferTarget] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -1096,6 +1089,28 @@ function AdminsAdmin() {
     load();
   };
 
+  const transferOwnership = async (event) => {
+    event.preventDefault();
+    setMessage('');
+    setError('');
+
+    const response = await adminFetch(`${API}/admin/transfer-ownership`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newOwner: transferTarget }),
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setError(result.error || 'تعذر تحويل الملكية');
+      return;
+    }
+
+    setTransferTarget('');
+    setMessage(result.message || 'تم تحويل الملكية بنجاح');
+    load();
+  };
+
   const removeAdmin = async (value) => {
     await adminFetch(`${API}/admin/admins/${encodeURIComponent(value)}`, { method: 'DELETE' });
     load();
@@ -1111,6 +1126,14 @@ function AdminsAdmin() {
         {message && <p className="success-message">{message}</p>}
         {error && <p className="error">{error}</p>}
       </form>
+
+      <form className="admin-form compact" onSubmit={transferOwnership}>
+        <h2>تحويل الملكية</h2>
+        <p className="admin-help">يمكن فقط للمدير الرئيسي تحويل الملكية إلى حساب آخر.</p>
+        <input type="text" inputMode="email" placeholder="بريد أو رقم الحساب الجديد" value={transferTarget} onChange={(event) => setTransferTarget(event.target.value)} required />
+        <button type="submit" className="primary">نقل الملكية</button>
+      </form>
+
       <div className="admin-table">
         <div className="table-title"><h2>المشرفون</h2><span>{data.admins.length} مشرف</span></div>
         {data.admins.map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong><span>مشرف</span><button type="button" className="danger" onClick={() => removeAdmin(admin.identifier)}>إزالة</button></div>)}
@@ -1124,16 +1147,24 @@ function SiteSettingsAdmin() {
   const [settings, setSettings] = useState(defaultSettings);
   const [logoFile, setLogoFile] = useState(null);
   const [heroFile, setHeroFile] = useState(null);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [statusError, setStatusError] = useState('');
 
-  useEffect(() => {
+  const loadSettings = () => {
     adminFetch(`${API}/admin/site-settings`)
       .then((res) => res.json())
       .then((data) => setSettings({ ...defaultSettings, ...data }))
       .catch(() => setSettings(defaultSettings));
+  };
+
+  useEffect(() => {
+    loadSettings();
   }, []);
 
   const save = async (event) => {
     event.preventDefault();
+    setStatusMessage('');
+    setStatusError('');
     const formData = new FormData();
     Object.entries(settings).forEach(([key, value]) => {
       if (value !== null && value !== undefined) formData.append(key, value);
@@ -1151,6 +1182,26 @@ function SiteSettingsAdmin() {
     setSettings({ ...defaultSettings, ...data });
     setLogoFile(null);
     setHeroFile(null);
+    setStatusMessage('تم حفظ إعدادات المتجر');
+  };
+
+  const resetStore = async () => {
+    const confirmed = window.confirm('هل أنت متأكد؟ سيؤدي هذا إلى حذف المنتجات والطلبات والإحصائيات والخصومات وكل بيانات المتجر، مع الاحتفاظ بحسابات المديرين.');
+    if (!confirmed) return;
+
+    setStatusMessage('');
+    setStatusError('');
+
+    const response = await adminFetch(`${API}/admin/reset-store`, { method: 'POST' });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setStatusError(result.error || 'تعذر إعادة ضبط المتجر');
+      return;
+    }
+
+    setStatusMessage(result.message || 'تمت إعادة ضبط المتجر');
+    loadSettings();
   };
 
   return (
@@ -1167,6 +1218,9 @@ function SiteSettingsAdmin() {
       <input placeholder="نص زر الهيرو" value={settings.heroButtonText} onChange={(event) => setSettings({ ...settings, heroButtonText: event.target.value })} />
       <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>السماح بتصفح المنتجات مع إيقاف إضافة المنتجات وإرسال الطلبات</small></span></label>
       <button type="submit" className="primary">حفظ الإعدادات</button>
+      <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>
+      {statusMessage && <p className="success-message">{statusMessage}</p>}
+      {statusError && <p className="error">{statusError}</p>}
     </form>
   );
 }
