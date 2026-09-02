@@ -733,7 +733,12 @@ button { cursor: pointer; }
 .active-status { color: var(--success) !important; font-weight: 700; }
 .inactive-status { color: var(--danger) !important; font-weight: 700; }
 
-.admin-form {
+.admin-managers {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-managers .admin-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
@@ -741,6 +746,46 @@ button { cursor: pointer; }
   padding: 24px;
   border: 1px solid var(--line);
   margin-bottom: 22px;
+}
+
+.admin-managers .admin-form.compact {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.admin-managers .admin-form.compact h2 {
+  grid-column: 2;
+  justify-self: end;
+  align-self: center;
+  font-size: 24px;
+}
+
+.admin-managers .admin-form.compact .admin-help {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+
+.admin-managers .admin-form.compact input {
+  grid-column: 1 / 2;
+  min-width: 0;
+  min-height: 42px;
+}
+
+.admin-managers .admin-form.compact button {
+  grid-column: 2;
+  justify-self: end;
+  min-width: 88px;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 0;
+  border: 1px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.admin-managers .admin-form.compact button:hover {
+  background: var(--primary-soft);
 }
 
 .admin-form h2 {
@@ -918,9 +963,9 @@ button { cursor: pointer; }
 @media (max-width: 900px) {
   .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .checkout-layout, .product-detail-layout { grid-template-columns: 1fr; }
-  .admin-shell { display: block; }
-  .admin-side { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .admin-side .brand, .admin-side .logout { grid-column: 1 / -1; }
+  .admin-shell { display: flex; }
+  .admin-side { width: 200px; display: flex; flex-direction: column; }
+  .admin-side .brand, .admin-side .logout { grid-column: auto; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .table-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-row, .discount-row, .manager-row { grid-template-columns: 1fr; }
@@ -970,8 +1015,9 @@ button { cursor: pointer; }
   .admin-content { padding: 24px 14px; }
   .admin-top { align-items: flex-start; gap: 12px; }
   .admin-top h1 { font-size: 25px; }
-  .admin-side { grid-template-columns: 1fr 1fr; padding: 16px 12px; }
-  .admin-side a { font-size: 11px; }
+  .admin-shell { display: flex; }
+  .admin-side { width: 160px; padding: 14px 10px; }
+  .admin-side a { font-size: 10px; padding: 9px 8px; }
   .order-card { padding: 14px; }
   .order-card-head { flex-direction: column; }
   .order-card-head select { width: 100%; }

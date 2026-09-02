@@ -561,17 +561,7 @@ function Login() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [capsLock, setCapsLock] = useState(false);
-  const [accountCount, setAccountCount] = useState(0);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    fetch(`${API}/auth/account-count`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data && typeof data.count === 'number') setAccountCount(data.count);
-      })
-      .catch(() => {});
-  }, []);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -621,8 +611,6 @@ function Login() {
           <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button>
         </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
-        <p className="account-counter">عدد الحسابات المسجلة: <strong>{accountCount}</strong></p>
-        <p>{mode === 'login' ? 'سجّل الدخول بالبريد الإلكتروني أو رقم الهاتف.' : 'أنشئ حساباً بالبريد الإلكتروني أو رقم الهاتف.'}</p>
         <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
@@ -1135,11 +1123,16 @@ function AdminsAdmin() {
 
   return (
     <div className="admin-managers">
+      <div className="admin-table">
+        <div className="table-title"><h2>المشرفون</h2><span>{data.admins.length} مشرف</span></div>
+        {data.admins.map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong><span>مشرف</span>{admin.identifier !== 'admin@admin.com' ? <button type="button" className="danger" onClick={() => removeAdmin(admin.identifier)}>إزالة</button> : <span>مالك</span>}</div>)}
+      </div>
+
       <form className="admin-form compact" onSubmit={addAdmin}>
         <h2>إضافة مشرف</h2>
         <p className="admin-help">أدخل البريد أو الرقم. سيستخدم المشرف كلمة مرور حسابه الخاصة.</p>
         <input type="text" inputMode="email" placeholder="البريد الإلكتروني أو رقم الهاتف" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
-        <button type="submit" className="primary">إضافة المشرف</button>
+        <button type="submit" className="primary">+</button>
         {message && <p className="success-message">{message}</p>}
         {error && <p className="error">{error}</p>}
       </form>
@@ -1148,13 +1141,9 @@ function AdminsAdmin() {
         <h2>تحويل الملكية</h2>
         <p className="admin-help">يمكن فقط للمدير الرئيسي تحويل الملكية إلى حساب آخر.</p>
         <input type="text" inputMode="email" placeholder="بريد أو رقم الحساب الجديد" value={transferTarget} onChange={(event) => setTransferTarget(event.target.value)} required />
-        <button type="submit" className="primary">نقل الملكية</button>
+        <button type="submit" className="primary">تحويل ملكية</button>
       </form>
 
-      <div className="admin-table">
-        <div className="table-title"><h2>المشرفون</h2><span>{data.admins.length} مشرف</span></div>
-        {data.admins.map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong><span>مشرف</span><button type="button" className="danger" onClick={() => removeAdmin(admin.identifier)}>إزالة</button></div>)}
-      </div>
       {!!data.invites.length && <div className="admin-table"><div className="table-title"><h2>الدعوات المعلقة</h2></div>{data.invites.map((invite) => <div className="table-row manager-row" key={invite.identifier}><strong>{invite.identifier}</strong><span>بانتظار التسجيل</span><button type="button" className="danger" onClick={() => removeAdmin(invite.identifier)}>إلغاء</button></div>)}</div>}
     </div>
   );
@@ -1162,6 +1151,7 @@ function AdminsAdmin() {
 
 function SiteSettingsAdmin() {
   const [settings, setSettings] = useState(defaultSettings);
+  const [accountCount, setAccountCount] = useState(0);
   const [logoFile, setLogoFile] = useState(null);
   const [heroFile, setHeroFile] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
@@ -1176,6 +1166,12 @@ function SiteSettingsAdmin() {
 
   useEffect(() => {
     loadSettings();
+    fetch(`${API}/auth/account-count`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data && typeof data.count === 'number') setAccountCount(data.count);
+      })
+      .catch(() => {});
   }, []);
 
   const save = async (event) => {
@@ -1224,6 +1220,7 @@ function SiteSettingsAdmin() {
   return (
     <form className="admin-form settings-form" onSubmit={save}>
       <h2>إعدادات المتجر</h2>
+      <p className="account-counter settings-account-counter">عدد الحسابات المسجلة: <strong>{accountCount}</strong></p>
       <input placeholder="اسم المتجر" value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} />
       <input placeholder="الشعار أو الرابط" value={settings.logoUrl} onChange={(event) => setSettings({ ...settings, logoUrl: event.target.value })} />
       <input type="file" onChange={(event) => setLogoFile(event.target.files[0])} />
