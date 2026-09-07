@@ -84,6 +84,8 @@ const defaultSiteSettings = {
   tiktokUrl: '',
   facebookUrl: '',
   whatsappUrl: '',
+  aboutTitle: 'من نحن؟',
+  aboutText: '',
   maintenanceMode: false,
 };
 
@@ -194,6 +196,8 @@ ensureColumn('site_settings', 'instagramUrl', 'TEXT');
 ensureColumn('site_settings', 'tiktokUrl', 'TEXT');
 ensureColumn('site_settings', 'facebookUrl', 'TEXT');
 ensureColumn('site_settings', 'whatsappUrl', 'TEXT');
+ensureColumn('site_settings', 'aboutTitle', 'TEXT');
+ensureColumn('site_settings', 'aboutText', 'TEXT');
 ensureColumn('site_settings', 'maintenanceMode', 'INTEGER DEFAULT 0');
 ensureColumn('orders', 'accountId', 'INTEGER');
 ensureColumn('orders', 'accountOrderNumber', 'INTEGER');
@@ -230,6 +234,8 @@ const getSiteSettings = () => {
     tiktokUrl: row.tiktokUrl || '',
     facebookUrl: row.facebookUrl || '',
     whatsappUrl: row.whatsappUrl || '',
+    aboutTitle: row.aboutTitle || defaultSiteSettings.aboutTitle,
+    aboutText: row.aboutText || '',
     maintenanceMode: Boolean(row.maintenanceMode),
   };
 };
@@ -687,16 +693,18 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
     tiktokUrl: req.body.tiktokUrl !== undefined ? String(req.body.tiktokUrl).trim() : (previous.tiktokUrl || ''),
     facebookUrl: req.body.facebookUrl !== undefined ? String(req.body.facebookUrl).trim() : (previous.facebookUrl || ''),
     whatsappUrl: req.body.whatsappUrl !== undefined ? String(req.body.whatsappUrl).trim() : (previous.whatsappUrl || ''),
+    aboutTitle: req.body.aboutTitle !== undefined ? String(req.body.aboutTitle).trim() : (previous.aboutTitle || defaultSiteSettings.aboutTitle),
+    aboutText: req.body.aboutText !== undefined ? String(req.body.aboutText).trim() : (previous.aboutText || ''),
     maintenanceMode: req.body.maintenanceMode === 'true' || req.body.maintenanceMode === true,
   };
 
   const existing = db.prepare('SELECT * FROM site_settings ORDER BY id DESC LIMIT 1').get();
   if (existing) {
-    db.prepare('UPDATE site_settings SET storeName=?, tagline=?, logoUrl=?, heroTitle=?, heroDescription=?, heroImageUrl=?, heroButtonText=?, instagramUrl=?, tiktokUrl=?, facebookUrl=?, whatsappUrl=?, maintenanceMode=? WHERE id=?')
-      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.maintenanceMode ? 1 : 0, existing.id);
+    db.prepare('UPDATE site_settings SET storeName=?, tagline=?, logoUrl=?, heroTitle=?, heroDescription=?, heroImageUrl=?, heroButtonText=?, instagramUrl=?, tiktokUrl=?, facebookUrl=?, whatsappUrl=?, aboutTitle=?, aboutText=?, maintenanceMode=? WHERE id=?')
+      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.aboutTitle, settings.aboutText, settings.maintenanceMode ? 1 : 0, existing.id);
   } else {
-    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.maintenanceMode ? 1 : 0);
+    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl, aboutTitle, aboutText, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.aboutTitle, settings.aboutText, settings.maintenanceMode ? 1 : 0);
   }
 
   res.json({ ...defaultSiteSettings, ...settings, maintenanceMode: Boolean(settings.maintenanceMode) });

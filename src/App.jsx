@@ -16,6 +16,8 @@ const defaultSettings = {
   tiktokUrl: '',
   facebookUrl: '',
   whatsappUrl: '',
+  aboutTitle: 'من نحن؟',
+  aboutText: '',
 };
 
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
@@ -237,7 +239,6 @@ function Store() {
         <section className="hero hero-text-only">
           <div className="hero-copy">
             <h1>{settings.heroTitle}</h1>
-            <p>{settings.heroDescription}</p>
           </div>
         </section>
 
@@ -289,13 +290,17 @@ function StoreFooter({ settings }) {
 
   return (
     <footer className="store-footer">
+      {settings.aboutText && <section className="about-footer">
+        <h2>{settings.aboutTitle || 'من نحن؟'}</h2>
+        <p>{settings.aboutText}</p>
+      </section>}
       {links.length > 0 && <>
         <h2>حساباتنا</h2>
         <nav className="social-links" aria-label="روابط المتجر">
           {links.map(([key, label]) => <a href={settings[key]} target="_blank" rel="noreferrer" key={key}>{label}</a>)}
         </nav>
       </>}
-      <p>تم التطوير بواسطة ZRKON TEAM</p>
+      <p>تم التطوير بواسطة ZARKON TEAM</p>
     </footer>
   );
 }
@@ -1281,6 +1286,8 @@ function SiteSettingsAdmin() {
       <input placeholder="رابط تيك توك" value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} />
       <input placeholder="رابط فيسبوك" value={settings.facebookUrl} onChange={(event) => setSettings({ ...settings, facebookUrl: event.target.value })} />
       <input placeholder="رابط واتساب" value={settings.whatsappUrl} onChange={(event) => setSettings({ ...settings, whatsappUrl: event.target.value })} />
+      <input placeholder="عنوان قسم من نحن" value={settings.aboutTitle} onChange={(event) => setSettings({ ...settings, aboutTitle: event.target.value })} />
+      <textarea placeholder="نص من نحن" value={settings.aboutText} onChange={(event) => setSettings({ ...settings, aboutText: event.target.value })} />
       <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>السماح بتصفح المنتجات مع إيقاف إضافة المنتجات وإرسال الطلبات</small></span></label>
       <button type="submit" className="primary">حفظ الإعدادات</button>
       <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>

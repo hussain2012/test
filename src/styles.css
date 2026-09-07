@@ -210,6 +210,17 @@ button { cursor: pointer; }
   font-size: 18px;
 }
 
+.about-footer {
+  max-width: 620px;
+  text-align: center;
+}
+
+.about-footer p {
+  margin: 8px 0 0;
+  color: #dfe9e3;
+  line-height: 1.8;
+}
+
 .social-links {
   display: flex;
   flex-wrap: wrap;
@@ -909,6 +920,7 @@ button { cursor: pointer; }
 
 .settings-form .maintenance-control {
   margin-top: 4px;
+  padding: 10px 12px;
 }
 
 .settings-form .primary,
@@ -918,6 +930,10 @@ button { cursor: pointer; }
   padding: 7px 12px;
   font-size: 12px;
   border-radius: 4px;
+}
+
+.settings-form .maintenance-control small {
+  font-size: 10px;
 }
 
 .check-label {
@@ -1156,6 +1172,7 @@ button { cursor: pointer; }
   .admin-form, .settings-form { grid-template-columns: 1fr; padding: 18px 14px; }
   .admin-form h2 { font-size: 20px; }
   .admin-form .primary, .admin-form .secondary-button { width: 100%; }
+  .settings-form .primary, .settings-form .danger { width: fit-content; min-height: 34px; padding: 6px 10px; }
   .order-details { grid-template-columns: 1fr; }
   .discount-field { grid-template-columns: 1fr; }
   .maintenance-banner { margin-inline: 14px; font-size: 11px; }
