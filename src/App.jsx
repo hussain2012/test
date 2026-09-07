@@ -3,6 +3,12 @@ import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } fr
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 const API = `${API_BASE_URL}/api`;
+const mediaUrl = (value) => {
+  const source = String(value || '').trim();
+  if (!source || source.startsWith('blob:')) return '';
+  if (source.startsWith('/uploads/')) return `${API_BASE_URL}${source}`;
+  return source;
+};
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const defaultSettings = {
   storeName: 'نسق',
@@ -127,7 +133,12 @@ function useSiteSettings() {
 }
 
 function ProductImage({ src, alt, className = '' }) {
-  return src ? <img className={className} src={src} alt={alt} /> : <div className={`image-empty ${className}`}>لا توجد صورة</div>;
+  const [failed, setFailed] = useState(false);
+  const resolvedSource = mediaUrl(src);
+  useEffect(() => setFailed(false), [resolvedSource]);
+  return resolvedSource && !failed
+    ? <img className={className} src={resolvedSource} alt={alt} onError={() => setFailed(true)} />
+    : <div className={`image-empty ${className}`}>لا توجد صورة</div>;
 }
 
 function AddToCartButton({ product, quantity = 1, className = 'primary', disabled = false, label = 'أضف للسلة', disabledLabel = 'غير متوفر' }) {
@@ -181,7 +192,7 @@ function StoreNav({ settings }) {
   return (
     <header className="nav">
       <Link to="/" className="brand">
-        {settings.logoUrl ? <img src={settings.logoUrl} alt={settings.storeName} className="logo" /> : <span>{settings.storeName}</span>}
+        {mediaUrl(settings.logoUrl) ? <img src={mediaUrl(settings.logoUrl)} alt={settings.storeName} className="logo" /> : <span>{settings.storeName}</span>}
         <small>{settings.tagline}</small>
       </Link>
       <nav>
