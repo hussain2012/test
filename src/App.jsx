@@ -12,6 +12,10 @@ const defaultSettings = {
   heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.',
   heroImageUrl: '',
   heroButtonText: 'اكتشف المجموعة',
+  instagramUrl: '',
+  tiktokUrl: '',
+  facebookUrl: '',
+  whatsappUrl: '',
 };
 
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
@@ -26,6 +30,14 @@ const adminFetch = (url, options = {}) => fetch(url, {
     ...(options.headers || {}),
     ...adminHeaders(),
   },
+}).then((response) => {
+  if (response.status === 401) {
+    localStorage.removeItem('sessionToken');
+    localStorage.removeItem('accountRole');
+    localStorage.removeItem('accountIdentifier');
+    window.location.href = '/login';
+  }
+  return response;
 });
 
 const CartContext = createContext();
@@ -186,6 +198,8 @@ function Store() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('الكل');
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 9;
 
   useEffect(() => {
     fetch(`${API}/analytics/view`, {
@@ -208,6 +222,12 @@ function Store() {
     const matchesQuery = !query || product.name.toLowerCase().includes(query);
     return matchesCategory && matchesQuery;
   });
+  const totalPages = Math.max(1, Math.ceil(visibleProducts.length / productsPerPage));
+  const pagedProducts = visibleProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, category]);
 
   return (
     <>
@@ -241,13 +261,42 @@ function Store() {
           ) : !visibleProducts.length ? (
             <div className="empty">لا توجد منتجات مطابقة للبحث</div>
           ) : (
-            <div className="product-grid">
-              {visibleProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} />)}
-            </div>
+            <>
+              <div className="product-grid">
+                {pagedProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} />)}
+              </div>
+              {totalPages > 1 && <div className="product-pagination">
+                <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>السابق</button>
+                <span>{currentPage} / {totalPages}</span>
+                <button type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>التالي</button>
+              </div>}
+            </>
           )}
         </section>
       </main>
+      <StoreFooter settings={settings} />
     </>
+  );
+}
+
+function StoreFooter({ settings }) {
+  const links = [
+    ['instagramUrl', 'إنستغرام'],
+    ['tiktokUrl', 'تيك توك'],
+    ['facebookUrl', 'فيسبوك'],
+    ['whatsappUrl', 'واتساب'],
+  ].filter(([key]) => settings[key]);
+
+  return (
+    <footer className="store-footer">
+      {links.length > 0 && <>
+        <h2>حساباتنا</h2>
+        <nav className="social-links" aria-label="روابط المتجر">
+          {links.map(([key, label]) => <a href={settings[key]} target="_blank" rel="noreferrer" key={key}>{label}</a>)}
+        </nav>
+      </>}
+      <p>تم التطوير بواسطة ZRKON TEAM</p>
+    </footer>
   );
 }
 
@@ -264,7 +313,6 @@ function ProductCard({ product, maintenanceMode = false }) {
       <div className="product-info">
         <span>{product.category}</span>
         <Link to={`/product/${product.id}`} className="product-name"><h3>{product.name}</h3></Link>
-        <p>{product.description}</p>
         <div className="product-bottom">
           <div className="price-wrap">
             {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(unitPrice)}</strong></> : <strong>{money(product.price)}</strong>}
@@ -706,6 +754,8 @@ function ProductsAdmin() {
   const emptyForm = { name: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], stockQuantity: 10, inStock: true };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
+  const [primaryImageFile, setPrimaryImageFile] = useState(null);
+  const [additionalImageFiles, setAdditionalImageFiles] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -729,6 +779,8 @@ function ProductsAdmin() {
 
   const resetForm = () => {
     setForm(emptyForm);
+    setPrimaryImageFile(null);
+    setAdditionalImageFiles([]);
     setEditingId(null);
   };
 
@@ -736,22 +788,25 @@ function ProductsAdmin() {
     event.preventDefault();
     setMessage('');
     setError('');
-    const payload = {
-      ...form,
-      price: Number(form.price),
-      costPrice: Number(form.costPrice || 0),
-      discountPercentage: Number(form.discountPercentage || 0),
-      stockQuantity: Number(form.stockQuantity || 0),
-      inStock: Boolean(form.inStock),
-    };
-
     const method = editingId ? 'PUT' : 'POST';
     const url = editingId ? `${API}/admin/products/${editingId}` : `${API}/admin/products`;
+    const payload = new FormData();
+    payload.append('name', form.name);
+    payload.append('description', form.description);
+    payload.append('price', Number(form.price));
+    payload.append('costPrice', Number(form.costPrice || 0));
+    payload.append('discountPercentage', Number(form.discountPercentage || 0));
+    payload.append('category', form.category);
+    payload.append('stockQuantity', Number(form.stockQuantity || 0));
+    payload.append('inStock', String(Boolean(form.inStock)));
+    payload.append('imageUrl', form.imageUrl || '');
+    payload.append('existingProductImages', JSON.stringify(form.productImages || []));
+    if (primaryImageFile) payload.append('primaryImage', primaryImageFile);
+    additionalImageFiles.forEach((file) => payload.append('productImages', file));
 
     const response = await adminFetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: payload,
     });
 
     if (!response.ok) {
@@ -789,6 +844,8 @@ function ProductsAdmin() {
       stockQuantity: product.stockQuantity ?? 0,
       inStock: product.inStock,
     });
+    setPrimaryImageFile(null);
+    setAdditionalImageFiles([]);
   };
 
   return (
@@ -801,8 +858,8 @@ function ProductsAdmin() {
         <label className="field-label">نسبة الخصم %<input aria-label="نسبة الخصم" placeholder="0 بدون خصم" type="number" min="0" max="100" value={form.discountPercentage} onChange={(event) => setForm({ ...form, discountPercentage: event.target.value })} /></label>
         <input placeholder="التصنيف" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
         <label className="field-label">الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value })} /></label>
-        <input placeholder="رابط الصورة الرئيسية" value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} />
-        <textarea className="image-list-input" placeholder="روابط صور إضافية، رابط في كل سطر" value={form.productImages?.join('\n') || ''} onChange={(event) => setForm({ ...form, productImages: event.target.value.split(/\n|,/).map((item) => item.trim()).filter(Boolean) })} />
+        <label className="field-label">الصورة الرئيسية<input type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
+        <label className="field-label">صور إضافية<input type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
         <textarea placeholder="الوصف" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
         <label className="check-label">
           <input type="checkbox" checked={form.inStock} onChange={(event) => setForm({ ...form, inStock: event.target.checked })} />
@@ -1078,7 +1135,17 @@ function AdminsAdmin() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const load = () => adminFetch(`${API}/admin/admins`).then((res) => res.json()).then(setData);
+  const load = () => adminFetch(`${API}/admin/admins`)
+    .then(async (res) => {
+      if (!res.ok) throw new Error('تعذر تحميل المشرفين');
+      const result = await res.json();
+      return {
+        admins: Array.isArray(result.admins) ? result.admins : [],
+        invites: Array.isArray(result.invites) ? result.invites : [],
+      };
+    })
+    .then(setData)
+    .catch(() => setData({ admins: [], invites: [] }));
   useEffect(() => { load(); }, []);
 
   const addAdmin = async (event) => {
@@ -1165,7 +1232,7 @@ function SiteSettingsAdmin() {
     const savedSettings = { ...defaultSettings, ...data };
     lastSavedSettings.current = JSON.stringify(savedSettings);
     setSettings(savedSettings);
-    setStatusMessage(automatic ? 'تم الحفظ تلقائياً' : 'تم حفظ إعدادات المتجر');
+    if (!automatic) setStatusMessage('تم حفظ إعدادات المتجر');
   };
 
   useEffect(() => {
@@ -1210,6 +1277,10 @@ function SiteSettingsAdmin() {
       <input placeholder="الشعار / العنوان الفرعي" value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} />
       <input placeholder="عنوان الهيرو" value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} />
       <textarea placeholder="وصف الهيرو" value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} />
+      <input placeholder="رابط إنستغرام" value={settings.instagramUrl} onChange={(event) => setSettings({ ...settings, instagramUrl: event.target.value })} />
+      <input placeholder="رابط تيك توك" value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} />
+      <input placeholder="رابط فيسبوك" value={settings.facebookUrl} onChange={(event) => setSettings({ ...settings, facebookUrl: event.target.value })} />
+      <input placeholder="رابط واتساب" value={settings.whatsappUrl} onChange={(event) => setSettings({ ...settings, whatsappUrl: event.target.value })} />
       <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>السماح بتصفح المنتجات مع إيقاف إضافة المنتجات وإرسال الطلبات</small></span></label>
       <button type="submit" className="primary">حفظ الإعدادات</button>
       <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>

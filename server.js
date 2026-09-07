@@ -24,7 +24,19 @@ if (isRailway) {
 const db = new DatabaseSync(databasePath);
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
-const upload = multer({ dest: uploadDir });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, callback) => {
+      const extension = path.extname(file.originalname || '').toLowerCase();
+      callback(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${extension}`);
+    },
+  }),
+});
+const productUpload = upload.fields([
+  { name: 'primaryImage', maxCount: 1 },
+  { name: 'productImages', maxCount: 10 },
+]);
 
 const sessions = new Map();
 const hashPassword = (password, salt = crypto.randomBytes(16).toString('hex')) => `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`;
@@ -68,6 +80,10 @@ const defaultSiteSettings = {
   heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.',
   heroImageUrl: '',
   heroButtonText: 'اكتشف المجموعة',
+  instagramUrl: '',
+  tiktokUrl: '',
+  facebookUrl: '',
+  whatsappUrl: '',
   maintenanceMode: false,
 };
 
@@ -174,6 +190,10 @@ ensureColumn('site_settings', 'heroTitle', 'TEXT');
 ensureColumn('site_settings', 'heroDescription', 'TEXT');
 ensureColumn('site_settings', 'heroImageUrl', 'TEXT');
 ensureColumn('site_settings', 'heroButtonText', 'TEXT');
+ensureColumn('site_settings', 'instagramUrl', 'TEXT');
+ensureColumn('site_settings', 'tiktokUrl', 'TEXT');
+ensureColumn('site_settings', 'facebookUrl', 'TEXT');
+ensureColumn('site_settings', 'whatsappUrl', 'TEXT');
 ensureColumn('site_settings', 'maintenanceMode', 'INTEGER DEFAULT 0');
 ensureColumn('orders', 'accountId', 'INTEGER');
 ensureColumn('orders', 'accountOrderNumber', 'INTEGER');
@@ -199,11 +219,19 @@ if (!administrator) {
 const getSiteSettings = () => {
   const row = db.prepare('SELECT * FROM site_settings ORDER BY id DESC LIMIT 1').get();
   if (!row) {
-    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(defaultSiteSettings.storeName, defaultSiteSettings.tagline, defaultSiteSettings.logoUrl, defaultSiteSettings.heroTitle, defaultSiteSettings.heroDescription, defaultSiteSettings.heroImageUrl, defaultSiteSettings.heroButtonText);
+    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(defaultSiteSettings.storeName, defaultSiteSettings.tagline, defaultSiteSettings.logoUrl, defaultSiteSettings.heroTitle, defaultSiteSettings.heroDescription, defaultSiteSettings.heroImageUrl, defaultSiteSettings.heroButtonText, defaultSiteSettings.instagramUrl, defaultSiteSettings.tiktokUrl, defaultSiteSettings.facebookUrl, defaultSiteSettings.whatsappUrl);
     return { ...defaultSiteSettings };
   }
-  return { ...defaultSiteSettings, ...row, maintenanceMode: Boolean(row.maintenanceMode) };
+  return {
+    ...defaultSiteSettings,
+    ...row,
+    instagramUrl: row.instagramUrl || '',
+    tiktokUrl: row.tiktokUrl || '',
+    facebookUrl: row.facebookUrl || '',
+    whatsappUrl: row.whatsappUrl || '',
+    maintenanceMode: Boolean(row.maintenanceMode),
+  };
 };
 
 const getDiscountedPrice = (product) => {
@@ -223,6 +251,16 @@ const getProductImages = (product) => {
   if (!Array.isArray(images)) images = [];
   const fallback = product?.imageUrl || '';
   return [...new Set([fallback, ...images].filter(Boolean))];
+};
+
+const uploadedImageUrl = (file) => file ? `/uploads/${file.filename}` : '';
+const parseImageList = (value) => {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
 };
 
 const publicProductData = (row) => ({
@@ -416,20 +454,22 @@ app.get('/api/admin/products', (req, res) => {
   res.json(rows.map(adminProductData));
 });
 
-app.post('/api/admin/products', (req, res) => {
+app.post('/api/admin/products', productUpload, (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, productImages } = req.body;
+  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl } = req.body;
   if (!name || !description || !price) return res.status(400).json({ error: 'يرجى إكمال بيانات المنتج' });
 
-  const images = Array.isArray(productImages) ? productImages.filter(Boolean) : [];
-  const primaryImage = imageUrl || images[0] || '';
+  const uploadedImages = (req.files?.productImages || []).map(uploadedImageUrl);
+  const images = [...parseImageList(req.body.existingProductImages), ...uploadedImages];
+  const uploadedPrimaryImage = uploadedImageUrl(req.files?.primaryImage?.[0]);
+  const primaryImage = uploadedPrimaryImage || imageUrl || images[0] || '';
   const result = db.prepare('INSERT INTO products (name, description, price, costPrice, discountPercentage, imageUrl, productImages, category, stockQuantity, inStock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(name, description, Number(price), Number(costPrice || 0), Number(discountPercentage || 0), primaryImage, JSON.stringify(images), category || 'عام', Math.max(0, Number(stockQuantity ?? 10)), inStock === false ? 0 : 1);
+    .run(name, description, Number(price), Number(costPrice || 0), Number(discountPercentage || 0), primaryImage, JSON.stringify(images), category || 'عام', Math.max(0, Number(stockQuantity ?? 10)), inStock === false || inStock === 'false' ? 0 : 1);
 
   res.status(201).json(adminProductData(db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid)));
 });
 
-app.put('/api/admin/products/:id', (req, res) => {
+app.put('/api/admin/products/:id', productUpload, (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'المنتج غير موجود' });
@@ -440,14 +480,14 @@ app.put('/api/admin/products/:id', (req, res) => {
     costPrice: Number(req.body.costPrice ?? existing.costPrice ?? 0),
     discountPercentage: Number(req.body.discountPercentage ?? existing.discountPercentage ?? 0),
     category: req.body.category ?? existing.category,
-    inStock: req.body.inStock === false ? 0 : (req.body.inStock === true ? 1 : existing.inStock),
+    inStock: req.body.inStock === false || req.body.inStock === 'false' ? 0 : (req.body.inStock === true || req.body.inStock === 'true' ? 1 : existing.inStock),
     imageUrl: req.body.imageUrl ?? existing.imageUrl,
-    productImages: Array.isArray(req.body.productImages) ? req.body.productImages.filter(Boolean) : getProductImages(existing),
+    productImages: parseImageList(req.body.existingProductImages).concat((req.files?.productImages || []).map(uploadedImageUrl)),
     stockQuantity: Math.max(0, Number(req.body.stockQuantity ?? existing.stockQuantity ?? 10)),
   };
 
   const images = body.productImages;
-  const primaryImage = body.imageUrl || images[0] || '';
+  const primaryImage = uploadedImageUrl(req.files?.primaryImage?.[0]) || body.imageUrl || images[0] || '';
   db.prepare('UPDATE products SET name=?, description=?, price=?, costPrice=?, discountPercentage=?, imageUrl=?, productImages=?, category=?, stockQuantity=?, inStock=? WHERE id=?')
     .run(body.name, body.description, body.price, body.costPrice, body.discountPercentage, primaryImage, JSON.stringify(images), body.category, body.stockQuantity, body.inStock, req.params.id);
 
@@ -619,8 +659,8 @@ app.post('/api/admin/reset-store', (req, res) => {
     DELETE FROM sqlite_sequence WHERE name IN ('products', 'discounts', 'orders', 'page_views', 'site_settings', 'account_carts', 'account_coupons');
   `);
 
-  db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(defaultSiteSettings.storeName, defaultSiteSettings.tagline, defaultSiteSettings.logoUrl, defaultSiteSettings.heroTitle, defaultSiteSettings.heroDescription, defaultSiteSettings.heroImageUrl, defaultSiteSettings.heroButtonText, 0);
+  db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(defaultSiteSettings.storeName, defaultSiteSettings.tagline, defaultSiteSettings.logoUrl, defaultSiteSettings.heroTitle, defaultSiteSettings.heroDescription, defaultSiteSettings.heroImageUrl, defaultSiteSettings.heroButtonText, defaultSiteSettings.instagramUrl, defaultSiteSettings.tiktokUrl, defaultSiteSettings.facebookUrl, defaultSiteSettings.whatsappUrl, 0);
 
   if (!db.prepare('SELECT COUNT(*) as count FROM discounts').get().count) {
     db.prepare('INSERT INTO discounts (code, type, value, active) VALUES (?, ?, ?, 1)').run('NASAQ10', 'percentage', 10);
@@ -643,16 +683,20 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
     heroDescription: req.body.heroDescription || previous.heroDescription,
     heroImageUrl,
     heroButtonText: req.body.heroButtonText || previous.heroButtonText,
+    instagramUrl: req.body.instagramUrl !== undefined ? String(req.body.instagramUrl).trim() : (previous.instagramUrl || ''),
+    tiktokUrl: req.body.tiktokUrl !== undefined ? String(req.body.tiktokUrl).trim() : (previous.tiktokUrl || ''),
+    facebookUrl: req.body.facebookUrl !== undefined ? String(req.body.facebookUrl).trim() : (previous.facebookUrl || ''),
+    whatsappUrl: req.body.whatsappUrl !== undefined ? String(req.body.whatsappUrl).trim() : (previous.whatsappUrl || ''),
     maintenanceMode: req.body.maintenanceMode === 'true' || req.body.maintenanceMode === true,
   };
 
   const existing = db.prepare('SELECT * FROM site_settings ORDER BY id DESC LIMIT 1').get();
   if (existing) {
-    db.prepare('UPDATE site_settings SET storeName=?, tagline=?, logoUrl=?, heroTitle=?, heroDescription=?, heroImageUrl=?, heroButtonText=?, maintenanceMode=? WHERE id=?')
-      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.maintenanceMode ? 1 : 0, existing.id);
+    db.prepare('UPDATE site_settings SET storeName=?, tagline=?, logoUrl=?, heroTitle=?, heroDescription=?, heroImageUrl=?, heroButtonText=?, instagramUrl=?, tiktokUrl=?, facebookUrl=?, whatsappUrl=?, maintenanceMode=? WHERE id=?')
+      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.maintenanceMode ? 1 : 0, existing.id);
   } else {
-    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.maintenanceMode ? 1 : 0);
+    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.maintenanceMode ? 1 : 0);
   }
 
   res.json({ ...defaultSiteSettings, ...settings, maintenanceMode: Boolean(settings.maintenanceMode) });
