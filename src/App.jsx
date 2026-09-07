@@ -224,8 +224,7 @@ function Store() {
         <section id="catalog" className="catalog">
           <div className="section-head">
             <div>
-              <p className="eyebrow">المجموعة الحالية</p>
-              <h2>منتجات تستحق مكاناً في يومك</h2>
+              <p className="eyebrow">المنتجات</p>
             </div>
             <div className="filters">
               <input aria-label="بحث" placeholder="ابحث عن منتج..." value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -1045,22 +1044,29 @@ function DiscountsAdmin() {
 
 function AnalyticsAdmin() {
   const [stats, setStats] = useState({ totalViews: 0, homeViews: 0, productViews: 0, currentRevenue: 0, lastRevenue: 0, growth: 0, totalProfit: 0, totalLosses: 0, orderStats: {} });
+  const [accountCount, setAccountCount] = useState(0);
 
   useEffect(() => {
-    adminFetch(`${API}/admin/analytics`)
-      .then((res) => res.json())
-      .then(setStats)
+    Promise.all([
+      adminFetch(`${API}/admin/analytics`),
+      fetch(`${API}/auth/account-count`),
+    ])
+      .then(async ([analyticsRes, accountsRes]) => {
+        setStats(await analyticsRes.json());
+        const accounts = await accountsRes.json();
+        setAccountCount(typeof accounts.count === 'number' ? accounts.count : 0);
+      })
       .catch(() => {});
   }, []);
 
   return (
     <div className="stats analytics-grid">
-      <div><span>إجمالي الزيارات</span><strong>{stats.totalViews || 0}</strong><small>{stats.homeViews || 0} زيارة للصفحة الرئيسية</small></div>
-      <div><span>الزيارات للمنتجات</span><strong>{stats.productViews || 0}</strong><small>{stats.homeViews || 0} رئيسية / {stats.productViews || 0} تفاصيل</small></div>
-      <div><span>إيرادات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong><small>الإيراد السابق: {money(stats.lastRevenue)}</small></div>
-      <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong><small>مقارنة بالشهر الماضي</small></div>
-      <div><span>الأرباح</span><strong>{money(stats.totalProfit)}</strong><small>مجموع ربح الطلبات المسلمة</small></div>
-      <div><span>الملغاة</span><strong>{stats.orderStats?.cancelled || 0}</strong><small>لا تُحتسب خسارة مالية</small></div>
+      <div><span>إجمالي زيارات الموقع</span><strong>{stats.homeViews || 0}</strong></div>
+      <div><span>زيارات المنتجات</span><strong>{stats.productViews || 0}</strong></div>
+      <div><span>إيرادات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong></div>
+      <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong></div>
+      <div><span>الأرباح</span><strong>{money(stats.totalProfit)}</strong></div>
+      <div><span>الحسابات المسجلة</span><strong>{accountCount}</strong></div>
     </div>
   );
 }
@@ -1068,7 +1074,7 @@ function AnalyticsAdmin() {
 function AdminsAdmin() {
   const [data, setData] = useState({ admins: [], invites: [] });
   const [identifier, setIdentifier] = useState('');
-  const [transferTarget, setTransferTarget] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -1094,28 +1100,6 @@ function AdminsAdmin() {
     load();
   };
 
-  const transferOwnership = async (event) => {
-    event.preventDefault();
-    setMessage('');
-    setError('');
-
-    const response = await adminFetch(`${API}/admin/transfer-ownership`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ newOwner: transferTarget }),
-    });
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setError(result.error || 'تعذر تحويل الملكية');
-      return;
-    }
-
-    setTransferTarget('');
-    setMessage(result.message || 'تم تحويل الملكية بنجاح');
-    load();
-  };
-
   const removeAdmin = async (value) => {
     await adminFetch(`${API}/admin/admins/${encodeURIComponent(value)}`, { method: 'DELETE' });
     load();
@@ -1124,25 +1108,17 @@ function AdminsAdmin() {
   return (
     <div className="admin-managers">
       <div className="admin-table">
-        <div className="table-title"><h2>المشرفون</h2><span>{data.admins.length} مشرف</span></div>
-        {data.admins.map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong><span>مشرف</span>{admin.identifier !== 'admin@admin.com' ? <button type="button" className="danger" onClick={() => removeAdmin(admin.identifier)}>إزالة</button> : <span>مالك</span>}</div>)}
+        <div className="table-title manager-title"><h2>المشرفون</h2><button type="button" className="manager-add-button" onClick={() => { setShowAddForm((value) => !value); setMessage(''); setError(''); }}>+</button></div>
+        {data.admins.map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong>{admin.isOwner ? <span className="owner-label">مالك</span> : <><span>مشرف</span><button type="button" className="danger" onClick={() => removeAdmin(admin.identifier)}>إزالة</button></>}</div>)}
+        {!data.admins.length && <p className="empty">لا يوجد مشرفون</p>}
       </div>
 
-      <form className="admin-form compact" onSubmit={addAdmin}>
-        <h2>إضافة مشرف</h2>
-        <p className="admin-help">أدخل البريد أو الرقم. سيستخدم المشرف كلمة مرور حسابه الخاصة.</p>
+      {showAddForm && <form className="admin-form compact manager-add-form" onSubmit={addAdmin}>
         <input type="text" inputMode="email" placeholder="البريد الإلكتروني أو رقم الهاتف" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
-        <button type="submit" className="primary">+</button>
+        <button type="submit" className="primary">إضافة</button>
         {message && <p className="success-message">{message}</p>}
         {error && <p className="error">{error}</p>}
-      </form>
-
-      <form className="admin-form compact" onSubmit={transferOwnership}>
-        <h2>تحويل الملكية</h2>
-        <p className="admin-help">يمكن فقط للمدير الرئيسي تحويل الملكية إلى حساب آخر.</p>
-        <input type="text" inputMode="email" placeholder="بريد أو رقم الحساب الجديد" value={transferTarget} onChange={(event) => setTransferTarget(event.target.value)} required />
-        <button type="submit" className="primary">تحويل ملكية</button>
-      </form>
+      </form>}
 
       {!!data.invites.length && <div className="admin-table"><div className="table-title"><h2>الدعوات المعلقة</h2></div>{data.invites.map((invite) => <div className="table-row manager-row" key={invite.identifier}><strong>{invite.identifier}</strong><span>بانتظار التسجيل</span><button type="button" className="danger" onClick={() => removeAdmin(invite.identifier)}>إلغاء</button></div>)}</div>}
     </div>
@@ -1151,51 +1127,61 @@ function AdminsAdmin() {
 
 function SiteSettingsAdmin() {
   const [settings, setSettings] = useState(defaultSettings);
-  const [accountCount, setAccountCount] = useState(0);
-  const [logoFile, setLogoFile] = useState(null);
-  const [heroFile, setHeroFile] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusError, setStatusError] = useState('');
+  const lastSavedSettings = useRef('');
 
   const loadSettings = () => {
     adminFetch(`${API}/admin/site-settings`)
       .then((res) => res.json())
-      .then((data) => setSettings({ ...defaultSettings, ...data }))
-      .catch(() => setSettings(defaultSettings));
+      .then((data) => {
+        const nextSettings = { ...defaultSettings, ...data };
+        lastSavedSettings.current = JSON.stringify(nextSettings);
+        setSettings(nextSettings);
+      })
+      .catch(() => {
+        lastSavedSettings.current = JSON.stringify(defaultSettings);
+        setSettings(defaultSettings);
+      });
   };
 
-  useEffect(() => {
-    loadSettings();
-    fetch(`${API}/auth/account-count`)
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => {
-        if (data && typeof data.count === 'number') setAccountCount(data.count);
-      })
-      .catch(() => {});
-  }, []);
-
-  const save = async (event) => {
-    event.preventDefault();
+  const saveSettings = async (nextSettings, automatic = false) => {
     setStatusMessage('');
     setStatusError('');
     const formData = new FormData();
-    Object.entries(settings).forEach(([key, value]) => {
+    Object.entries(nextSettings).forEach(([key, value]) => {
       if (value !== null && value !== undefined) formData.append(key, value);
     });
-    if (logoFile) formData.append('logoImage', logoFile);
-    if (heroFile) formData.append('heroImage', heroFile);
-
-    const res = await fetch(`${API}/admin/site-settings`, {
+    const response = await fetch(`${API}/admin/site-settings`, {
       method: 'POST',
       headers: adminHeaders(),
       body: formData,
     });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setStatusError(data.error || 'تعذر حفظ إعدادات المتجر');
+      return;
+    }
+    const savedSettings = { ...defaultSettings, ...data };
+    lastSavedSettings.current = JSON.stringify(savedSettings);
+    setSettings(savedSettings);
+    setStatusMessage(automatic ? 'تم الحفظ تلقائياً' : 'تم حفظ إعدادات المتجر');
+  };
 
-    const data = await res.json();
-    setSettings({ ...defaultSettings, ...data });
-    setLogoFile(null);
-    setHeroFile(null);
-    setStatusMessage('تم حفظ إعدادات المتجر');
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  useEffect(() => {
+    const serializedSettings = JSON.stringify(settings);
+    if (!lastSavedSettings.current || serializedSettings === lastSavedSettings.current) return undefined;
+    const timer = setTimeout(() => saveSettings(settings, true), 700);
+    return () => clearTimeout(timer);
+  }, [settings]);
+
+  const save = (event) => {
+    event.preventDefault();
+    saveSettings(settings);
   };
 
   const resetStore = async () => {
@@ -1220,16 +1206,10 @@ function SiteSettingsAdmin() {
   return (
     <form className="admin-form settings-form" onSubmit={save}>
       <h2>إعدادات المتجر</h2>
-      <p className="account-counter settings-account-counter">عدد الحسابات المسجلة: <strong>{accountCount}</strong></p>
       <input placeholder="اسم المتجر" value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} />
-      <input placeholder="الشعار أو الرابط" value={settings.logoUrl} onChange={(event) => setSettings({ ...settings, logoUrl: event.target.value })} />
-      <input type="file" onChange={(event) => setLogoFile(event.target.files[0])} />
       <input placeholder="الشعار / العنوان الفرعي" value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} />
       <input placeholder="عنوان الهيرو" value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} />
       <textarea placeholder="وصف الهيرو" value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} />
-      <input placeholder="رابط صورة الهيرو" value={settings.heroImageUrl} onChange={(event) => setSettings({ ...settings, heroImageUrl: event.target.value })} />
-      <input type="file" onChange={(event) => setHeroFile(event.target.files[0])} />
-      <input placeholder="نص زر الهيرو" value={settings.heroButtonText} onChange={(event) => setSettings({ ...settings, heroButtonText: event.target.value })} />
       <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>السماح بتصفح المنتجات مع إيقاف إضافة المنتجات وإرسال الطلبات</small></span></label>
       <button type="submit" className="primary">حفظ الإعدادات</button>
       <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>

@@ -30,13 +30,26 @@ const sessions = new Map();
 const hashPassword = (password, salt = crypto.randomBytes(16).toString('hex')) => `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`;
 const verifyPassword = (password, storedHash) => {
   const [salt, key] = String(storedHash || '').split(':');
-  if (!salt || !key) return false;
+  if (!salt || !key || !/^[0-9a-f]+$/i.test(key) || key.length !== 128) return false;
   const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
   return crypto.timingSafeEqual(Buffer.from(derivedKey, 'hex'), Buffer.from(key, 'hex'));
 };
 const getSession = (req) => sessions.get(req.headers['x-admin-token']);
 const isAdminRequest = (req) => {
   return getSession(req)?.role === 'admin';
+};
+const isOwnerRequest = (req) => {
+  const session = getSession(req);
+  if (session?.role !== 'admin') return false;
+  return Boolean(db.prepare('SELECT id FROM accounts WHERE id = ? AND role = ? AND isOwner = 1').get(session.accountId, 'admin'));
+};
+const parseItems = (value) => {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 };
 
 const ensureColumn = (table, column, definition) => {
@@ -127,6 +140,7 @@ db.exec(`
     identifier TEXT NOT NULL UNIQUE,
     passwordHash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'customer',
+    isOwner INTEGER NOT NULL DEFAULT 0,
     createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS admin_invites (
@@ -163,6 +177,7 @@ ensureColumn('site_settings', 'heroButtonText', 'TEXT');
 ensureColumn('site_settings', 'maintenanceMode', 'INTEGER DEFAULT 0');
 ensureColumn('orders', 'accountId', 'INTEGER');
 ensureColumn('orders', 'accountOrderNumber', 'INTEGER');
+ensureColumn('accounts', 'isOwner', 'INTEGER NOT NULL DEFAULT 0');
 
 const ordersMissingAccountNumbers = db.prepare('SELECT id, accountId FROM orders WHERE accountId IS NOT NULL AND accountOrderNumber IS NULL ORDER BY accountId, datetime(createdAt), id').all();
 const accountOrderCounters = new Map();
@@ -176,7 +191,9 @@ const administratorEmail = 'hausain12moh@gmail.com';
 const administratorPassword = 'Hussain_20_12';
 const administrator = db.prepare('SELECT id FROM accounts WHERE identifier = ?').get(administratorEmail);
 if (!administrator) {
-  db.prepare('INSERT INTO accounts (identifier, passwordHash, role) VALUES (?, ?, ?)').run(administratorEmail, hashPassword(administratorPassword), 'admin');
+  db.prepare('INSERT INTO accounts (identifier, passwordHash, role, isOwner) VALUES (?, ?, ?, 1)').run(administratorEmail, hashPassword(administratorPassword), 'admin');
+} else {
+  db.prepare("UPDATE accounts SET role = 'admin', isOwner = 1 WHERE identifier = ? AND NOT EXISTS (SELECT 1 FROM accounts WHERE isOwner = 1)").run(administratorEmail);
 }
 
 const getSiteSettings = () => {
@@ -278,13 +295,13 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/admin/admins', (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  const admins = db.prepare("SELECT id, identifier, createdAt FROM accounts WHERE role = 'admin' ORDER BY id").all();
+  const admins = db.prepare("SELECT id, identifier, createdAt, isOwner FROM accounts WHERE role = 'admin' ORDER BY id").all();
   const invites = db.prepare('SELECT identifier, createdAt FROM admin_invites ORDER BY createdAt DESC').all();
   res.json({ admins, invites });
 });
 
 app.post('/api/admin/admins', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إدارة المشرفين' });
   const identifier = String(req.body.identifier || '').trim().toLowerCase();
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
   const isPhone = /^07\d{9}$/.test(identifier);
@@ -300,25 +317,23 @@ app.post('/api/admin/admins', (req, res) => {
 });
 
 app.delete('/api/admin/admins/:identifier', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إدارة المشرفين' });
   const identifier = String(req.params.identifier || '').toLowerCase();
-  if (identifier === administratorEmail) return res.status(400).json({ error: 'لا يمكن حذف المدير الرئيسي' });
-  const account = db.prepare('SELECT id FROM accounts WHERE identifier = ? AND role = ?').get(identifier, 'admin');
+  const account = db.prepare('SELECT id, isOwner FROM accounts WHERE identifier = ? AND role = ?').get(identifier, 'admin');
+  if (account?.isOwner) return res.status(400).json({ error: 'لا يمكن حذف مالك المتجر' });
   if (account) db.prepare("UPDATE accounts SET role = 'customer' WHERE id = ?").run(account.id);
   db.prepare('DELETE FROM admin_invites WHERE identifier = ?').run(identifier);
   res.status(204).end();
 });
 
 app.post('/api/admin/transfer-ownership', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يمكنه تحويل الملكية' });
 
   const session = getSession(req);
   const currentIdentifier = String(session?.identifier || '').trim().toLowerCase();
   const newOwner = String(req.body.newOwner || '').trim().toLowerCase();
 
-  if (currentIdentifier !== administratorEmail) {
-    return res.status(403).json({ error: 'فقط المدير الرئيسي يمكنه تحويل الملكية' });
-  }
+  const currentAccount = db.prepare('SELECT id, isOwner FROM accounts WHERE identifier = ? AND role = ?').get(currentIdentifier, 'admin');
 
   if (!newOwner || newOwner === currentIdentifier) {
     return res.status(400).json({ error: 'اختر حساباً آخر غير حساب المدير الحالي' });
@@ -336,8 +351,8 @@ app.post('/api/admin/transfer-ownership', (req, res) => {
     return res.status(202).json({ message: 'تم حفظ الحساب كدعوة، وسيصبح مديراً عند التسجيل' });
   }
 
-  db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(targetAccount.id);
-  db.prepare("UPDATE accounts SET role = 'customer' WHERE identifier = ?").run(currentIdentifier);
+  db.prepare("UPDATE accounts SET role = 'admin', isOwner = 1 WHERE id = ?").run(targetAccount.id);
+  db.prepare("UPDATE accounts SET role = 'admin', isOwner = 0 WHERE id = ?").run(currentAccount.id);
 
   res.json({ message: 'تم تحويل الملكية بنجاح', newOwner });
 });
@@ -475,7 +490,7 @@ app.get('/api/discounts/validate/:code', (req, res) => {
 
 app.get('/api/orders', (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  res.json(db.prepare('SELECT * FROM orders ORDER BY datetime(createdAt) DESC').all().map((o) => ({ ...o, items: JSON.parse(o.items), isRead: Boolean(o.isRead), accountOrderNumber: o.accountOrderNumber || null })));
+  res.json(db.prepare('SELECT * FROM orders ORDER BY datetime(createdAt) DESC').all().map((o) => ({ ...o, items: parseItems(o.items), isRead: Boolean(o.isRead), accountOrderNumber: o.accountOrderNumber || null })));
 });
 app.get('/api/orders/unread-count', (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
@@ -516,7 +531,7 @@ app.get('/api/account/orders', (req, res) => {
     const discount = order.discountCode ? db.prepare('SELECT type, value FROM discounts WHERE code = ?').get(order.discountCode) : null;
     return {
       ...order,
-      items: JSON.parse(order.items),
+      items: parseItems(order.items),
       isRead: Boolean(order.isRead),
       accountOrderNumber: order.accountOrderNumber || null,
       discountType: discount?.type || null,
@@ -563,7 +578,7 @@ app.get('/api/admin/analytics', (req, res) => {
   };
 
   const totalProfit = deliveredOrders.reduce((sum, order) => {
-    const items = JSON.parse(order.items || '[]');
+    const items = parseItems(order.items);
     const orderProfit = items.reduce((itemSum, item) => {
       const unitProfit = Number(item.price || 0) - Number(item.costPrice || 0);
       return itemSum + unitProfit * Number(item.quantity || 0);
@@ -590,7 +605,7 @@ app.get('/api/admin/site-settings', (req, res) => {
 });
 
 app.post('/api/admin/reset-store', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إعادة ضبطه' });
 
   db.exec(`
     DELETE FROM products;
@@ -615,7 +630,7 @@ app.post('/api/admin/reset-store', (req, res) => {
 });
 
 app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCount: 1 }, { name: 'heroImage', maxCount: 1 }]), (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع تعديل الإعدادات' });
   const previous = getSiteSettings();
   const logoUrl = req.files?.logoImage?.[0] ? `/uploads/${req.files.logoImage[0].filename}` : (req.body.logoUrl || previous.logoUrl || '');
   const heroImageUrl = req.files?.heroImage?.[0] ? `/uploads/${req.files.heroImage[0].filename}` : (req.body.heroImageUrl || previous.heroImageUrl || '');

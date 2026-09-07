@@ -132,7 +132,19 @@ button { cursor: pointer; }
 }
 
 .primary, .secondary-button, .mini-button {
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  text-align: center;
+  text-decoration: none;
+}
+
+.primary {
+  background: var(--primary);
+  color: #fff;
+  padding: 12px 18px;
+  font-weight: 700;
 }
 
 .primary:hover { background: var(--accent); }
@@ -184,6 +196,13 @@ button { cursor: pointer; }
   border-top: 1px solid var(--line);
   padding-top: 26px;
   margin-bottom: 26px;
+}
+
+.section-head .eyebrow {
+  margin: 0;
+  color: var(--text);
+  font-size: 30px;
+  font-weight: 700;
 }
 
 .section-head h2 { margin: 0; font-size: 30px; }
@@ -799,7 +818,39 @@ button { cursor: pointer; }
 
 .admin-form .primary, .admin-form .secondary-button { width: fit-content; }
 
-.settings-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.settings-form {
+  max-width: 920px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 20px;
+}
+
+.settings-form h2 {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-form input,
+.settings-form textarea {
+  min-height: 44px;
+}
+
+.settings-form textarea {
+  min-height: 92px;
+}
+
+.settings-form .maintenance-control {
+  margin-top: 4px;
+}
+
+.settings-form .primary,
+.settings-form .danger {
+  width: fit-content;
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+}
 
 .check-label {
   display: flex;
@@ -826,6 +877,35 @@ button { cursor: pointer; }
 }
 
 .table-title h2 { margin: 0; }
+
+.manager-title {
+  align-items: center;
+}
+
+.manager-add-button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.manager-add-button:hover,
+.manager-transfer:hover {
+  background: var(--primary-soft);
+}
+
+.manager-transfer {
+  border: 1px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
+  padding: 7px 10px;
+  font-size: 12px;
+}
 
 .table-title span, .table-row span {
   color: var(--muted);
