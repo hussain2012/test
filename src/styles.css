@@ -1159,12 +1159,40 @@ button { cursor: pointer; }
   .order-details { grid-template-columns: 1fr; }
   .discount-field { grid-template-columns: 1fr; }
   .maintenance-banner { margin-inline: 14px; font-size: 11px; }
-  .admin-content { padding: 24px 14px; }
+  .admin-content { width: 100%; padding: 24px 14px; }
   .admin-top { align-items: flex-start; gap: 12px; }
   .admin-top h1 { font-size: 25px; }
-  .admin-shell { display: flex; }
-  .admin-side { width: 160px; padding: 14px 10px; }
-  .admin-side a { font-size: 10px; padding: 9px 8px; }
+  .admin-shell { display: block; }
+  .admin-side {
+    width: 100%;
+    min-height: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    padding: 10px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .admin-side .brand {
+    flex: 0 0 auto;
+    margin: 0 4px 0 8px;
+    font-size: 20px;
+  }
+  .admin-side .brand small { display: none; }
+  .admin-side a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 9px 10px;
+  }
+  .admin-side .logout {
+    flex: 0 0 auto;
+    margin: 0 4px 0 0;
+    padding: 9px 10px;
+    white-space: nowrap;
+    font-size: 11px;
+  }
   .order-card { padding: 14px; }
   .order-card-head { flex-direction: column; }
   .order-card-head select { width: 100%; }
