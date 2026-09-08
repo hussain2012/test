@@ -58,6 +58,17 @@ button { cursor: pointer; }
   line-height: 1;
 }
 
+.store-wordmark {
+  color: #1D332F;
+  font-size: 32px;
+}
+
+.store-wordmark small {
+  color: var(--accent);
+  font-size: 11px;
+  margin-top: 8px;
+}
+
 .brand small {
   display: block;
   font-size: 11px;
@@ -816,6 +827,11 @@ button { cursor: pointer; }
   background: var(--paper);
   border: 1px solid var(--line);
   padding: 24px;
+  aspect-ratio: 1 / 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .stats span { display: block; color: var(--muted); font-size: 12px; }

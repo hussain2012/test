@@ -191,9 +191,9 @@ function StoreNav({ settings }) {
 
   return (
     <header className="nav">
-      <Link to="/" className="brand">
-        {mediaUrl(settings.logoUrl) ? <img src={mediaUrl(settings.logoUrl)} alt={settings.storeName} className="logo" /> : <span>{settings.storeName}</span>}
-        <small>{settings.tagline}</small>
+      <Link to="/" className="brand store-wordmark">
+        <span>نسق</span>
+        <small>{settings.tagline || 'اختيارات تصنع يومك'}</small>
       </Link>
       <nav>
         <Link to="/">المتجر</Link>
