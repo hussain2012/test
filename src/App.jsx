@@ -1,7 +1,8 @@
 ﻿import { useEffect, useRef, useState, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
+import { supabase } from './lib/supabaseClient';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
 const API = `${API_BASE_URL}/api`;
 const mediaUrl = (value) => {
   const source = String(value || '').trim();
@@ -28,32 +29,74 @@ const defaultSettings = {
 
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
 
-const adminHeaders = () => ({
-  'x-admin-token': localStorage.getItem('sessionToken') || '',
+const getAuthHeaders = async (headers = {}) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return {
+    ...headers,
+    ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+  };
+};
+
+const authenticatedFetch = async (url, options = {}) => fetch(url, {
+  ...options,
+  headers: await getAuthHeaders(options.headers),
 });
 
-const adminFetch = (url, options = {}) => fetch(url, {
-  ...options,
-  headers: {
-    ...(options.headers || {}),
-    ...adminHeaders(),
-  },
-}).then((response) => {
+const adminFetch = async (url, options = {}) => {
+  const response = await authenticatedFetch(url, options);
   if (response.status === 401) {
-    localStorage.removeItem('sessionToken');
-    localStorage.removeItem('accountRole');
-    localStorage.removeItem('accountIdentifier');
+    await supabase.auth.signOut();
     window.location.href = '/login';
   }
   return response;
-});
+};
+
+const AuthContext = createContext(null);
+
+const useAuth = () => useContext(AuthContext);
+
+function AuthProvider({ children }) {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadProfile = async (user) => {
+      if (!user) {
+        setProfile(null);
+        return;
+      }
+      const { data } = await supabase.from('profiles').select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').eq('id', user.id).maybeSingle();
+      setProfile(data || null);
+    };
+
+    supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      await loadProfile(currentSession?.user || null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      setLoading(false);
+      window.dispatchEvent(new Event('account-session-changed'));
+      if (event === 'SIGNED_OUT') setProfile(null);
+      if (nextSession?.user) loadProfile(nextSession.user);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const value = { session, user: session?.user || null, profile, loading };
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
 
 const CartContext = createContext();
 
 const useCart = () => useContext(CartContext);
 
 function CartProvider({ children }) {
-  const accountCartLoaded = useRef(!localStorage.getItem('sessionToken'));
+  const { session } = useAuth();
+  const accountCartLoaded = useRef(!session);
   const [cart, setCart] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('cart') || '[]');
@@ -64,24 +107,23 @@ function CartProvider({ children }) {
 
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(cart));
-    if (!accountCartLoaded.current || !localStorage.getItem('sessionToken')) return;
-    fetch(`${API}/account/cart`, {
+    if (!accountCartLoaded.current || !session) return;
+    authenticatedFetch(`${API}/account/cart`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: cart }),
     }).catch(() => {});
-  }, [cart]);
+  }, [cart, session]);
 
   useEffect(() => {
     const loadAccountCart = async () => {
-      const token = localStorage.getItem('sessionToken');
-      if (!token) {
+      if (!session) {
         accountCartLoaded.current = true;
         return;
       }
       accountCartLoaded.current = false;
       try {
-        const response = await fetch(`${API}/account/cart`, { headers: adminHeaders() });
+        const response = await authenticatedFetch(`${API}/account/cart`);
         if (!response.ok) return;
         const data = await response.json();
         setCart(Array.isArray(data.items) ? data.items : []);
@@ -92,7 +134,7 @@ function CartProvider({ children }) {
     loadAccountCart();
     window.addEventListener('account-session-changed', loadAccountCart);
     return () => window.removeEventListener('account-session-changed', loadAccountCart);
-  }, []);
+  }, [session]);
 
   const addItem = (product, quantity = 1) => {
     const sellingPrice = Number(product.discountedPrice ?? product.price ?? 0);
@@ -172,22 +214,25 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
 
 function App() {
   return (
-    <CartProvider>
-      <Routes>
-        <Route path="/" element={<Store />} />
-        <Route path="/product/:id" element={<ProductDetailPage />} />
-        <Route path="/checkout" element={<Checkout />} />
-        <Route path="/my-orders" element={<MyOrders />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/admin/*" element={<Admin />} />
-        <Route path="*" element={<Store />} />
-      </Routes>
-    </CartProvider>
+    <AuthProvider>
+      <CartProvider>
+        <Routes>
+          <Route path="/" element={<Store />} />
+          <Route path="/product/:id" element={<ProductDetailPage />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/my-orders" element={<MyOrders />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/admin/*" element={<Admin />} />
+          <Route path="*" element={<Store />} />
+        </Routes>
+      </CartProvider>
+    </AuthProvider>
   );
 }
 
 function StoreNav({ settings }) {
   const { count } = useCart();
+  const { user } = useAuth();
 
   return (
     <header className="nav">
@@ -197,8 +242,8 @@ function StoreNav({ settings }) {
       </Link>
       <nav>
         <Link to="/">المتجر</Link>
-        <Link to="/login">تسجيل الدخول</Link>
-        {localStorage.getItem('sessionToken') && <Link to="/my-orders">طلباتي</Link>}
+        {!user && <Link to="/login">تسجيل الدخول</Link>}
+        {user && <Link to="/my-orders">طلباتي</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
       </nav>
     </header>
@@ -236,7 +281,13 @@ function Store() {
     return matchesCategory && matchesQuery;
   });
   const totalPages = Math.max(1, Math.ceil(visibleProducts.length / productsPerPage));
-  const pagedProducts = visibleProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
+  const sortedProducts = [...visibleProducts].sort((left, right) => (
+    Number(right.featured) - Number(left.featured)
+    || Number(right.isNew) - Number(left.isNew)
+    || (Number(right.discountPercentage || 0) > 0 ? 1 : 0) - (Number(left.discountPercentage || 0) > 0 ? 1 : 0)
+    || Number(right.id) - Number(left.id)
+  ));
+  const pagedProducts = sortedProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -324,6 +375,11 @@ function ProductCard({ product, maintenanceMode = false }) {
     <article className="product" key={product.id}>
       <Link to={`/product/${product.id}`} className="product-image">
         <ProductImage src={product.imageUrl} alt={product.name} />
+        <div className="product-badges">
+          {product.featured && <span className="product-badge featured-badge">مميز</span>}
+          {product.isNew && <span className="product-badge new-badge">جديد</span>}
+          {hasDiscount && <span className="product-badge offer-badge">توفير</span>}
+        </div>
             {!product.inStock && <span className="sold">{maintenanceMode ? 'المتجر في وضع الصيانة' : 'طلب مسبق'}</span>}
       </Link>
       <div className="product-info">
@@ -404,6 +460,7 @@ function ProductDetailPage() {
             <div className="price-stack">
               {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(finalPrice)}</strong></> : <strong>{money(product.price)}</strong>}
             </div>
+            {hasDiscount && <span className="saving-note">توفير</span>}
             <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : (product.inStock ? 'available' : 'unavailable')}`}>
               {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (product.inStock ? `متوفر في المخزون: ${product.stockQuantity} قطعة` : 'طلب مسبق')}
             </div>
@@ -439,6 +496,7 @@ function Field({ label, name, type = 'text', value, onChange, placeholder, requi
 function Checkout() {
   const settings = useSiteSettings();
   const { cart, subtotal, updateItem, clearCart } = useCart();
+  const { user } = useAuth();
   const [form, setForm] = useState({ customerName: '', province: '', address: '', nearestLandmark: '', phoneNumber: '', discountCode: '' });
   const [discount, setDiscount] = useState(null);
   const [error, setError] = useState('');
@@ -460,10 +518,9 @@ function Checkout() {
       setError('كود الخصم غير صالح أو غير فعال');
       return;
     }
-    if (localStorage.getItem('sessionToken')) {
-      fetch(`${API}/account/coupons/${encodeURIComponent(data.code)}`, {
+    if (user) {
+      authenticatedFetch(`${API}/account/coupons/${encodeURIComponent(data.code)}`, {
         method: 'POST',
-        headers: adminHeaders(),
       }).catch(() => {});
     }
   };
@@ -472,7 +529,7 @@ function Checkout() {
     event.preventDefault();
     setError('');
     if (settings.maintenanceMode) return setError('الطلبات متوقفة مؤقتاً بسبب الصيانة');
-    if (!localStorage.getItem('sessionToken')) return navigate('/login');
+    if (!user) return navigate('/login');
 
     if (!/^07\d{9}$/.test(form.phoneNumber)) return setError('يرجى إدخال رقم هاتف عراقي صحيح');
     if (!form.customerName || !form.province || !form.address || !form.nearestLandmark) return setError('يرجى إكمال جميع الحقول المطلوبة');
@@ -492,9 +549,9 @@ function Checkout() {
       finalTotal: total,
     };
 
-    const res = await fetch(`${API}/orders`, {
+    const res = await authenticatedFetch(`${API}/orders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -590,7 +647,7 @@ function MyOrders() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/account/orders`, { headers: adminHeaders() })
+    authenticatedFetch(`${API}/account/orders`)
       .then((res) => res.ok ? res.json() : [])
       .then(setOrders)
       .finally(() => setLoading(false));
@@ -626,42 +683,38 @@ function Login() {
   const [capsLock, setCapsLock] = useState(false);
   const navigate = useNavigate();
 
+  const signInWithGoogle = async () => {
+    setError('');
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + '/login' },
+    });
+    if (authError) setError(authError.message || 'تعذر تسجيل الدخول بجوجل');
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setError('');
     setMessage('');
-    const endpoint = mode === 'login' ? 'login' : 'register';
-    const response = await fetch(`${API}/auth/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, password }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setError(data.error || 'تعذر إتمام العملية');
+    const email = identifier.trim().toLowerCase();
+    const result = mode === 'login'
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password });
+    if (result.error) {
+      setError(result.error.message || 'تعذر إتمام العملية');
       return;
     }
     if (mode === 'register') {
-      setMessage('تم إنشاء الحساب. يمكنك تسجيل الدخول الآن.');
+      setMessage(result.data.session ? 'تم إنشاء الحساب وتسجيل الدخول.' : 'تم إنشاء الحساب. تحقق من بريدك الإلكتروني ثم سجّل الدخول.');
       setMode('login');
       setPassword('');
-      fetch(`${API}/auth/account-count`)
-        .then((res) => res.ok ? res.json() : null)
-        .then((countData) => {
-          if (countData && typeof countData.count === 'number') setAccountCount(countData.count);
-        })
-        .catch(() => {});
       return;
     }
-    localStorage.setItem('sessionToken', data.token);
-    localStorage.setItem('accountRole', data.role);
-    localStorage.setItem('accountIdentifier', data.identifier);
-    window.dispatchEvent(new Event('account-session-changed'));
-    if (data.role === 'admin') navigate('/admin');
-    else navigate('/');
+    navigate('/');
   };
 
-  if (localStorage.getItem('sessionToken') && localStorage.getItem('accountRole') === 'admin') {
+  const { user, profile, loading } = useAuth();
+  if (!loading && user && profile?.role === 'admin') {
     return <Navigate to="/admin" replace />;
   }
 
@@ -674,12 +727,16 @@ function Login() {
           <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button>
         </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
-        <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+        <Field label="البريد الإلكتروني" name="identifier" type="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
+        {mode === 'login' && <div className="google-login-section">
+          <span>أو</span>
+          <button type="button" className="google-button" onClick={signInWithGoogle}>تسجيل الدخول باستخدام Google</button>
+        </div>}
         <Link to="/" className="back">العودة للمتجر</Link>
       </form>
     </main>
@@ -691,8 +748,10 @@ function Admin() {
   const requestedPage = location.pathname.split('/')[2] || 'overview';
   const page = requestedPage === 'product-discounts' ? 'products' : requestedPage;
   const navigate = useNavigate();
+  const { user, profile, loading } = useAuth();
 
-  if (!localStorage.getItem('sessionToken') || localStorage.getItem('accountRole') !== 'admin') {
+  if (loading) return <div className="empty">جاري التحقق من الحساب...</div>;
+  if (!user || profile?.role !== 'admin') {
     return <Login />;
   }
 
@@ -717,7 +776,7 @@ function Admin() {
         <Link className={page === 'analytics' ? 'active' : ''} to="/admin/analytics">الإحصائيات</Link>
         <Link className={page === 'settings' ? 'active' : ''} to="/admin/settings">إعدادات المتجر</Link>
         <Link className={page === 'admins' ? 'active' : ''} to="/admin/admins">المشرفون</Link>
-        <button type="button" className="logout" onClick={async () => { await fetch(`${API}/auth/logout`, { method: 'POST', headers: adminHeaders() }); localStorage.removeItem('sessionToken'); localStorage.removeItem('accountRole'); localStorage.removeItem('accountIdentifier'); window.dispatchEvent(new Event('account-session-changed')); navigate('/'); }}>تسجيل الخروج</button>
+        <button type="button" className="logout" onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}>تسجيل الخروج</button>
       </aside>
 
       <section className="admin-content">
@@ -756,9 +815,9 @@ function Overview() {
   return (
     <div className="dashboard-overview">
       <div className="stats">
-        <div><span>مبيعات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong><small>مقارنة بالشهر السابق: {stats.growth || 0}%</small></div>
-        <div><span>الطلبات الكلية</span><strong>{stats.orderStats?.total || 0}</strong><small>جديد: {stats.orderStats?.new || 0} | قيد التجهيز: {stats.orderStats?.processing || 0}</small></div>
-        <div><span>طلبات مكتملة</span><strong>{stats.orderStats?.delivered || 0}</strong><small>الأرباح المحققة: {money(stats.totalProfit)}</small></div>
+        <div><span>مبيعات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong></div>
+        <div><span>الطلبات الكلية</span><strong>{stats.orderStats?.total || 0}</strong></div>
+        <div><span>طلبات مكتملة</span><strong>{stats.orderStats?.delivered || 0}</strong></div>
         <div><span>الزيارات</span><strong>{stats.totalViews || 0}</strong></div>
         <div className="highlight"><span>صافي الأرباح</span><strong>{money(stats.totalProfit)}</strong></div>
       </div>
@@ -767,7 +826,7 @@ function Overview() {
 }
 
 function ProductsAdmin() {
-  const emptyForm = { name: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], stockQuantity: 10, inStock: true };
+  const emptyForm = { name: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], stockQuantity: 10, inStock: true, featured: false, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
@@ -815,6 +874,8 @@ function ProductsAdmin() {
     payload.append('category', form.category);
     payload.append('stockQuantity', Number(form.stockQuantity || 0));
     payload.append('inStock', String(Boolean(form.inStock)));
+    payload.append('featured', String(Boolean(form.featured)));
+    payload.append('isNew', String(Boolean(form.isNew)));
     payload.append('imageUrl', form.imageUrl || '');
     payload.append('existingProductImages', JSON.stringify(form.productImages || []));
     if (primaryImageFile) payload.append('primaryImage', primaryImageFile);
@@ -859,6 +920,8 @@ function ProductsAdmin() {
       productImages: product.productImages || [],
       stockQuantity: product.stockQuantity ?? 0,
       inStock: product.inStock,
+      featured: Boolean(product.featured),
+      isNew: Boolean(product.isNew),
     });
     setPrimaryImageFile(null);
     setAdditionalImageFiles([]);
@@ -874,6 +937,8 @@ function ProductsAdmin() {
         <label className="field-label">نسبة الخصم %<input aria-label="نسبة الخصم" placeholder="0 بدون خصم" type="number" min="0" max="100" value={form.discountPercentage} onChange={(event) => setForm({ ...form, discountPercentage: event.target.value })} /></label>
         <input placeholder="التصنيف" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
         <label className="field-label">الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value })} /></label>
+        <label className="check-label"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />منتج مميّز ويظهر أولاً</label>
+        <label className="check-label"><input type="checkbox" checked={form.isNew} onChange={(event) => setForm({ ...form, isNew: event.target.checked })} />منتج جديد</label>
         <label className="field-label">الصورة الرئيسية<input type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
         <label className="field-label">صور إضافية<input type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
         <textarea placeholder="الوصف" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
@@ -1235,9 +1300,8 @@ function SiteSettingsAdmin() {
     Object.entries(nextSettings).forEach(([key, value]) => {
       if (value !== null && value !== undefined) formData.append(key, value);
     });
-    const response = await fetch(`${API}/admin/site-settings`, {
+    const response = await authenticatedFetch(`${API}/admin/site-settings`, {
       method: 'POST',
-      headers: adminHeaders(),
       body: formData,
     });
     const data = await response.json().catch(() => ({}));

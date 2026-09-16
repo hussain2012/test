@@ -337,6 +337,26 @@ button { cursor: pointer; }
   object-fit: cover;
 }
 
+.product-badges {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.product-badge {
+  padding: 5px 8px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.featured-badge { background: var(--primary); }
+.new-badge { background: #327d68; }
+.offer-badge { background: var(--accent); }
+
 .product-info {
   padding: 18px;
 }
@@ -456,6 +476,12 @@ button { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.saving-note {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .status-pill {
@@ -759,6 +785,17 @@ button { cursor: pointer; }
 .login-card .primary.full { width: 100%; min-height: 48px; margin-top: 2px; }
 .back { display: block; text-align: center; margin-top: 2px; color: var(--accent); font-weight: 700; }
 .login-card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.google-login-section {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.google-button-loading { min-height: 40px; }
 
 .admin-shell {
   min-height: 100vh;

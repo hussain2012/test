@@ -1,6 +1,7 @@
-﻿import express from 'express';
+﻿import 'dotenv/config';
+import express from 'express';
 import cors from 'cors';
-import { DatabaseSync } from 'node:sqlite';
+import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,18 +11,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = 3000;
-const persistentDataDir = '/data';
-let databasePath = path.join(__dirname, 'catalog.db');
-const isRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID);
-if (isRailway) {
-  try {
-    fs.mkdirSync(persistentDataDir, { recursive: true });
-    databasePath = path.join(persistentDataDir, 'catalog.db');
-  } catch {
-    // Fall back to the project directory when the persistent volume is unavailable.
-  }
-}
-const db = new DatabaseSync(databasePath);
+const supabaseUrl = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
+const supabaseKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const supabaseServer = supabaseUrl && supabaseKey
+  ? createClient(supabaseUrl, supabaseKey, { auth: { autoRefreshToken: false, persistSession: false } })
+  : null;
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({
@@ -38,36 +32,21 @@ const productUpload = upload.fields([
   { name: 'productImages', maxCount: 10 },
 ]);
 
-const sessions = new Map();
-const hashPassword = (password, salt = crypto.randomBytes(16).toString('hex')) => `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`;
-const verifyPassword = (password, storedHash) => {
-  const [salt, key] = String(storedHash || '').split(':');
-  if (!salt || !key || !/^[0-9a-f]+$/i.test(key) || key.length !== 128) return false;
-  const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(derivedKey, 'hex'), Buffer.from(key, 'hex'));
-};
-const getSession = (req) => sessions.get(req.headers['x-admin-token']);
+const getSession = (req) => req.supabaseSession;
 const isAdminRequest = (req) => {
   return getSession(req)?.role === 'admin';
 };
 const isOwnerRequest = (req) => {
   const session = getSession(req);
-  if (session?.role !== 'admin') return false;
-  return Boolean(db.prepare('SELECT id FROM accounts WHERE id = ? AND role = ? AND isOwner = 1').get(session.accountId, 'admin'));
+  return session?.role === 'admin' && session?.isOwner === true;
 };
 const parseItems = (value) => {
+  if (Array.isArray(value)) return value;
   try {
     const parsed = JSON.parse(value || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
-  }
-};
-
-const ensureColumn = (table, column, definition) => {
-  const existing = db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
-  if (!existing.includes(column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 };
 
@@ -92,142 +71,40 @@ const defaultSiteSettings = {
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
+app.use(async (req, res, next) => {
+  const authorization = String(req.headers.authorization || '');
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  if (!token || !supabaseServer) return next();
+
+  try {
+    const { data: { user }, error: userError } = await supabaseServer.auth.getUser(token);
+    if (userError || !user) return next();
+    const { data: profile } = await supabaseServer
+      .from('profiles')
+      .select('id, identifier, role, "isOwner", "displayName", "pictureUrl"')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (profile) {
+      req.supabaseSession = {
+        accountId: user.id,
+        identifier: profile.identifier,
+        role: profile.role,
+        isOwner: profile.isOwner === true,
+        displayName: profile.displayName || '',
+        pictureUrl: profile.pictureUrl || '',
+      };
+    }
+  } catch {
+    // Unauthenticated requests are handled by the route-level authorization checks.
+  }
+  next();
+});
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
-db.exec('PRAGMA journal_mode = WAL');
-db.exec(`
-  CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT NOT NULL,
-    price REAL NOT NULL,
-    costPrice REAL DEFAULT 0,
-    discountPercentage REAL DEFAULT 0,
-    imageUrl TEXT,
-    productImages TEXT,
-    category TEXT,
-    stockQuantity INTEGER DEFAULT 10,
-    inStock INTEGER NOT NULL DEFAULT 1
-  );
-  CREATE TABLE IF NOT EXISTS discounts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT UNIQUE NOT NULL,
-    type TEXT NOT NULL,
-    value REAL NOT NULL,
-    active INTEGER NOT NULL DEFAULT 1
-  );
-  CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    items TEXT NOT NULL,
-    customerName TEXT NOT NULL,
-    province TEXT NOT NULL,
-    address TEXT NOT NULL,
-    nearestLandmark TEXT NOT NULL,
-    phoneNumber TEXT NOT NULL,
-    subtotal REAL NOT NULL,
-    discountCode TEXT,
-    discountAmount REAL NOT NULL,
-    deliveryFee REAL NOT NULL,
-    finalTotal REAL NOT NULL,
-    accountId INTEGER,
-    accountOrderNumber INTEGER,
-    status TEXT NOT NULL DEFAULT 'processing',
-    isRead INTEGER NOT NULL DEFAULT 0,
-    createdAt TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS site_settings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    storeName TEXT,
-    tagline TEXT,
-    logoUrl TEXT,
-    heroTitle TEXT,
-    heroDescription TEXT,
-    heroImageUrl TEXT,
-    heroButtonText TEXT
-  );
-  CREATE TABLE IF NOT EXISTS page_views (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT NOT NULL,
-    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-  CREATE TABLE IF NOT EXISTS accounts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    identifier TEXT NOT NULL UNIQUE,
-    passwordHash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'customer',
-    isOwner INTEGER NOT NULL DEFAULT 0,
-    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-  CREATE TABLE IF NOT EXISTS admin_invites (
-    identifier TEXT PRIMARY KEY,
-    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-  CREATE TABLE IF NOT EXISTS account_carts (
-    accountId INTEGER PRIMARY KEY,
-    items TEXT NOT NULL DEFAULT '[]',
-    updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (accountId) REFERENCES accounts(id) ON DELETE CASCADE
-  );
-  CREATE TABLE IF NOT EXISTS account_coupons (
-    accountId INTEGER NOT NULL,
-    discountId INTEGER NOT NULL,
-    savedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (accountId, discountId),
-    FOREIGN KEY (accountId) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (discountId) REFERENCES discounts(id) ON DELETE CASCADE
-  );
-`);
-
-ensureColumn('products', 'costPrice', 'REAL DEFAULT 0');
-ensureColumn('products', 'discountPercentage', 'REAL DEFAULT 0');
-ensureColumn('products', 'productImages', 'TEXT');
-ensureColumn('products', 'stockQuantity', 'INTEGER DEFAULT 10');
-ensureColumn('site_settings', 'storeName', 'TEXT');
-ensureColumn('site_settings', 'tagline', 'TEXT');
-ensureColumn('site_settings', 'logoUrl', 'TEXT');
-ensureColumn('site_settings', 'heroTitle', 'TEXT');
-ensureColumn('site_settings', 'heroDescription', 'TEXT');
-ensureColumn('site_settings', 'heroImageUrl', 'TEXT');
-ensureColumn('site_settings', 'heroButtonText', 'TEXT');
-ensureColumn('site_settings', 'instagramUrl', 'TEXT');
-ensureColumn('site_settings', 'tiktokUrl', 'TEXT');
-ensureColumn('site_settings', 'facebookUrl', 'TEXT');
-ensureColumn('site_settings', 'whatsappUrl', 'TEXT');
-ensureColumn('site_settings', 'aboutTitle', 'TEXT');
-ensureColumn('site_settings', 'aboutText', 'TEXT');
-ensureColumn('site_settings', 'maintenanceMode', 'INTEGER DEFAULT 0');
-ensureColumn('orders', 'accountId', 'INTEGER');
-ensureColumn('orders', 'accountOrderNumber', 'INTEGER');
-ensureColumn('accounts', 'isOwner', 'INTEGER NOT NULL DEFAULT 0');
-
-const ordersMissingAccountNumbers = db.prepare('SELECT id, accountId FROM orders WHERE accountId IS NOT NULL AND accountOrderNumber IS NULL ORDER BY accountId, datetime(createdAt), id').all();
-const accountOrderCounters = new Map();
-ordersMissingAccountNumbers.forEach((order) => {
-  const nextNumber = (accountOrderCounters.get(order.accountId) || 0) + 1;
-  accountOrderCounters.set(order.accountId, nextNumber);
-  db.prepare('UPDATE orders SET accountOrderNumber = ? WHERE id = ?').run(nextNumber, order.id);
-});
-
-const administratorEmail = 'hausain12moh@gmail.com';
-const administratorPassword = 'Hussain_20_12';
-const administrator = db.prepare('SELECT id FROM accounts WHERE identifier = ?').get(administratorEmail);
-if (!administrator) {
-  db.prepare('INSERT INTO accounts (identifier, passwordHash, role, isOwner) VALUES (?, ?, ?, 1)').run(administratorEmail, hashPassword(administratorPassword), 'admin');
-} else {
-  db.prepare("UPDATE accounts SET role = 'admin', isOwner = 1 WHERE identifier = ? AND NOT EXISTS (SELECT 1 FROM accounts WHERE isOwner = 1)").run(administratorEmail);
-}
-
-const getSiteSettings = () => {
-  const row = db.prepare('SELECT * FROM site_settings ORDER BY id DESC LIMIT 1').get();
-  if (!row) {
-    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(defaultSiteSettings.storeName, defaultSiteSettings.tagline, defaultSiteSettings.logoUrl, defaultSiteSettings.heroTitle, defaultSiteSettings.heroDescription, defaultSiteSettings.heroImageUrl, defaultSiteSettings.heroButtonText, defaultSiteSettings.instagramUrl, defaultSiteSettings.tiktokUrl, defaultSiteSettings.facebookUrl, defaultSiteSettings.whatsappUrl);
-    return { ...defaultSiteSettings };
-  }
-  return {
+const normalizeSiteSettings = (row) => ({
     ...defaultSiteSettings,
     ...row,
     instagramUrl: row.instagramUrl || '',
@@ -237,7 +114,16 @@ const getSiteSettings = () => {
     aboutTitle: row.aboutTitle || defaultSiteSettings.aboutTitle,
     aboutText: row.aboutText || '',
     maintenanceMode: Boolean(row.maintenanceMode),
-  };
+});
+
+const getSiteSettings = async () => {
+  if (!supabaseServer) return { ...defaultSiteSettings };
+  const { data, error } = await supabaseServer.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  if (data) return normalizeSiteSettings(data);
+  const { data: inserted, error: insertError } = await supabaseServer.from('site_settings').insert(defaultSiteSettings).select().single();
+  if (insertError) throw insertError;
+  return normalizeSiteSettings(inserted);
 };
 
 const getDiscountedPrice = (product) => {
@@ -249,10 +135,14 @@ const getDiscountedPrice = (product) => {
 
 const getProductImages = (product) => {
   let images = [];
-  try {
-    images = JSON.parse(product?.productImages || '[]');
-  } catch {
-    images = [];
+  if (Array.isArray(product?.productImages)) {
+    images = product.productImages;
+  } else {
+    try {
+      images = JSON.parse(product?.productImages || '[]');
+    } catch {
+      images = [];
+    }
   }
   if (!Array.isArray(images)) images = [];
   const fallback = product?.imageUrl || '';
@@ -282,6 +172,8 @@ const publicProductData = (row) => ({
   stockQuantity: Number(row.stockQuantity ?? 0),
   preOrder: !Boolean(row.inStock),
   inStock: Boolean(row.inStock),
+  featured: Boolean(row.featured),
+  isNew: Boolean(row.isNew),
 });
 
 const adminProductData = (row) => ({
@@ -290,269 +182,325 @@ const adminProductData = (row) => ({
   profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)),
 });
 
-if (!db.prepare('SELECT COUNT(*) as count FROM discounts').get().count) {
-  db.prepare('INSERT INTO discounts (code, type, value, active) VALUES (?, ?, ?, 1)').run('NASAQ10', 'percentage', 10);
-}
+const requireSupabase = (res) => {
+  if (supabaseServer) return true;
+  res.status(503).json({ error: 'Supabase غير مهيأ على الخادم' });
+  return false;
+};
 
-getSiteSettings();
-
-app.post('/api/auth/register', (req, res) => {
-  const identifier = String(req.body.identifier || '').trim().toLowerCase();
-  const password = String(req.body.password || '');
-  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-  const isPhone = /^07\d{9}$/.test(identifier);
-  if ((!isEmail && !isPhone) || password.length < 6) {
-    return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف صحيحا، وكلمة مرور من 6 أحرف على الأقل' });
-  }
-  try {
-    const invited = db.prepare('SELECT identifier FROM admin_invites WHERE identifier = ?').get(identifier);
-    const role = invited ? 'admin' : 'customer';
-    const result = db.prepare('INSERT INTO accounts (identifier, passwordHash, role) VALUES (?, ?, ?)').run(identifier, hashPassword(password), role);
-    if (invited) db.prepare('DELETE FROM admin_invites WHERE identifier = ?').run(identifier);
-    res.status(201).json({ id: result.lastInsertRowid, identifier, role });
-  } catch {
-    res.status(409).json({ error: 'هذا الحساب مسجل مسبقاً' });
-  }
+const normalizeProductRow = (row) => ({
+  ...row,
+  productImages: Array.isArray(row?.productImages) ? row.productImages : parseImageList(row?.productImages),
 });
 
-app.get('/api/auth/account-count', (req, res) => {
-  const count = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
-  res.json({ count });
+const normalizeOrderRow = (row) => ({
+  ...row,
+  items: Array.isArray(row?.items) ? row.items : parseItems(row?.items),
+  isRead: Boolean(row?.isRead),
+  accountOrderNumber: row?.accountOrderNumber || null,
 });
 
-app.post('/api/auth/login', (req, res) => {
-  const identifier = String(req.body.identifier || '').trim().toLowerCase();
-  const password = String(req.body.password || '');
-  const account = db.prepare('SELECT * FROM accounts WHERE identifier = ?').get(identifier);
-  if (!account || !verifyPassword(password, account.passwordHash)) {
-    return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
-  }
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { accountId: account.id, role: account.role, identifier: account.identifier });
-  res.json({ token, role: account.role, identifier: account.identifier });
-});
-
-app.post('/api/auth/logout', (req, res) => {
-  sessions.delete(req.headers['x-admin-token']);
-  res.status(204).end();
-});
-
-app.get('/api/admin/admins', (req, res) => {
+app.get('/api/admin/admins', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  const admins = db.prepare("SELECT id, identifier, createdAt, isOwner FROM accounts WHERE role = 'admin' ORDER BY id").all();
-  const invites = db.prepare('SELECT identifier, createdAt FROM admin_invites ORDER BY createdAt DESC').all();
+  if (!requireSupabase(res)) return;
+  const [{ data: admins, error: adminsError }, { data: invites, error: invitesError }] = await Promise.all([
+    supabaseServer.from('profiles').select('id, identifier, "createdAt", "isOwner"').eq('role', 'admin').order('createdAt'),
+    supabaseServer.from('admin_invites').select('identifier, "createdAt"').order('createdAt', { ascending: false }),
+  ]);
+  if (adminsError || invitesError) return res.status(500).json({ error: (adminsError || invitesError).message });
   res.json({ admins, invites });
 });
 
-app.post('/api/admin/admins', (req, res) => {
+app.post('/api/admin/admins', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إدارة المشرفين' });
+  if (!requireSupabase(res)) return;
   const identifier = String(req.body.identifier || '').trim().toLowerCase();
-  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-  const isPhone = /^07\d{9}$/.test(identifier);
-  if (!isEmail && !isPhone) return res.status(400).json({ error: 'أدخل بريداً إلكترونياً أو رقم هاتف صحيحاً' });
-  const account = db.prepare('SELECT id, role FROM accounts WHERE identifier = ?').get(identifier);
+  if (!identifier) return res.status(400).json({ error: 'أدخل البريد الإلكتروني' });
+  const { data: account, error: accountError } = await supabaseServer.from('profiles').select('id, role').eq('identifier', identifier).maybeSingle();
+  if (accountError) return res.status(500).json({ error: accountError.message });
   if (account?.role === 'admin') return res.status(409).json({ error: 'هذا الحساب مشرف مسبقاً' });
   if (account) {
-    db.prepare("UPDATE accounts SET role = 'admin' WHERE id = ?").run(account.id);
+    const { error } = await supabaseServer.from('profiles').update({ role: 'admin' }).eq('id', account.id);
+    if (error) return res.status(400).json({ error: error.message });
     return res.json({ identifier, role: 'admin', promoted: true });
   }
-  db.prepare('INSERT OR IGNORE INTO admin_invites (identifier) VALUES (?)').run(identifier);
+  const { error: inviteError } = await supabaseServer.from('admin_invites').upsert({ identifier }, { onConflict: 'identifier' });
+  if (inviteError) return res.status(400).json({ error: inviteError.message });
   res.status(201).json({ identifier, role: 'admin', invited: true });
 });
 
-app.delete('/api/admin/admins/:identifier', (req, res) => {
+app.delete('/api/admin/admins/:identifier', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إدارة المشرفين' });
+  if (!requireSupabase(res)) return;
   const identifier = String(req.params.identifier || '').toLowerCase();
-  const account = db.prepare('SELECT id, isOwner FROM accounts WHERE identifier = ? AND role = ?').get(identifier, 'admin');
+  const { data: account, error: accountError } = await supabaseServer.from('profiles').select('id, "isOwner"').eq('identifier', identifier).eq('role', 'admin').maybeSingle();
+  if (accountError) return res.status(500).json({ error: accountError.message });
   if (account?.isOwner) return res.status(400).json({ error: 'لا يمكن حذف مالك المتجر' });
-  if (account) db.prepare("UPDATE accounts SET role = 'customer' WHERE id = ?").run(account.id);
-  db.prepare('DELETE FROM admin_invites WHERE identifier = ?').run(identifier);
+  if (account) {
+    const { error } = await supabaseServer.from('profiles').update({ role: 'customer' }).eq('id', account.id);
+    if (error) return res.status(400).json({ error: error.message });
+  }
+  const { error: inviteError } = await supabaseServer.from('admin_invites').delete().eq('identifier', identifier);
+  if (inviteError) return res.status(400).json({ error: inviteError.message });
   res.status(204).end();
 });
 
-app.post('/api/admin/transfer-ownership', (req, res) => {
+app.post('/api/admin/transfer-ownership', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يمكنه تحويل الملكية' });
+  if (!requireSupabase(res)) return;
 
   const session = getSession(req);
   const currentIdentifier = String(session?.identifier || '').trim().toLowerCase();
   const newOwner = String(req.body.newOwner || '').trim().toLowerCase();
 
-  const currentAccount = db.prepare('SELECT id, isOwner FROM accounts WHERE identifier = ? AND role = ?').get(currentIdentifier, 'admin');
-
   if (!newOwner || newOwner === currentIdentifier) {
     return res.status(400).json({ error: 'اختر حساباً آخر غير حساب المدير الحالي' });
   }
 
-  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newOwner);
-  const isPhone = /^07\d{9}$/.test(newOwner);
-  if (!isEmail && !isPhone) {
-    return res.status(400).json({ error: 'أدخل بريد إلكتروني أو رقم هاتف صحيحاً' });
-  }
-
-  const targetAccount = db.prepare('SELECT id, role FROM accounts WHERE identifier = ?').get(newOwner);
+  const { data: targetAccount, error: targetError } = await supabaseServer.from('profiles').select('id, role').eq('identifier', newOwner).maybeSingle();
+  if (targetError) return res.status(500).json({ error: targetError.message });
   if (!targetAccount) {
-    db.prepare('INSERT OR IGNORE INTO admin_invites (identifier) VALUES (?)').run(newOwner);
+    const { error } = await supabaseServer.from('admin_invites').upsert({ identifier: newOwner }, { onConflict: 'identifier' });
+    if (error) return res.status(400).json({ error: error.message });
     return res.status(202).json({ message: 'تم حفظ الحساب كدعوة، وسيصبح مديراً عند التسجيل' });
   }
 
-  db.prepare("UPDATE accounts SET role = 'admin', isOwner = 1 WHERE id = ?").run(targetAccount.id);
-  db.prepare("UPDATE accounts SET role = 'admin', isOwner = 0 WHERE id = ?").run(currentAccount.id);
+  const { error: targetUpdateError } = await supabaseServer.from('profiles').update({ role: 'admin', isOwner: true }).eq('id', targetAccount.id);
+  const { error: currentUpdateError } = await supabaseServer.from('profiles').update({ role: 'admin', isOwner: false }).eq('id', session.accountId);
+  if (targetUpdateError || currentUpdateError) return res.status(400).json({ error: (targetUpdateError || currentUpdateError).message });
 
   res.json({ message: 'تم تحويل الملكية بنجاح', newOwner });
 });
 
-app.get('/api/account/cart', (req, res) => {
+app.get('/api/account/cart', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول لحفظ السلة' });
-  const row = db.prepare('SELECT items FROM account_carts WHERE accountId = ?').get(session.accountId);
-  let items = [];
-  try { items = JSON.parse(row?.items || '[]'); } catch { items = []; }
-  res.json({ items: Array.isArray(items) ? items : [] });
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('account_carts').select('items').eq('accountId', session.accountId).maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ items: Array.isArray(data?.items) ? data.items : [] });
 });
 
-app.put('/api/account/cart', (req, res) => {
+app.put('/api/account/cart', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول لحفظ السلة' });
+  if (!requireSupabase(res)) return;
   const items = Array.isArray(req.body.items) ? req.body.items : [];
-  db.prepare(`INSERT INTO account_carts (accountId, items, updatedAt) VALUES (?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(accountId) DO UPDATE SET items=excluded.items, updatedAt=CURRENT_TIMESTAMP`).run(session.accountId, JSON.stringify(items));
+  const { error } = await supabaseServer.from('account_carts').upsert({
+    accountId: session.accountId,
+    items,
+    updatedAt: new Date().toISOString(),
+  }, { onConflict: 'accountId' });
+  if (error) return res.status(400).json({ error: error.message });
   res.json({ ok: true, items });
 });
 
-app.get('/api/account/coupons', (req, res) => {
+app.get('/api/account/coupons', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
-  const coupons = db.prepare(`SELECT d.* FROM discounts d JOIN account_coupons ac ON ac.discountId = d.id WHERE ac.accountId = ? ORDER BY ac.savedAt DESC`).all(session.accountId);
-  res.json(coupons.map((coupon) => ({ ...coupon, active: Boolean(coupon.active) })));
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('account_coupons').select('savedAt, discounts(*)').eq('accountId', session.accountId).order('savedAt', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map((row) => ({ ...row.discounts, active: Boolean(row.discounts?.active), savedAt: row.savedAt })));
 });
 
-app.post('/api/account/coupons/:code', (req, res) => {
+app.post('/api/account/coupons/:code', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
-  const coupon = db.prepare('SELECT * FROM discounts WHERE code = ? AND active = 1').get(String(req.params.code).toUpperCase());
+  if (!requireSupabase(res)) return;
+  const { data: coupon, error: couponError } = await supabaseServer.from('discounts').select('*').eq('code', String(req.params.code).toUpperCase()).eq('active', true).maybeSingle();
+  if (couponError) return res.status(500).json({ error: couponError.message });
   if (!coupon) return res.status(404).json({ error: 'كود الخصم غير صالح أو غير فعال' });
-  db.prepare('INSERT OR IGNORE INTO account_coupons (accountId, discountId) VALUES (?, ?)').run(session.accountId, coupon.id);
+  const { error: saveError } = await supabaseServer.from('account_coupons').upsert({ accountId: session.accountId, discountId: coupon.id }, { onConflict: 'accountId,discountId' });
+  if (saveError) return res.status(400).json({ error: saveError.message });
   res.status(201).json({ ...coupon, active: Boolean(coupon.active), saved: true });
 });
 
-app.get('/api/site-settings', (req, res) => res.json(getSiteSettings()));
+app.get('/api/site-settings', async (req, res) => {
+  try {
+    res.json(await getSiteSettings());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-app.post('/api/analytics/view', (req, res) => {
+app.post('/api/analytics/view', async (req, res) => {
+  if (!requireSupabase(res)) return;
   const type = req.body?.type === 'product' ? 'product' : 'home';
-  db.prepare('INSERT INTO page_views (type) VALUES (?)').run(type);
+  const { error } = await supabaseServer.from('page_views').insert({ type });
+  if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ ok: true, type });
 });
 
-app.get('/api/products', (req, res) => {
-  const rows = db.prepare('SELECT * FROM products ORDER BY id DESC').all();
-  res.json(rows.map(publicProductData));
+app.get('/api/products', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer
+    .from('products')
+    .select('*')
+    .order('featured', { ascending: false })
+    .order('isNew', { ascending: false })
+    .order('discountPercentage', { ascending: false })
+    .order('id', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map((row) => publicProductData(normalizeProductRow(row))));
 });
 
-app.get('/api/products/:id', (req, res) => {
-  const row = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'المنتج غير موجود' });
-  res.json(publicProductData(row));
+app.get('/api/products/:id', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('products').select('*').eq('id', req.params.id).maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'المنتج غير موجود' });
+  res.json(publicProductData(normalizeProductRow(data)));
 });
 
-app.get('/api/admin/products', (req, res) => {
+app.get('/api/admin/products', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  const rows = db.prepare('SELECT * FROM products ORDER BY id DESC').all();
-  res.json(rows.map(adminProductData));
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('products').select('*').order('id', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map((row) => adminProductData(normalizeProductRow(row))));
 });
 
-app.post('/api/admin/products', productUpload, (req, res) => {
+app.post('/api/admin/products', productUpload, async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl } = req.body;
+  if (!requireSupabase(res)) return;
+  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, featured, isNew } = req.body;
   if (!name || !description || !price) return res.status(400).json({ error: 'يرجى إكمال بيانات المنتج' });
 
   const uploadedImages = (req.files?.productImages || []).map(uploadedImageUrl);
   const images = [...parseImageList(req.body.existingProductImages), ...uploadedImages];
   const uploadedPrimaryImage = uploadedImageUrl(req.files?.primaryImage?.[0]);
   const primaryImage = uploadedPrimaryImage || imageUrl || images[0] || '';
-  const result = db.prepare('INSERT INTO products (name, description, price, costPrice, discountPercentage, imageUrl, productImages, category, stockQuantity, inStock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(name, description, Number(price), Number(costPrice || 0), Number(discountPercentage || 0), primaryImage, JSON.stringify(images), category || 'عام', Math.max(0, Number(stockQuantity ?? 10)), inStock === false || inStock === 'false' ? 0 : 1);
-
-  res.status(201).json(adminProductData(db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid)));
+  const { data, error } = await supabaseServer.from('products').insert({
+    name,
+    description,
+    price: Number(price),
+    costPrice: Number(costPrice || 0),
+    discountPercentage: Number(discountPercentage || 0),
+    imageUrl: primaryImage,
+    productImages: images,
+    category: category || 'عام',
+    stockQuantity: Math.max(0, Number(stockQuantity ?? 10)),
+    inStock: !(inStock === false || inStock === 'false'),
+    featured: featured === true || featured === 'true',
+    isNew: isNew === true || isNew === 'true',
+  }).select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(201).json(adminProductData(normalizeProductRow(data)));
 });
 
-app.put('/api/admin/products/:id', productUpload, (req, res) => {
+app.put('/api/admin/products/:id', productUpload, async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  const existing = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
+  if (!requireSupabase(res)) return;
+  const { data: existing, error: existingError } = await supabaseServer.from('products').select('*').eq('id', req.params.id).maybeSingle();
+  if (existingError) return res.status(500).json({ error: existingError.message });
   if (!existing) return res.status(404).json({ error: 'المنتج غير موجود' });
+  const existingProduct = normalizeProductRow(existing);
   const body = {
-    name: req.body.name ?? existing.name,
-    description: req.body.description ?? existing.description,
-    price: Number(req.body.price ?? existing.price),
-    costPrice: Number(req.body.costPrice ?? existing.costPrice ?? 0),
-    discountPercentage: Number(req.body.discountPercentage ?? existing.discountPercentage ?? 0),
-    category: req.body.category ?? existing.category,
-    inStock: req.body.inStock === false || req.body.inStock === 'false' ? 0 : (req.body.inStock === true || req.body.inStock === 'true' ? 1 : existing.inStock),
-    imageUrl: req.body.imageUrl ?? existing.imageUrl,
+    name: req.body.name ?? existingProduct.name,
+    description: req.body.description ?? existingProduct.description,
+    price: Number(req.body.price ?? existingProduct.price),
+    costPrice: Number(req.body.costPrice ?? existingProduct.costPrice ?? 0),
+    discountPercentage: Number(req.body.discountPercentage ?? existingProduct.discountPercentage ?? 0),
+    category: req.body.category ?? existingProduct.category,
+    inStock: req.body.inStock === false || req.body.inStock === 'false' ? false : (req.body.inStock === true || req.body.inStock === 'true' ? true : existingProduct.inStock),
+    imageUrl: req.body.imageUrl ?? existingProduct.imageUrl,
     productImages: parseImageList(req.body.existingProductImages).concat((req.files?.productImages || []).map(uploadedImageUrl)),
-    stockQuantity: Math.max(0, Number(req.body.stockQuantity ?? existing.stockQuantity ?? 10)),
+    stockQuantity: Math.max(0, Number(req.body.stockQuantity ?? existingProduct.stockQuantity ?? 10)),
+    featured: req.body.featured === true || req.body.featured === 'true' ? true : (req.body.featured === false || req.body.featured === 'false' ? false : existingProduct.featured),
+    isNew: req.body.isNew === true || req.body.isNew === 'true' ? true : (req.body.isNew === false || req.body.isNew === 'false' ? false : existingProduct.isNew),
   };
 
   const images = body.productImages;
   const primaryImage = uploadedImageUrl(req.files?.primaryImage?.[0]) || body.imageUrl || images[0] || '';
-  db.prepare('UPDATE products SET name=?, description=?, price=?, costPrice=?, discountPercentage=?, imageUrl=?, productImages=?, category=?, stockQuantity=?, inStock=? WHERE id=?')
-    .run(body.name, body.description, body.price, body.costPrice, body.discountPercentage, primaryImage, JSON.stringify(images), body.category, body.stockQuantity, body.inStock, req.params.id);
-
-  res.json(adminProductData(db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id)));
+  const { data, error } = await supabaseServer.from('products').update({
+    ...body,
+    imageUrl: primaryImage,
+    productImages: images,
+  }).eq('id', req.params.id).select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(adminProductData(normalizeProductRow(data)));
 });
 
-app.delete('/api/admin/products/:id', (req, res) => {
+app.delete('/api/admin/products/:id', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
+  if (!requireSupabase(res)) return;
+  const { error } = await supabaseServer.from('products').delete().eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
   res.status(204).end();
 });
 
-app.get('/api/discounts', (req, res) => {
+app.get('/api/discounts', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  res.json(db.prepare('SELECT * FROM discounts ORDER BY id DESC').all().map((d) => ({ ...d, active: Boolean(d.active) })));
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('discounts').select('*').order('id', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map((discount) => ({ ...discount, active: Boolean(discount.active) })));
 });
-app.post('/api/discounts', (req, res) => {
+app.post('/api/discounts', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('discounts').insert({ code: String(req.body.code).toUpperCase(), type: req.body.type, value: Number(req.body.value), active: req.body.active !== false }).select().single();
+  if (error) return res.status(400).json({ error: error.code === '23505' ? 'كود الخصم مستخدم مسبقاً' : error.message });
+  res.status(201).json({ ...data, active: Boolean(data.active) });
+});
+app.put('/api/discounts/:id', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('discounts').update({ code: String(req.body.code).toUpperCase(), type: req.body.type, value: Number(req.body.value), active: Boolean(req.body.active) }).eq('id', req.params.id).select().single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ ...data, active: Boolean(data.active) });
+});
+app.delete('/api/discounts/:id', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!requireSupabase(res)) return;
+  const { error } = await supabaseServer.from('discounts').delete().eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(204).end();
+});
+app.get('/api/discounts/validate/:code', async (req, res) => {
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('discounts').select('*').eq('code', String(req.params.code).toUpperCase()).eq('active', true).maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ? { ...data, active: Boolean(data.active) } : null);
+});
+
+app.get('/api/orders', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('orders').select('*').order('createdAt', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map(normalizeOrderRow));
+});
+app.get('/api/orders/unread-count', async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!requireSupabase(res)) return;
+  const { count, error } = await supabaseServer.from('orders').select('id', { count: 'exact', head: true }).eq('isRead', false);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ count: count || 0 });
+});
+app.post('/api/orders', async (req, res) => {
+  let siteSettings;
   try {
-    const result = db.prepare('INSERT INTO discounts (code,type,value,active) VALUES (?,?,?,?)').run(String(req.body.code).toUpperCase(), req.body.type, Number(req.body.value), req.body.active === false ? 0 : 1);
-    res.status(201).json(db.prepare('SELECT * FROM discounts WHERE id=?').get(result.lastInsertRowid));
-  } catch {
-    res.status(400).json({ error: 'كود الخصم مستخدم مسبقاً' });
+    siteSettings = await getSiteSettings();
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
-});
-app.put('/api/discounts/:id', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  db.prepare('UPDATE discounts SET code=?, type=?, value=?, active=? WHERE id=?').run(String(req.body.code).toUpperCase(), req.body.type, Number(req.body.value), req.body.active ? 1 : 0, req.params.id);
-  res.json(db.prepare('SELECT * FROM discounts WHERE id=?').get(req.params.id));
-});
-app.delete('/api/discounts/:id', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  db.prepare('DELETE FROM discounts WHERE id=?').run(req.params.id);
-  res.status(204).end();
-});
-app.get('/api/discounts/validate/:code', (req, res) => {
-  const discount = db.prepare('SELECT * FROM discounts WHERE code=? AND active=1').get(String(req.params.code).toUpperCase());
-  res.json(discount || null);
-});
-
-app.get('/api/orders', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  res.json(db.prepare('SELECT * FROM orders ORDER BY datetime(createdAt) DESC').all().map((o) => ({ ...o, items: parseItems(o.items), isRead: Boolean(o.isRead), accountOrderNumber: o.accountOrderNumber || null })));
-});
-app.get('/api/orders/unread-count', (req, res) => {
-  if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  res.json({ count: db.prepare('SELECT COUNT(*) as count FROM orders WHERE isRead=0').get().count });
-});
-app.post('/api/orders', (req, res) => {
-  if (getSiteSettings().maintenanceMode) return res.status(503).json({ error: 'الطلبات متوقفة مؤقتاً بسبب الصيانة' });
+  if (siteSettings.maintenanceMode) return res.status(503).json({ error: 'الطلبات متوقفة مؤقتاً بسبب الصيانة' });
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول لإرسال الطلب' });
+  if (!requireSupabase(res)) return;
   const b = req.body;
   if (!b.customerName || !b.province || !b.address || !b.nearestLandmark || !b.phoneNumber || !b.items?.length) {
     return res.status(400).json({ error: 'يرجى إكمال الحقول المطلوبة' });
   }
 
+  const productIds = b.items.map((item) => item.productId);
+  const { data: products, error: productsError } = await supabaseServer.from('products').select('id, costPrice, discountPercentage').in('id', productIds);
+  if (productsError) return res.status(500).json({ error: productsError.message });
+  const productMap = new Map((products || []).map((product) => [String(product.id), product]));
   const enrichedItems = b.items.map((item) => {
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(item.productId);
+    const product = productMap.get(String(item.productId));
     return {
       productId: item.productId,
       name: item.name,
@@ -563,42 +511,72 @@ app.post('/api/orders', (req, res) => {
     };
   });
 
-  const accountOrderNumber = db.prepare('SELECT COALESCE(MAX(accountOrderNumber), 0) + 1 AS nextNumber FROM orders WHERE accountId = ?').get(session.accountId).nextNumber;
-  const result = db.prepare('INSERT INTO orders (items,customerName,province,address,nearestLandmark,phoneNumber,subtotal,discountCode,discountAmount,deliveryFee,finalTotal,accountId,accountOrderNumber,status,createdAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run(JSON.stringify(enrichedItems), b.customerName, b.province, b.address, b.nearestLandmark, b.phoneNumber, Number(b.subtotal || 0), b.discountCode || '', Number(b.discountAmount || 0), Number(b.deliveryFee || 0), Number(b.finalTotal || 0), session.accountId, accountOrderNumber, 'processing', new Date().toISOString());
-  res.status(201).json({ id: result.lastInsertRowid });
+  const { data: latestOrder, error: latestOrderError } = await supabaseServer.from('orders').select('accountOrderNumber').eq('accountId', session.accountId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
+  if (latestOrderError) return res.status(500).json({ error: latestOrderError.message });
+  const accountOrderNumber = Number(latestOrder?.accountOrderNumber || 0) + 1;
+  const { data: createdOrder, error: orderError } = await supabaseServer.from('orders').insert({
+    items: enrichedItems,
+    customerName: b.customerName,
+    province: b.province,
+    address: b.address,
+    nearestLandmark: b.nearestLandmark,
+    phoneNumber: b.phoneNumber,
+    subtotal: Number(b.subtotal || 0),
+    discountCode: b.discountCode || '',
+    discountAmount: Number(b.discountAmount || 0),
+    deliveryFee: Number(b.deliveryFee || 0),
+    finalTotal: Number(b.finalTotal || 0),
+    accountId: session.accountId,
+    accountOrderNumber,
+    status: 'processing',
+    createdAt: new Date().toISOString(),
+  }).select('id').single();
+  if (orderError) return res.status(400).json({ error: orderError.message });
+  res.status(201).json({ id: createdOrder.id });
 });
 
-app.get('/api/account/orders', (req, res) => {
+app.get('/api/account/orders', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول' });
-  const orders = db.prepare('SELECT * FROM orders WHERE accountId = ? ORDER BY datetime(createdAt) DESC').all(session.accountId);
-  res.json(orders.map((order) => {
-    const discount = order.discountCode ? db.prepare('SELECT type, value FROM discounts WHERE code = ?').get(order.discountCode) : null;
-    return {
-      ...order,
-      items: parseItems(order.items),
-      isRead: Boolean(order.isRead),
-      accountOrderNumber: order.accountOrderNumber || null,
-      discountType: discount?.type || null,
-      discountValue: discount?.value || 0,
-    };
+  if (!requireSupabase(res)) return;
+  const { data: orders, error } = await supabaseServer.from('orders').select('*').eq('accountId', session.accountId).order('createdAt', { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  const discountCodes = [...new Set((orders || []).map((order) => order.discountCode).filter(Boolean))];
+  const { data: discounts, error: discountsError } = discountCodes.length
+    ? await supabaseServer.from('discounts').select('code, type, value').in('code', discountCodes)
+    : { data: [], error: null };
+  if (discountsError) return res.status(500).json({ error: discountsError.message });
+  const discountMap = new Map((discounts || []).map((discount) => [discount.code, discount]));
+  res.json((orders || []).map((order) => {
+    const normalized = normalizeOrderRow(order);
+    const discount = discountMap.get(order.discountCode);
+    return { ...normalized, discountType: discount?.type || null, discountValue: discount?.value || 0 };
   }));
 });
 
-app.patch('/api/orders/:id', (req, res) => {
+app.patch('/api/orders/:id', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  if (req.body.status) db.prepare('UPDATE orders SET status=? WHERE id=?').run(req.body.status, req.params.id);
-  if (req.body.isRead !== undefined) db.prepare('UPDATE orders SET isRead=? WHERE id=?').run(req.body.isRead ? 1 : 0, req.params.id);
+  if (!requireSupabase(res)) return;
+  const updates = {};
+  if (req.body.status) updates.status = req.body.status;
+  if (req.body.isRead !== undefined) updates.isRead = Boolean(req.body.isRead);
+  if (!Object.keys(updates).length) return res.json({ ok: true });
+  const { error } = await supabaseServer.from('orders').update(updates).eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
   res.json({ ok: true });
 });
 
-app.get('/api/admin/analytics', (req, res) => {
+app.get('/api/admin/analytics', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
+  if (!requireSupabase(res)) return;
 
-  const homeViews = db.prepare("SELECT COUNT(*) as count FROM page_views WHERE type='home'").get().count;
-  const productViews = db.prepare("SELECT COUNT(*) as count FROM page_views WHERE type='product'").get().count;
-  const orders = db.prepare('SELECT * FROM orders').all();
+  const [{ count: homeViews, error: homeViewsError }, { count: productViews, error: productViewsError }, { data: orderRows, error: ordersError }] = await Promise.all([
+    supabaseServer.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'home'),
+    supabaseServer.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'product'),
+    supabaseServer.from('orders').select('*'),
+  ]);
+  if (homeViewsError || productViewsError || ordersError) return res.status(500).json({ error: (homeViewsError || productViewsError || ordersError).message });
+  const orders = (orderRows || []).map(normalizeOrderRow);
   const deliveredOrders = orders.filter((order) => order.status === 'delivered');
   const cancelledOrders = orders.filter((order) => order.status === 'cancelled');
 
@@ -633,7 +611,7 @@ app.get('/api/admin/analytics', (req, res) => {
   }, 0);
 
   res.json({
-    totalViews: homeViews + productViews,
+    totalViews: (homeViews || 0) + (productViews || 0),
     homeViews,
     productViews,
     orderStats,
@@ -645,39 +623,50 @@ app.get('/api/admin/analytics', (req, res) => {
   });
 });
 
-app.get('/api/admin/site-settings', (req, res) => {
+app.get('/api/admin/site-settings', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
-  res.json(getSiteSettings());
+  try {
+    res.json(await getSiteSettings());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.post('/api/admin/reset-store', (req, res) => {
+app.post('/api/admin/reset-store', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إعادة ضبطه' });
+  if (!requireSupabase(res)) return;
 
-  db.exec(`
-    DELETE FROM products;
-    DELETE FROM discounts;
-    DELETE FROM orders;
-    DELETE FROM page_views;
-    DELETE FROM account_carts;
-    DELETE FROM account_coupons;
-    DELETE FROM admin_invites;
-    DELETE FROM site_settings;
-    DELETE FROM sqlite_sequence WHERE name IN ('products', 'discounts', 'orders', 'page_views', 'site_settings', 'account_carts', 'account_coupons');
-  `);
+  const resetOperations = await Promise.all([
+    supabaseServer.from('account_coupons').delete().neq('discountId', 0),
+    supabaseServer.from('account_carts').delete().neq('accountId', '00000000-0000-0000-0000-000000000000'),
+    supabaseServer.from('orders').delete().neq('id', 0),
+    supabaseServer.from('products').delete().neq('id', 0),
+    supabaseServer.from('discounts').delete().neq('id', 0),
+    supabaseServer.from('page_views').delete().neq('id', 0),
+    supabaseServer.from('admin_invites').delete().neq('identifier', ''),
+    supabaseServer.from('site_settings').delete().neq('id', 0),
+  ]);
+  const resetError = resetOperations.find((result) => result.error)?.error;
+  if (resetError) return res.status(500).json({ error: resetError.message });
 
-  db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(defaultSiteSettings.storeName, defaultSiteSettings.tagline, defaultSiteSettings.logoUrl, defaultSiteSettings.heroTitle, defaultSiteSettings.heroDescription, defaultSiteSettings.heroImageUrl, defaultSiteSettings.heroButtonText, defaultSiteSettings.instagramUrl, defaultSiteSettings.tiktokUrl, defaultSiteSettings.facebookUrl, defaultSiteSettings.whatsappUrl, 0);
-
-  if (!db.prepare('SELECT COUNT(*) as count FROM discounts').get().count) {
-    db.prepare('INSERT INTO discounts (code, type, value, active) VALUES (?, ?, ?, 1)').run('NASAQ10', 'percentage', 10);
-  }
+  const [{ error: settingsError }, { error: defaultDiscountError }] = await Promise.all([
+    supabaseServer.from('site_settings').insert(defaultSiteSettings),
+    supabaseServer.from('discounts').insert({ code: 'NASAQ10', type: 'percentage', value: 10, active: true }),
+  ]);
+  if (settingsError || defaultDiscountError) return res.status(500).json({ error: (settingsError || defaultDiscountError).message });
 
   res.json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
 });
 
-app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCount: 1 }, { name: 'heroImage', maxCount: 1 }]), (req, res) => {
+app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCount: 1 }, { name: 'heroImage', maxCount: 1 }]), async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع تعديل الإعدادات' });
-  const previous = getSiteSettings();
+  if (!requireSupabase(res)) return;
+  let previous;
+  try {
+    previous = await getSiteSettings();
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
   const logoUrl = req.files?.logoImage?.[0] ? `/uploads/${req.files.logoImage[0].filename}` : (req.body.logoUrl || previous.logoUrl || '');
   const heroImageUrl = req.files?.heroImage?.[0] ? `/uploads/${req.files.heroImage[0].filename}` : (req.body.heroImageUrl || previous.heroImageUrl || '');
 
@@ -698,14 +687,11 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
     maintenanceMode: req.body.maintenanceMode === 'true' || req.body.maintenanceMode === true,
   };
 
-  const existing = db.prepare('SELECT * FROM site_settings ORDER BY id DESC LIMIT 1').get();
-  if (existing) {
-    db.prepare('UPDATE site_settings SET storeName=?, tagline=?, logoUrl=?, heroTitle=?, heroDescription=?, heroImageUrl=?, heroButtonText=?, instagramUrl=?, tiktokUrl=?, facebookUrl=?, whatsappUrl=?, aboutTitle=?, aboutText=?, maintenanceMode=? WHERE id=?')
-      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.aboutTitle, settings.aboutText, settings.maintenanceMode ? 1 : 0, existing.id);
-  } else {
-    db.prepare('INSERT INTO site_settings (storeName, tagline, logoUrl, heroTitle, heroDescription, heroImageUrl, heroButtonText, instagramUrl, tiktokUrl, facebookUrl, whatsappUrl, aboutTitle, aboutText, maintenanceMode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(settings.storeName, settings.tagline, settings.logoUrl, settings.heroTitle, settings.heroDescription, settings.heroImageUrl, settings.heroButtonText, settings.instagramUrl, settings.tiktokUrl, settings.facebookUrl, settings.whatsappUrl, settings.aboutTitle, settings.aboutText, settings.maintenanceMode ? 1 : 0);
-  }
+  const { data: existing } = await supabaseServer.from('site_settings').select('id').order('id', { ascending: false }).limit(1).maybeSingle();
+  const { error } = existing
+    ? await supabaseServer.from('site_settings').update(settings).eq('id', existing.id)
+    : await supabaseServer.from('site_settings').insert(settings);
+  if (error) return res.status(400).json({ error: error.message });
 
   res.json({ ...defaultSiteSettings, ...settings, maintenanceMode: Boolean(settings.maintenanceMode) });
 });
