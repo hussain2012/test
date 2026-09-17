@@ -204,6 +204,7 @@ function StoreNav({ settings }) {
         {!user && <Link to="/login">تسجيل الدخول</Link>}
         {user && <Link to="/my-orders">طلباتي</Link>}
         {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
+        {profile?.role === 'admin' && <Link to="/admin/settings">إعدادات المتجر</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
       </nav>
     </header>
