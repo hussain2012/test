@@ -191,7 +191,7 @@ function App() {
 
 function StoreNav({ settings }) {
   const { count } = useCart();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
 
   return (
     <header className="nav">
@@ -203,6 +203,7 @@ function StoreNav({ settings }) {
         <Link to="/">المتجر</Link>
         {!user && <Link to="/login">تسجيل الدخول</Link>}
         {user && <Link to="/my-orders">طلباتي</Link>}
+        {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
       </nav>
     </header>
