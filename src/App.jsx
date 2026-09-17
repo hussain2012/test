@@ -644,7 +644,7 @@ function Login() {
       return;
     }
     if (mode === 'register') {
-      setMessage(result.data.session ? 'تم إنشاء الحساب وتسجيل الدخول.' : 'تم إنشاء الحساب. تحقق من بريدك الإلكتروني ثم سجّل الدخول.');
+      setMessage('تم إنشاء الحساب. يمكنك تسجيل الدخول الآن.');
       setMode('login');
       setPassword('');
       return;
