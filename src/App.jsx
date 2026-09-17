@@ -430,11 +430,13 @@ function ProductDetailPage() {
 function Field({ label, name, type = 'text', inputMode, value, onChange, placeholder, required = true, allowReveal = false, onKeyDown }) {
   const [revealed, setRevealed] = useState(false);
   const inputType = allowReveal && revealed ? 'text' : type;
+  const changeHandler = typeof onChange === 'function' ? onChange : undefined;
+  const keyDownHandler = typeof onKeyDown === 'function' ? onKeyDown : undefined;
   return (
     <label className="field-label">
       {label}
       <span className="input-with-action">
-        <input name={name} type={inputType} inputMode={inputMode} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} required={required} />
+        <input name={name} type={inputType} inputMode={inputMode} value={value} onChange={changeHandler} onKeyDown={keyDownHandler} placeholder={placeholder} required={required} />
         {allowReveal && <button type="button" className="reveal-password" onClick={() => setRevealed((current) => !current)} aria-label={revealed ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}>{revealed ? 'إخفاء' : 'إظهار'}</button>}
       </span>
     </label>
