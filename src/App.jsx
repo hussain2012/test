@@ -427,14 +427,14 @@ function ProductDetailPage() {
   );
 }
 
-function Field({ label, name, type = 'text', value, onChange, placeholder, required = true, allowReveal = false, onKeyDown }) {
+function Field({ label, name, type = 'text', inputMode, value, onChange, placeholder, required = true, allowReveal = false, onKeyDown }) {
   const [revealed, setRevealed] = useState(false);
   const inputType = allowReveal && revealed ? 'text' : type;
   return (
     <label className="field-label">
       {label}
       <span className="input-with-action">
-        <input name={name} type={inputType} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} required={required} />
+        <input name={name} type={inputType} inputMode={inputMode} value={value} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder} required={required} />
         {allowReveal && <button type="button" className="reveal-password" onClick={() => setRevealed((current) => !current)} aria-label={revealed ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}>{revealed ? 'إخفاء' : 'إظهار'}</button>}
       </span>
     </label>
@@ -637,10 +637,13 @@ function Login() {
     event.preventDefault();
     setError('');
     setMessage('');
-    const email = identifier.trim().toLowerCase();
+    const value = identifier.trim();
+    const phone = /^07\d{9}$/.test(value) ? `+964${value.slice(1)}` : value;
+    const isPhone = /^\+9647\d{9}$/.test(phone);
+    const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
     const result = mode === 'login'
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password });
+      ? await supabase.auth.signInWithPassword(credentials)
+      : await supabase.auth.signUp(credentials);
     if (result.error) {
       setError(result.error.message || 'تعذر إتمام العملية');
       return;
@@ -668,7 +671,7 @@ function Login() {
           <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button>
         </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
-        <Field label="البريد الإلكتروني" name="identifier" type="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+        <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" type="text" inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}
