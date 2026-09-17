@@ -205,6 +205,7 @@ function StoreNav({ settings }) {
         {user && <Link to="/my-orders">طلباتي</Link>}
         {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
+        {user && <button type="button" className="store-logout" onClick={() => supabase.auth.signOut()}>تسجيل الخروج</button>}
       </nav>
     </header>
   );
