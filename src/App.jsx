@@ -1072,7 +1072,7 @@ function DiscountsAdmin() {
 
 function AnalyticsAdmin() {
   const [stats, setStats] = useState({ totalViews: 0, homeViews: 0, productViews: 0, currentRevenue: 0, lastRevenue: 0, growth: 0, totalProfit: 0, totalLosses: 0, orderStats: {} });
-  const [accountCount, setAccountCount] = useState(0);
+  const [accountsTotal, setAccountsTotal] = useState(0);
 
   useEffect(() => {
     Promise.all([
@@ -1081,7 +1081,7 @@ function AnalyticsAdmin() {
     ])
       .then(([analyticsData, accounts]) => {
         setStats(analyticsData || {});
-        setAccountCount(typeof accounts === 'number' ? accounts : 0);
+        setAccountsTotal(typeof accounts === 'number' ? accounts : 0);
       })
       .catch(() => {});
   }, []);
@@ -1093,7 +1093,7 @@ function AnalyticsAdmin() {
       <div><span>إيرادات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong></div>
       <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong></div>
       <div><span>الأرباح</span><strong>{money(stats.totalProfit)}</strong></div>
-      <div><span>الحسابات المسجلة</span><strong>{accountCount}</strong></div>
+      <div><span>الحسابات المسجلة</span><strong>{accountsTotal}</strong></div>
     </div>
   );
 }
@@ -1143,7 +1143,7 @@ function AdminsAdmin() {
       </div>
 
       {showAddForm && <form className="admin-form compact manager-add-form" onSubmit={addAdmin}>
-        <input type="text" inputMode="email" placeholder="البريد الإلكتروني أو رقم الهاتف" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
+        <input type="email" inputMode="email" placeholder="البريد الإلكتروني" value={identifier} onChange={(event) => setIdentifier(event.target.value)} required />
         <button type="submit" className="primary">إضافة</button>
         {message && <p className="success-message">{message}</p>}
         {error && <p className="error">{error}</p>}
