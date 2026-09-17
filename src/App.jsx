@@ -1,55 +1,20 @@
 ﻿import { useEffect, useRef, useState, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
+import {
+  accountCount, adminProducts, analytics, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
+  defaultSettings, getAccountOrders, getCart, getProduct, getSiteSettings, inviteAdmin, listAdmins, listDiscounts,
+  listOrders, listProducts, recordView, removeAdmin, resetStore as resetStoreData, saveCart, saveCoupon, saveSiteSettings, updateDiscount,
+  unreadOrderCount, updateOrder, updateProduct, validateDiscount,
+} from './lib/supabaseData';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
-const API = `${API_BASE_URL}/api`;
 const mediaUrl = (value) => {
   const source = String(value || '').trim();
   if (!source || source.startsWith('blob:')) return '';
-  if (source.startsWith('/uploads/')) return `${API_BASE_URL}${source}`;
   return source;
 };
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
-const defaultSettings = {
-  storeName: 'نسق',
-  tagline: 'اختيارات تصنع يومك',
-  logoUrl: '',
-  heroTitle: 'أشياء صغيرة، فرق كبير',
-  heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.',
-  heroImageUrl: '',
-  heroButtonText: 'اكتشف المجموعة',
-  instagramUrl: '',
-  tiktokUrl: '',
-  facebookUrl: '',
-  whatsappUrl: '',
-  aboutTitle: 'من نحن؟',
-  aboutText: '',
-};
-
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
-
-const getAuthHeaders = async (headers = {}) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  return {
-    ...headers,
-    ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-  };
-};
-
-const authenticatedFetch = async (url, options = {}) => fetch(url, {
-  ...options,
-  headers: await getAuthHeaders(options.headers),
-});
-
-const adminFetch = async (url, options = {}) => {
-  const response = await authenticatedFetch(url, options);
-  if (response.status === 401) {
-    await supabase.auth.signOut();
-    window.location.href = '/login';
-  }
-  return response;
-};
 
 const AuthContext = createContext(null);
 
@@ -99,7 +64,8 @@ function CartProvider({ children }) {
   const accountCartLoaded = useRef(!session);
   const [cart, setCart] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('cart') || '[]');
+      const storedCart = JSON.parse(localStorage.getItem('cart') || '[]');
+      return Array.isArray(storedCart) ? storedCart : [];
     } catch {
       return [];
     }
@@ -108,11 +74,7 @@ function CartProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(cart));
     if (!accountCartLoaded.current || !session) return;
-    authenticatedFetch(`${API}/account/cart`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: cart }),
-    }).catch(() => {});
+    saveCart(session.user.id, cart).catch(() => {});
   }, [cart, session]);
 
   useEffect(() => {
@@ -123,10 +85,8 @@ function CartProvider({ children }) {
       }
       accountCartLoaded.current = false;
       try {
-        const response = await authenticatedFetch(`${API}/account/cart`);
-        if (!response.ok) return;
-        const data = await response.json();
-        setCart(Array.isArray(data.items) ? data.items : []);
+        const items = await getCart(session.user.id);
+        setCart(Array.isArray(items) ? items : []);
       } finally {
         accountCartLoaded.current = true;
       }
@@ -141,18 +101,18 @@ function CartProvider({ children }) {
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id);
       if (existing) {
-        return current.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + quantity, price: sellingPrice } : item);
+        return (Array.isArray(current) ? current : []).map((item) => item.id === product.id ? { ...item, quantity: item.quantity + quantity, price: sellingPrice } : item);
       }
       return [...current, { ...product, id: Number(product.id), quantity, price: sellingPrice }];
     });
   };
 
   const updateItem = (id, quantity) => {
-    setCart((current) => quantity < 1 ? current.filter((item) => item.id !== id) : current.map((item) => item.id === id ? { ...item, quantity } : item));
+    setCart((current) => quantity < 1 ? (Array.isArray(current) ? current : []).filter((item) => item.id !== id) : (Array.isArray(current) ? current : []).map((item) => item.id === id ? { ...item, quantity } : item));
   };
 
   const clearCart = () => setCart([]);
-  const subtotal = cart.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0);
+  const subtotal = (Array.isArray(cart) ? cart : []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0);
 
   return (
     <CartContext.Provider value={{ cart, addItem, updateItem, clearCart, count: cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0), subtotal }}>
@@ -165,9 +125,8 @@ function useSiteSettings() {
   const [settings, setSettings] = useState(defaultSettings);
 
   useEffect(() => {
-    fetch(`${API}/site-settings`)
-      .then((res) => res.json())
-      .then((data) => setSettings({ ...defaultSettings, ...data }))
+    getSiteSettings()
+      .then((data) => setSettings({ ...defaultSettings, ...(data || {}) }))
       .catch(() => setSettings(defaultSettings));
   }, []);
 
@@ -260,21 +219,16 @@ function Store() {
   const productsPerPage = 9;
 
   useEffect(() => {
-    fetch(`${API}/analytics/view`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'home' }),
-    }).catch(() => {});
-
-    fetch(`${API}/products`)
-      .then((res) => res.json())
-      .then(setProducts)
+    recordView('home').catch(() => {});
+    listProducts()
+      .then((data) => setProducts(Array.isArray(data) ? data : []))
       .catch(() => setProducts([]))
       .finally(() => setLoading(false));
   }, []);
 
-  const categories = ['الكل', ...new Set(products.map((product) => product.category || 'عام'))];
-  const visibleProducts = products.filter((product) => {
+  const safeProducts = Array.isArray(products) ? products : [];
+  const categories = ['الكل', ...new Set(safeProducts.map((product) => product.category || 'عام'))];
+  const visibleProducts = safeProducts.filter((product) => {
     const matchesCategory = category === 'الكل' || product.category === category;
     const query = search.trim().toLowerCase();
     const matchesQuery = !query || product.name.toLowerCase().includes(query);
@@ -406,20 +360,12 @@ function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState('');
 
   useEffect(() => {
-    fetch(`${API}/analytics/view`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'product' }),
-    }).catch(() => {});
+    recordView('product').catch(() => {});
 
     setLoading(true);
     setError('');
-    fetch(`${API}/products/${id}`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'تعذر تحميل المنتج');
-        return data;
-      })
+    getProduct(id)
+      .then((data) => { if (!data) throw new Error('تعذر تحميل المنتج'); return data; })
       .then((data) => {
         setProduct(data);
         setSelectedImage(data.productImages?.[0] || data.imageUrl || '');
@@ -447,7 +393,7 @@ function ProductDetailPage() {
           <div className="detail-image-wrap">
             <ProductImage src={selectedImage} alt={product.name} />
             <div className="detail-thumbnails">
-              {(product.productImages?.length ? product.productImages : [product.imageUrl]).filter(Boolean).map((image, index) => (
+              {(Array.isArray(product.productImages) && product.productImages.length ? product.productImages : [product.imageUrl]).filter(Boolean).map((image, index) => (
                 <button type="button" className={selectedImage === image ? 'selected' : ''} key={`${image}-${index}`} onClick={() => setSelectedImage(image)}>
                   <ProductImage src={image} alt={`${product.name} ${index + 1}`} />
                 </button>
@@ -511,17 +457,14 @@ function Checkout() {
 
   const applyDiscount = async () => {
     if (!form.discountCode.trim()) return;
-    const res = await fetch(`${API}/discounts/validate/${encodeURIComponent(form.discountCode.trim())}`);
-    const data = await res.json();
+    const data = await validateDiscount(form.discountCode.trim());
     setDiscount(data || null);
     if (!data) {
       setError('كود الخصم غير صالح أو غير فعال');
       return;
     }
     if (user) {
-      authenticatedFetch(`${API}/account/coupons/${encodeURIComponent(data.code)}`, {
-        method: 'POST',
-      }).catch(() => {});
+      saveCoupon(user.id, data.id).catch(() => {});
     }
   };
 
@@ -536,7 +479,7 @@ function Checkout() {
     if (!cart.length) return setError('السلة فارغة');
 
     const payload = {
-      items: cart.map((item) => ({ productId: item.id, name: item.name, price: Number(item.price || 0), quantity: Number(item.quantity || 0) })),
+      items: (Array.isArray(cart) ? cart : []).map((item) => ({ productId: item.id, name: item.name, price: Number(item.price || 0), quantity: Number(item.quantity || 0) })),
       customerName: form.customerName,
       province: form.province,
       address: form.address,
@@ -549,18 +492,12 @@ function Checkout() {
       finalTotal: total,
     };
 
-    const res = await authenticatedFetch(`${API}/orders`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await res.json();
-    if (data.id) {
+    try {
+      const orderId = await createOrder(payload, user.id);
       clearCart();
-      setDone(data.id);
-    } else {
-      setError(data.error || 'تعذر إرسال الطلب');
+      setDone(orderId);
+    } catch (reason) {
+      setError(reason.message || 'تعذر إرسال الطلب');
     }
   };
 
@@ -614,7 +551,7 @@ function Checkout() {
 
             <aside className="receipt">
               <h2>ملخص الطلب</h2>
-              {cart.map((item) => (
+              {(Array.isArray(cart) ? cart : []).map((item) => (
                 <div className="receipt-item" key={item.id}>
                   <ProductImage src={item.imageUrl} alt={item.name} />
                   <div>
@@ -643,15 +580,17 @@ function Checkout() {
 }
 
 function MyOrders() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    authenticatedFetch(`${API}/account/orders`)
-      .then((res) => res.ok ? res.json() : [])
-      .then(setOrders)
+    if (!user) return undefined;
+    getAccountOrders(user.id)
+      .then((data) => setOrders(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-  }, []);
+    return undefined;
+  }, [user]);
 
   const statusLabels = { new: 'جديد', processing: 'قيد التجهيز', delivered: 'تم التوصيل', cancelled: 'ملغي' };
   return (
@@ -662,9 +601,9 @@ function MyOrders() {
         <h1>طلباتي</h1>
         {loading ? <div className="empty">جاري تحميل الطلبات...</div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
-            {orders.map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
+            {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
               <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
-              <div className="account-order-items">{(order.items || []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
+              <div className="account-order-items">{(Array.isArray(order.items) ? order.items : []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
               <div className="account-order-totals"><span>المجموع: {money(order.subtotal)}</span><span>الخصم {order.discountValue ? `(${order.discountType === 'percentage' ? `${order.discountValue}%` : money(order.discountValue)})` : ''}: - {money(order.discountAmount)}</span><span>التوصيل: {money(order.deliveryFee)}</span><strong>الإجمالي: {money(order.finalTotal)}</strong></div>
             </article>)}
           </div>
@@ -799,15 +738,12 @@ function Overview() {
 
   useEffect(() => {
     Promise.all([
-      adminFetch(`${API}/admin/analytics`),
-      adminFetch(`${API}/orders`),
-      adminFetch(`${API}/orders/unread-count`),
+      analytics(),
+      listOrders(),
+      unreadOrderCount(),
     ])
-      .then(async ([analyticsRes, ordersRes, unreadRes]) => {
-        const analytics = await analyticsRes.json();
-        const orders = await ordersRes.json();
-        const unread = await unreadRes.json();
-        setStats({ ...analytics, orderCount: orders.length, unreadCount: unread.count });
+      .then(([analyticsData, orders, unreadCount]) => {
+        setStats({ ...analyticsData, orderCount: Array.isArray(orders) ? orders.length : 0, unreadCount });
       })
       .catch(() => {});
   }, []);
@@ -837,9 +773,7 @@ function ProductsAdmin() {
 
   const load = async () => {
     try {
-      const response = await adminFetch(`${API}/admin/products`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'تعذر تحميل المنتجات');
+      const data = await adminProducts();
       setItems(Array.isArray(data) ? data : []);
       setError('');
     } catch (reason) {
@@ -863,34 +797,8 @@ function ProductsAdmin() {
     event.preventDefault();
     setMessage('');
     setError('');
-    const method = editingId ? 'PUT' : 'POST';
-    const url = editingId ? `${API}/admin/products/${editingId}` : `${API}/admin/products`;
-    const payload = new FormData();
-    payload.append('name', form.name);
-    payload.append('description', form.description);
-    payload.append('price', Number(form.price));
-    payload.append('costPrice', Number(form.costPrice || 0));
-    payload.append('discountPercentage', Number(form.discountPercentage || 0));
-    payload.append('category', form.category);
-    payload.append('stockQuantity', Number(form.stockQuantity || 0));
-    payload.append('inStock', String(Boolean(form.inStock)));
-    payload.append('featured', String(Boolean(form.featured)));
-    payload.append('isNew', String(Boolean(form.isNew)));
-    payload.append('imageUrl', form.imageUrl || '');
-    payload.append('existingProductImages', JSON.stringify(form.productImages || []));
-    if (primaryImageFile) payload.append('primaryImage', primaryImageFile);
-    additionalImageFiles.forEach((file) => payload.append('productImages', file));
-
-    const response = await adminFetch(url, {
-      method,
-      body: payload,
-    });
-
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      setError(result.error || 'تعذر حفظ المنتج');
-      return;
-    }
+    const save = editingId ? updateProduct : createProduct;
+    await save({ ...form, productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
 
     resetForm();
     setMessage(editingId ? 'تم تحديث المنتج' : 'تمت إضافة المنتج');
@@ -898,8 +806,9 @@ function ProductsAdmin() {
   };
 
   const handleDelete = async (id) => {
-    const response = await adminFetch(`${API}/admin/products/${id}`, { method: 'DELETE' });
-    if (!response.ok) {
+    try {
+      await deleteProduct(id);
+    } catch {
       setError('تعذر حذف المنتج');
       return;
     }
@@ -957,7 +866,7 @@ function ProductsAdmin() {
           <h2>كل المنتجات</h2>
           <span>{items.length} منتجات</span>
         </div>
-        {items.map((product) => (
+        {(Array.isArray(items) ? items : []).map((product) => (
           <div className="table-row product-row" key={product.id}>
             <ProductImage src={product.imageUrl} alt={product.name} />
             <strong>{product.name}</strong>
@@ -982,30 +891,16 @@ function ProductsAdmin() {
 function ProductDiscountAdmin() {
   const [items, setItems] = useState([]);
 
-  const load = () => adminFetch(`${API}/admin/products`).then((res) => res.json()).then(setItems);
+  const load = () => adminProducts().then((data) => setItems(Array.isArray(data) ? data : []));
 
   useEffect(() => { load(); }, []);
 
   const updateDiscount = (productId, value) => {
-    setItems((current) => current.map((product) => product.id === productId ? { ...product, discountPercentage: Number(value || 0) } : product));
+    setItems((current) => (Array.isArray(current) ? current : []).map((product) => product.id === productId ? { ...product, discountPercentage: Number(value || 0) } : product));
   };
 
   const saveProduct = async (product) => {
-    await adminFetch(`${API}/admin/products/${product.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: product.name,
-        description: product.description,
-        price: Number(product.price),
-        costPrice: Number(product.costPrice || 0),
-        discountPercentage: Number(product.discountPercentage || 0),
-        category: product.category,
-        imageUrl: product.imageUrl || '',
-        productImages: product.productImages || [],
-        inStock: Boolean(product.inStock),
-      }),
-    });
+    await updateProduct(product.id, product);
     load();
   };
 
@@ -1015,7 +910,7 @@ function ProductDiscountAdmin() {
         <h2>خصومات المنتجات</h2>
         <span>{items.length} منتج</span>
       </div>
-      {items.map((product) => {
+      {(Array.isArray(items) ? items : []).map((product) => {
         const finalPrice = Number(product.discountPercentage || 0) > 0 ? Number(product.price) * (1 - Number(product.discountPercentage || 0) / 100) : Number(product.price || 0);
         return (
           <div className="table-row discount-row" key={product.id}>
@@ -1035,7 +930,7 @@ function OrdersAdmin() {
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('all');
 
-  const load = () => adminFetch(`${API}/orders`).then((res) => res.json()).then(setOrders);
+  const load = () => listOrders().then((data) => setOrders(Array.isArray(data) ? data : []));
 
   useEffect(() => {
     load();
@@ -1044,11 +939,7 @@ function OrdersAdmin() {
   }, []);
 
   const updateOrder = async (id, status) => {
-    await adminFetch(`${API}/orders/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, isRead: true }),
-    });
+    await updateOrder(id, { status, isRead: true });
     load();
   };
 
@@ -1068,7 +959,7 @@ function OrdersAdmin() {
       </div>
       <div className="order-legend"><span><i className="legend-dot delivered-dot" />مكتمل</span><span><i className="legend-dot cancelled-dot" />ملغي</span><span><i className="legend-dot processing-dot" />قيد التجهيز</span><span><i className="legend-unread" />غير مقروء</span></div>
 
-      {visibleOrders.map((order) => (
+      {(Array.isArray(visibleOrders) ? visibleOrders : []).map((order) => (
         <article className={`order-card status-${order.status} ${order.isRead ? '' : 'unread-order'}`} key={order.id}>
           <div className="order-card-head">
             <div>
@@ -1098,7 +989,7 @@ function OrdersAdmin() {
           </div>
 
           <div className="ordered-items">
-            {(order.items || []).map((item) => <span key={`${order.id}-${item.productId}`}>{item.name} × {item.quantity}</span>)}
+            {(Array.isArray(order.items) ? order.items : []).map((item) => <span key={`${order.id}-${item.productId}`}>{item.name} × {item.quantity}</span>)}
           </div>
         </article>
       ))}
@@ -1114,7 +1005,7 @@ function DiscountsAdmin() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const load = () => adminFetch(`${API}/discounts`).then((res) => res.json()).then(setItems);
+  const load = () => listDiscounts().then((data) => setItems(Array.isArray(data) ? data : []));
 
   useEffect(() => { load(); }, []);
 
@@ -1122,14 +1013,10 @@ function DiscountsAdmin() {
     event.preventDefault();
     setMessage('');
     setError('');
-    const response = await adminFetch(`${API}/discounts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    });
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      setError(result.error || 'تعذر إضافة الكود');
+    try {
+      await createDiscount(form);
+    } catch (reason) {
+      setError(reason.message || 'تعذر إضافة الكود');
       return;
     }
     setForm({ code: '', type: 'percentage', value: 10 });
@@ -1138,11 +1025,7 @@ function DiscountsAdmin() {
   };
 
   const toggle = async (discount) => {
-    await adminFetch(`${API}/discounts/${discount.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...discount, active: !discount.active }),
-    });
+    await updateDiscount(discount.id, { ...discount, active: !discount.active });
     load();
   };
 
@@ -1163,7 +1046,7 @@ function DiscountsAdmin() {
 
       <div className="admin-table">
         <div className="table-title"><h2>أكواد الخصم</h2></div>
-        {items.map((discount) => (
+        {(Array.isArray(items) ? items : []).map((discount) => (
           <div className="table-row" key={discount.id}>
             <strong>{discount.code}</strong>
             <span>{discount.type === 'percentage' ? 'نسبة مئوية' : 'مبلغ ثابت'}</span>
@@ -1171,7 +1054,7 @@ function DiscountsAdmin() {
             <span className={discount.active ? 'active-status' : 'inactive-status'}>{discount.active ? 'فعال' : 'متوقف'}</span>
             <div className="inline-actions">
               <button type="button" onClick={() => toggle(discount)}>{discount.active ? 'إيقاف' : 'تفعيل'}</button>
-              <button type="button" className="danger" onClick={() => adminFetch(`${API}/discounts/${discount.id}`, { method: 'DELETE' }).then(load)}>حذف</button>
+              <button type="button" className="danger" onClick={() => deleteDiscount(discount.id).then(load)}>حذف</button>
             </div>
           </div>
         ))}
@@ -1186,13 +1069,12 @@ function AnalyticsAdmin() {
 
   useEffect(() => {
     Promise.all([
-      adminFetch(`${API}/admin/analytics`),
-      fetch(`${API}/auth/account-count`),
+      analytics(),
+      accountCount(),
     ])
-      .then(async ([analyticsRes, accountsRes]) => {
-        setStats(await analyticsRes.json());
-        const accounts = await accountsRes.json();
-        setAccountCount(typeof accounts.count === 'number' ? accounts.count : 0);
+      .then(([analyticsData, accounts]) => {
+        setStats(analyticsData || {});
+        setAccountCount(typeof accounts === 'number' ? accounts : 0);
       })
       .catch(() => {});
   }, []);
@@ -1216,15 +1098,11 @@ function AdminsAdmin() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const load = () => adminFetch(`${API}/admin/admins`)
-    .then(async (res) => {
-      if (!res.ok) throw new Error('تعذر تحميل المشرفين');
-      const result = await res.json();
-      return {
-        admins: Array.isArray(result.admins) ? result.admins : [],
-        invites: Array.isArray(result.invites) ? result.invites : [],
-      };
-    })
+  const load = () => listAdmins()
+    .then((result) => ({
+      admins: Array.isArray(result?.admins) ? result.admins : [],
+      invites: Array.isArray(result?.invites) ? result.invites : [],
+    }))
     .then(setData)
     .catch(() => setData({ admins: [], invites: [] }));
   useEffect(() => { load(); }, []);
@@ -1233,23 +1111,19 @@ function AdminsAdmin() {
     event.preventDefault();
     setMessage('');
     setError('');
-    const response = await adminFetch(`${API}/admin/admins`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setError(result.error || 'تعذر إضافة المشرف');
+    try {
+      const result = await inviteAdmin(identifier);
+      setIdentifier('');
+      setMessage(result?.role === 'admin' ? 'تم تحويل الحساب إلى مشرف' : 'تم حفظ الدعوة، سيصبح مشرفاً عند إنشاء الحساب');
+    } catch (reason) {
+      setError(reason.message || 'تعذر إضافة المشرف');
       return;
     }
-    setIdentifier('');
-    setMessage(result.promoted ? 'تم تحويل الحساب إلى مشرف' : 'تم حفظ الدعوة، سيصبح مشرفاً عند إنشاء الحساب');
     load();
   };
 
-  const removeAdmin = async (value) => {
-    await adminFetch(`${API}/admin/admins/${encodeURIComponent(value)}`, { method: 'DELETE' });
+  const handleRemoveAdmin = async (value) => {
+    await removeAdmin(value);
     load();
   };
 
@@ -1257,7 +1131,7 @@ function AdminsAdmin() {
     <div className="admin-managers">
       <div className="admin-table">
         <div className="table-title manager-title"><h2>المشرفون</h2><button type="button" className="manager-add-button" onClick={() => { setShowAddForm((value) => !value); setMessage(''); setError(''); }}>+</button></div>
-        {data.admins.map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong>{admin.isOwner ? <span className="owner-label">مالك</span> : <><span>مشرف</span><button type="button" className="danger" onClick={() => removeAdmin(admin.identifier)}>إزالة</button></>}</div>)}
+        {(Array.isArray(data.admins) ? data.admins : []).map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong>{admin.isOwner ? <span className="owner-label">مالك</span> : <><span>مشرف</span><button type="button" className="danger" onClick={() => handleRemoveAdmin(admin.identifier)}>إزالة</button></>}</div>)}
         {!data.admins.length && <p className="empty">لا يوجد مشرفون</p>}
       </div>
 
@@ -1268,7 +1142,7 @@ function AdminsAdmin() {
         {error && <p className="error">{error}</p>}
       </form>}
 
-      {!!data.invites.length && <div className="admin-table"><div className="table-title"><h2>الدعوات المعلقة</h2></div>{data.invites.map((invite) => <div className="table-row manager-row" key={invite.identifier}><strong>{invite.identifier}</strong><span>بانتظار التسجيل</span><button type="button" className="danger" onClick={() => removeAdmin(invite.identifier)}>إلغاء</button></div>)}</div>}
+      {!!(Array.isArray(data.invites) && data.invites.length) && <div className="admin-table"><div className="table-title"><h2>الدعوات المعلقة</h2></div>{(Array.isArray(data.invites) ? data.invites : []).map((invite) => <div className="table-row manager-row" key={invite.identifier}><strong>{invite.identifier}</strong><span>بانتظار التسجيل</span><button type="button" className="danger" onClick={() => handleRemoveAdmin(invite.identifier)}>إلغاء</button></div>)}</div>}
     </div>
   );
 }
@@ -1280,8 +1154,7 @@ function SiteSettingsAdmin() {
   const lastSavedSettings = useRef('');
 
   const loadSettings = () => {
-    adminFetch(`${API}/admin/site-settings`)
-      .then((res) => res.json())
+    getSiteSettings()
       .then((data) => {
         const nextSettings = { ...defaultSettings, ...data };
         lastSavedSettings.current = JSON.stringify(nextSettings);
@@ -1296,23 +1169,16 @@ function SiteSettingsAdmin() {
   const saveSettings = async (nextSettings, automatic = false) => {
     setStatusMessage('');
     setStatusError('');
-    const formData = new FormData();
-    Object.entries(nextSettings).forEach(([key, value]) => {
-      if (value !== null && value !== undefined) formData.append(key, value);
-    });
-    const response = await authenticatedFetch(`${API}/admin/site-settings`, {
-      method: 'POST',
-      body: formData,
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setStatusError(data.error || 'تعذر حفظ إعدادات المتجر');
+    try {
+      const data = await saveSiteSettings(nextSettings);
+      const savedSettings = { ...defaultSettings, ...data };
+      lastSavedSettings.current = JSON.stringify(savedSettings);
+      setSettings(savedSettings);
+      if (!automatic) setStatusMessage('تم حفظ إعدادات المتجر');
+    } catch (reason) {
+      setStatusError(reason.message || 'تعذر حفظ إعدادات المتجر');
       return;
     }
-    const savedSettings = { ...defaultSettings, ...data };
-    lastSavedSettings.current = JSON.stringify(savedSettings);
-    setSettings(savedSettings);
-    if (!automatic) setStatusMessage('تم حفظ إعدادات المتجر');
   };
 
   useEffect(() => {
@@ -1338,15 +1204,14 @@ function SiteSettingsAdmin() {
     setStatusMessage('');
     setStatusError('');
 
-    const response = await adminFetch(`${API}/admin/reset-store`, { method: 'POST' });
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setStatusError(result.error || 'تعذر إعادة ضبط المتجر');
+    try {
+      await resetStoreData();
+    } catch (reason) {
+      setStatusError(reason.message || 'تعذر إعادة ضبط المتجر');
       return;
     }
 
-    setStatusMessage(result.message || 'تمت إعادة ضبط المتجر');
+    setStatusMessage('تمت إعادة ضبط المتجر');
     loadSettings();
   };
 
