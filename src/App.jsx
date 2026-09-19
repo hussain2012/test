@@ -192,11 +192,12 @@ function App() {
 function StoreNav({ settings }) {
   const { count } = useCart();
   const { user, profile } = useAuth();
+  const storeName = settings.storeName || 'نسق';
 
   return (
     <header className="nav">
       <Link to="/" className="brand store-wordmark">
-        <span>نسق</span>
+        <span>{storeName}</span>
         <small>{settings.tagline || 'اختيارات تصنع يومك'}</small>
       </Link>
       <nav>
