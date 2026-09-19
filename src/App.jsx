@@ -645,51 +645,34 @@ function Login() {
       setError('أدخل بريداً إلكترونياً صحيحاً لإرسال رمز التحقق');
       return false;
     }
-    try {
-      const response = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setError(result.error || 'تعذر إرسال رمز التحقق');
-        return false;
-      }
-      setOtpStep(true);
-      setMessage('تم إرسال رمز التحقق إلى بريدك الإلكتروني.');
-      return true;
-    } catch {
-      setError('تعذر الاتصال بخادم التحقق');
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    if (authError) {
+      setError(authError.message || 'تعذر إرسال رمز التحقق');
       return false;
     }
+    setOtpStep(true);
+    setMessage('تم إرسال رمز التحقق إلى بريدك الإلكتروني.');
+    return true;
   };
 
   const verifyEmailOtp = async (event) => {
     event.preventDefault();
     setError('');
     setMessage('');
-    let result;
-    try {
-      const response = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: identifier.trim().toLowerCase(), otp, password }),
-      });
-      result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setError(result.error || 'تعذر تأكيد الرمز');
-        return;
-      }
-    } catch {
-      setError('تعذر الاتصال بخادم التحقق');
+    const email = identifier.trim().toLowerCase();
+    const { error: authError } = await supabase.auth.verifyOtp({
+      email,
+      token: otp,
+      type: 'email',
+    });
+    if (authError) {
+      setError(authError.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية');
       return;
     }
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
-    if (signInError) {
-      setError(signInError.message || 'تم إنشاء الحساب، لكن تعذر تسجيل الدخول تلقائياً');
-      return;
-    }
+    setMessage('تم تأكيد بريدك الإلكتروني بنجاح.');
     navigate('/');
   };
 
@@ -723,6 +706,7 @@ function Login() {
   };
 
   const { user, profile, loading } = useAuth();
+  const isPhoneRegistration = /^(07\d{9}|\+9647\d{9})$/.test(identifier.trim());
   if (!loading && user && profile?.role === 'admin') {
     return <Navigate to="/admin" replace />;
   }
@@ -737,7 +721,7 @@ function Login() {
         </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
         <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" type="text" inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
-        <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />
+        {(mode === 'login' || isPhoneRegistration) && <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />}
         {mode === 'register' && otpStep && <Field label="رمز التحقق" name="otp" type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} />}
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}

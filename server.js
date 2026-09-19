@@ -7,7 +7,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { Resend } from 'resend';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -17,13 +16,6 @@ const supabaseKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const supabaseServer = supabaseUrl && supabaseKey
   ? createClient(supabaseUrl, supabaseKey, { auth: { autoRefreshToken: false, persistSession: false } })
   : null;
-const resendApiKey = String(process.env.RESEND_API_KEY || '').trim();
-const resendFromEmail = String(process.env.RESEND_FROM_EMAIL || '').trim();
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
-const otpStore = new Map();
-const OTP_TTL_MS = 5 * 60 * 1000;
-const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
-const OTP_MAX_ATTEMPTS = 5;
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({
@@ -57,23 +49,6 @@ const parseItems = (value) => {
     return [];
   }
 };
-
-const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
-const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-const hashOtp = (otp) => crypto.createHash('sha256').update(`${otp}:${process.env.OTP_HASH_SECRET || 'local-otp-secret'}`).digest('hex');
-const createOtp = () => String(crypto.randomInt(100000, 1000000));
-
-const otpEmailHtml = (otp) => `
-  <div dir="rtl" style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px;color:#183b35;background:#f7faf8">
-    <div style="background:#ffffff;border:1px solid #dce9e3;border-radius:16px;padding:32px;text-align:center">
-      <div style="font-size:26px;font-weight:700;margin-bottom:12px">نسق</div>
-      <h1 style="font-size:22px;margin:0 0 12px">تأكيد بريدك الإلكتروني</h1>
-      <p style="font-size:15px;line-height:1.8;color:#5b6f69">استخدم رمز التحقق التالي لإكمال إنشاء حسابك. الرمز صالح لمدة 5 دقائق.</p>
-      <div style="direction:ltr;letter-spacing:8px;font-size:34px;font-weight:700;color:#16745f;background:#edf7f2;border-radius:12px;padding:16px;margin:24px 0">${otp}</div>
-      <p style="font-size:13px;color:#7a8985;margin:0">إذا لم تطلب هذا الرمز، يمكنك تجاهل هذه الرسالة.</p>
-    </div>
-  </div>
-`;
 
 const defaultSiteSettings = {
   id: 1,
@@ -127,66 +102,6 @@ app.use(async (req, res, next) => {
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
-});
-
-app.post('/api/auth/send-otp', async (req, res) => {
-  const email = normalizeEmail(req.body.email);
-  if (!isValidEmail(email)) return res.status(400).json({ error: 'أدخل بريداً إلكترونياً صحيحاً' });
-  if (!resend || !resendFromEmail) return res.status(503).json({ error: 'خدمة البريد غير مهيأة على الخادم' });
-
-  const previous = otpStore.get(email);
-  const now = Date.now();
-  if (previous && now - previous.createdAt < OTP_RESEND_COOLDOWN_MS) {
-    const waitSeconds = Math.ceil((OTP_RESEND_COOLDOWN_MS - (now - previous.createdAt)) / 1000);
-    return res.status(429).json({ error: `انتظر ${waitSeconds} ثانية قبل طلب رمز جديد` });
-  }
-
-  const otp = createOtp();
-  try {
-    const { error } = await resend.emails.send({
-      from: resendFromEmail,
-      to: [email],
-      subject: 'رمز التحقق من نسق',
-      html: otpEmailHtml(otp),
-    });
-    if (error) return res.status(502).json({ error: 'تعذر إرسال رسالة التحقق' });
-    otpStore.set(email, { hash: hashOtp(otp), createdAt: now, expiresAt: now + OTP_TTL_MS, attempts: 0 });
-    res.json({ ok: true, expiresInSeconds: OTP_TTL_MS / 1000 });
-  } catch (error) {
-    console.error('Resend OTP error:', error);
-    res.status(502).json({ error: 'تعذر إرسال رسالة التحقق' });
-  }
-});
-
-app.post('/api/auth/verify-otp', async (req, res) => {
-  const email = normalizeEmail(req.body.email);
-  const otp = String(req.body.otp || '').trim();
-  const password = String(req.body.password || '');
-  if (!isValidEmail(email) || !/^\d{6}$/.test(otp)) return res.status(400).json({ error: 'أدخل البريد والرمز المكون من 6 أرقام' });
-  if (password.length < 6) return res.status(400).json({ error: 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل' });
-  if (!supabaseServer) return res.status(503).json({ error: 'Supabase غير مهيأ على الخادم' });
-
-  const record = otpStore.get(email);
-  if (!record || Date.now() > record.expiresAt) {
-    otpStore.delete(email);
-    return res.status(400).json({ error: 'انتهت صلاحية الرمز. اطلب رمزاً جديداً' });
-  }
-  if (record.attempts >= OTP_MAX_ATTEMPTS) {
-    otpStore.delete(email);
-    return res.status(429).json({ error: 'تم تجاوز عدد المحاولات. اطلب رمزاً جديداً' });
-  }
-  record.attempts += 1;
-  if (hashOtp(otp) !== record.hash) return res.status(400).json({ error: 'رمز التحقق غير صحيح' });
-
-  try {
-    const { data, error } = await supabaseServer.auth.admin.createUser({ email, password, email_confirm: true });
-    if (error) return res.status(400).json({ error: error.message || 'تعذر إنشاء الحساب' });
-    otpStore.delete(email);
-    res.status(201).json({ ok: true, userId: data.user?.id });
-  } catch (error) {
-    console.error('OTP verification error:', error);
-    res.status(500).json({ error: 'تعذر تأكيد الحساب حالياً' });
-  }
 });
 
 const normalizeSiteSettings = (row) => ({
