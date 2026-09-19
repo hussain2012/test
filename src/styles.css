@@ -879,8 +879,8 @@ button { cursor: pointer; }
 .stats > div {
   background: var(--paper);
   border: 1px solid var(--line);
-  padding: 24px;
-  aspect-ratio: 1 / 1;
+  padding: 20px;
+  min-height: 180px;
   min-width: 0;
   display: flex;
   flex-direction: column;
