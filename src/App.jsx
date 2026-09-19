@@ -201,12 +201,11 @@ function StoreNav({ settings }) {
         <small>{settings.tagline || 'اختيارات تصنع يومك'}</small>
       </Link>
       <nav>
-        <Link to="/">المتجر</Link>
         {!user && <Link to="/login">تسجيل الدخول</Link>}
-        {user && <Link to="/my-orders">طلباتي</Link>}
-        {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
-        <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
         {user && <button type="button" className="store-logout" onClick={() => supabase.auth.signOut()}>تسجيل الخروج</button>}
+        {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
+        {user && <Link to="/my-orders">طلباتي</Link>}
+        <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
       </nav>
     </header>
   );
@@ -528,6 +527,7 @@ function Checkout() {
         <div className="checkout-head">
           <p className="eyebrow">الخطوة الأخيرة</p>
           <h1>إتمام الطلب</h1>
+          <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
         </div>
 
         {!cart.length ? (
@@ -604,6 +604,7 @@ function MyOrders() {
       <main className="account-orders">
         <p className="eyebrow">حسابي</p>
         <h1>طلباتي</h1>
+        <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
         {loading ? <div className="empty">جاري تحميل الطلبات...</div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
             {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>

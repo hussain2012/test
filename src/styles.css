@@ -568,7 +568,8 @@ button { cursor: pointer; }
   padding: 56px 20px 90px;
 }
 
-.account-orders h1 { margin: 0 0 24px; font-size: 34px; }
+.account-orders h1 { margin: 0 0 4px; font-size: 34px; }
+.account-orders > .back-link { display: inline-block; margin-bottom: 24px; }
 .account-order-list { display: grid; gap: 12px; }
 .account-order {
   display: block;
@@ -591,6 +592,7 @@ button { cursor: pointer; }
 .account-order-totals strong { color: var(--text); }
 
 .checkout-head h1 { margin: 0; font-size: 32px; }
+.checkout-head .back-link { display: inline-block; margin-top: 8px; }
 
 .checkout-layout {
   display: grid;
