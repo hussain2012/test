@@ -623,6 +623,8 @@ function Login() {
   const [mode, setMode] = useState('login');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpStep, setOtpStep] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [capsLock, setCapsLock] = useState(false);
@@ -637,6 +639,60 @@ function Login() {
     if (authError) setError(authError.message || 'تعذر تسجيل الدخول بجوجل');
   };
 
+  const sendEmailOtp = async () => {
+    const email = identifier.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      setError('أدخل بريداً إلكترونياً صحيحاً لإرسال رمز التحقق');
+      return false;
+    }
+    try {
+      const response = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(result.error || 'تعذر إرسال رمز التحقق');
+        return false;
+      }
+      setOtpStep(true);
+      setMessage('تم إرسال رمز التحقق إلى بريدك الإلكتروني.');
+      return true;
+    } catch {
+      setError('تعذر الاتصال بخادم التحقق');
+      return false;
+    }
+  };
+
+  const verifyEmailOtp = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    let result;
+    try {
+      const response = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: identifier.trim().toLowerCase(), otp, password }),
+      });
+      result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(result.error || 'تعذر تأكيد الرمز');
+        return;
+      }
+    } catch {
+      setError('تعذر الاتصال بخادم التحقق');
+      return;
+    }
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
+    if (signInError) {
+      setError(signInError.message || 'تم إنشاء الحساب، لكن تعذر تسجيل الدخول تلقائياً');
+      return;
+    }
+    navigate('/');
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setError('');
@@ -644,6 +700,11 @@ function Login() {
     const value = identifier.trim();
     const phone = /^07\d{9}$/.test(value) ? `+964${value.slice(1)}` : value;
     const isPhone = /^\+9647\d{9}$/.test(phone);
+    if (mode === 'register' && !isPhone) {
+      if (otpStep) return verifyEmailOtp(event);
+      await sendEmailOtp();
+      return;
+    }
     const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
     const result = mode === 'login'
       ? await supabase.auth.signInWithPassword(credentials)
@@ -671,16 +732,18 @@ function Login() {
       <Link to="/" className="brand">نسق</Link>
       <form className="login-card" onSubmit={submit}>
         <div className="auth-mode-switch" role="tablist" aria-label="تبديل نوع الحساب">
-          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button>
-          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button>
+          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setOtpStep(false); setOtp(''); setError(''); setMessage(''); }}>تسجيل الدخول</button>
+          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setOtpStep(false); setOtp(''); setError(''); setMessage(''); }}>إنشاء حساب</button>
         </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
         <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" type="text" inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />
+        {mode === 'register' && otpStep && <Field label="رمز التحقق" name="otp" type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} />}
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
-        <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء الحساب'}</button>
+        <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : (otpStep ? 'تأكيد الرمز وإنشاء الحساب' : 'إرسال رمز التحقق')}</button>
+        {mode === 'register' && otpStep && <button type="button" className="back" onClick={sendEmailOtp}>إعادة إرسال الرمز</button>}
         {mode === 'login' && <div className="google-login-section">
           <span>أو</span>
           <button type="button" className="google-button" onClick={signInWithGoogle}>تسجيل الدخول باستخدام Google</button>
@@ -947,7 +1010,7 @@ function OrdersAdmin() {
     return () => clearInterval(timer);
   }, []);
 
-  const updateOrder = async (id, status) => {
+  const changeOrderStatus = async (id, status) => {
     await updateOrder(id, { status, isRead: true });
     load();
   };
@@ -976,7 +1039,7 @@ function OrdersAdmin() {
               <small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small>
               {!order.isRead && <b className="unread-badge">طلب غير مقروء</b>}
             </div>
-            <select value={order.status} onChange={(event) => updateOrder(order.id, event.target.value)}>
+            <select value={order.status} onChange={(event) => changeOrderStatus(order.id, event.target.value)}>
               <option value="new">جديد</option>
               <option value="processing">قيد التجهيز</option>
               <option value="delivered">تم التوصيل</option>
