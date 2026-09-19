@@ -286,7 +286,7 @@ function Store() {
               </div>
               {totalPages > 1 && <div className="product-pagination">
                 <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage((page) => page - 1)}>السابق</button>
-                <span>{currentPage} / {totalPages}</span>
+                <span>{totalPages} / {currentPage}</span>
                 <button type="button" disabled={currentPage === totalPages} onClick={() => setCurrentPage((page) => page + 1)}>التالي</button>
               </div>}
             </>
@@ -475,8 +475,8 @@ function Checkout() {
   const submitOrder = async (event) => {
     event.preventDefault();
     setError('');
+    if (!user) return setError('لا يمكنك إكمال الطلب إلا بعد تسجيل الدخول');
     if (settings.maintenanceMode) return setError('الطلبات متوقفة مؤقتاً بسبب الصيانة');
-    if (!user) return navigate('/login');
 
     if (!/^07\d{9}$/.test(form.phoneNumber)) return setError('يرجى إدخال رقم هاتف عراقي صحيح');
     if (!form.customerName || !form.province || !form.address || !form.nearestLandmark) return setError('يرجى إكمال جميع الحقول المطلوبة');
@@ -549,7 +549,7 @@ function Checkout() {
                 <Field label="كود خصم اذا توفر" name="discountCode" value={form.discountCode} onChange={handleChange} required={false} />
                 <button type="button" onClick={applyDiscount}>تطبيق</button>
               </div>
-              {error && <p className="error">{error}</p>}
+              {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}</p>}
               <button type="submit" className="primary full" disabled={settings.maintenanceMode}>{settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : 'تأكيد وإرسال الطلب'}</button>
             </form>
 
