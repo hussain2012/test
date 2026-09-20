@@ -15,6 +15,14 @@ const mediaUrl = (value) => {
 };
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
+const authErrorMessage = (error, fallback) => {
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('rate limit') || message.includes('too many')) return 'تم تجاوز عدد المحاولات. انتظر قليلاً ثم حاول مرة أخرى.';
+  if (message.includes('expired') || message.includes('invalid token')) return 'الرابط غير صحيح أو منتهي الصلاحية.';
+  if (message.includes('invalid email')) return 'أدخل بريداً إلكترونياً صحيحاً.';
+  if (message.includes('already registered') || message.includes('user already')) return 'هذا البريد مسجل مسبقاً.';
+  return fallback;
+};
 
 const AuthContext = createContext(null);
 
@@ -24,6 +32,13 @@ function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [passwordSetupRequired, setPasswordSetupRequired] = useState(false);
+
+  const isPendingPasswordSetup = (nextSession) => {
+    if (!nextSession?.user) return false;
+    const pendingEmail = sessionStorage.getItem('pending-password-setup');
+    return pendingEmail === nextSession.user.email;
+  };
 
   useEffect(() => {
     const loadProfile = async (user) => {
@@ -37,12 +52,14 @@ function AuthProvider({ children }) {
 
     supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
       setSession(currentSession);
+      setPasswordSetupRequired(isPendingPasswordSetup(currentSession));
       await loadProfile(currentSession?.user || null);
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+      setPasswordSetupRequired(isPendingPasswordSetup(nextSession));
       setLoading(false);
       window.dispatchEvent(new Event('account-session-changed'));
       if (event === 'SIGNED_OUT') setProfile(null);
@@ -51,7 +68,7 @@ function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const value = { session, user: session?.user || null, profile, loading };
+  const value = { session, user: session?.user || null, profile, loading, passwordSetupRequired, setPasswordSetupRequired };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -175,6 +192,7 @@ function App() {
   return (
     <AuthProvider>
       <CartProvider>
+        <PasswordSetupGate />
         <Routes>
           <Route path="/" element={<Store />} />
           <Route path="/product/:id" element={<ProductDetailPage />} />
@@ -186,6 +204,56 @@ function App() {
         </Routes>
       </CartProvider>
     </AuthProvider>
+  );
+}
+
+function PasswordSetupGate() {
+  const { user, passwordSetupRequired, setPasswordSetupRequired } = useAuth();
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const navigate = useNavigate();
+
+  if (!passwordSetupRequired || !user) return null;
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    if (newPassword.length < 6) {
+      setError('يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('تأكيد كلمة المرور غير مطابق.');
+      return;
+    }
+    const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
+    if (authError) {
+      setError(authErrorMessage(authError, 'تعذر تعيين كلمة المرور. حاول مرة أخرى.'));
+      return;
+    }
+    sessionStorage.removeItem('pending-password-setup');
+    setMessage('تم تعيين كلمة المرور بنجاح');
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    setPasswordSetupRequired(false);
+    navigate('/');
+  };
+
+  return (
+    <div className="password-setup-backdrop" role="dialog" aria-modal="true" aria-labelledby="password-setup-title">
+      <form className="password-setup-card" onSubmit={submit}>
+        <p className="eyebrow">إكمال التسجيل</p>
+        <h2 id="password-setup-title">تعيين كلمة المرور</h2>
+        <p>أنشئ كلمة مرور لتتمكن من تسجيل الدخول لاحقاً باستخدام بريدك الإلكتروني.</p>
+        <Field label="كلمة المرور الجديدة" name="newPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal />
+        <Field label="تأكيد كلمة المرور" name="confirmPassword" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal />
+        {error && <p className="error">{error}</p>}
+        {message && <p className="success-message">{message}</p>}
+        <button type="submit" className="primary full">حفظ كلمة المرور</button>
+      </form>
+    </div>
   );
 }
 
@@ -623,8 +691,6 @@ function Login() {
   const [mode, setMode] = useState('login');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpStep, setOtpStep] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [capsLock, setCapsLock] = useState(false);
@@ -639,41 +705,22 @@ function Login() {
     if (authError) setError(authError.message || 'تعذر تسجيل الدخول بجوجل');
   };
 
-  const sendEmailOtp = async () => {
+  const sendMagicLink = async () => {
     const email = identifier.trim().toLowerCase();
     if (!email || !email.includes('@')) {
-      setError('أدخل بريداً إلكترونياً صحيحاً لإرسال رمز التحقق');
+      setError('أدخل بريداً إلكترونياً صحيحاً لإرسال رابط الدخول');
       return false;
     }
     const { error: authError } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true },
     });
     if (authError) {
-      setError(authError.message || 'تعذر إرسال رمز التحقق');
+      setError(authErrorMessage(authError, 'تعذر إرسال رابط الدخول. حاول مرة أخرى.'));
       return false;
     }
-    setOtpStep(true);
-    setMessage('تم إرسال رمز التحقق إلى بريدك الإلكتروني.');
+    sessionStorage.setItem('pending-password-setup', email);
+    setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني، يرجى الضغط عليه لإكمال التسجيل.');
     return true;
-  };
-
-  const verifyEmailOtp = async (event) => {
-    event.preventDefault();
-    setError('');
-    setMessage('');
-    const email = identifier.trim().toLowerCase();
-    const { error: authError } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: 'email',
-    });
-    if (authError) {
-      setError(authError.message || 'رمز التحقق غير صحيح أو منتهي الصلاحية');
-      return;
-    }
-    setMessage('تم تأكيد بريدك الإلكتروني بنجاح.');
-    navigate('/');
   };
 
   const submit = async (event) => {
@@ -684,8 +731,7 @@ function Login() {
     const phone = /^07\d{9}$/.test(value) ? `+964${value.slice(1)}` : value;
     const isPhone = /^\+9647\d{9}$/.test(phone);
     if (mode === 'register' && !isPhone) {
-      if (otpStep) return verifyEmailOtp(event);
-      await sendEmailOtp();
+      await sendMagicLink();
       return;
     }
     const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
@@ -693,7 +739,7 @@ function Login() {
       ? await supabase.auth.signInWithPassword(credentials)
       : await supabase.auth.signUp(credentials);
     if (result.error) {
-      setError(result.error.message || 'تعذر إتمام العملية');
+      setError(authErrorMessage(result.error, 'تعذر إتمام العملية. حاول مرة أخرى.'));
       return;
     }
     if (mode === 'register') {
@@ -716,18 +762,16 @@ function Login() {
       <Link to="/" className="brand">نسق</Link>
       <form className="login-card" onSubmit={submit}>
         <div className="auth-mode-switch" role="tablist" aria-label="تبديل نوع الحساب">
-          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setOtpStep(false); setOtp(''); setError(''); setMessage(''); }}>تسجيل الدخول</button>
-          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setOtpStep(false); setOtp(''); setError(''); setMessage(''); }}>إنشاء حساب</button>
+          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button>
+          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button>
         </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
         <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" type="text" inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         {(mode === 'login' || isPhoneRegistration) && <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />}
-        {mode === 'register' && otpStep && <Field label="رمز التحقق" name="otp" type="text" inputMode="numeric" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} />}
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
-        <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : (otpStep ? 'تأكيد الرمز وإنشاء الحساب' : 'إرسال رمز التحقق')}</button>
-        {mode === 'register' && otpStep && <button type="button" className="back" onClick={sendEmailOtp}>إعادة إرسال الرمز</button>}
+        <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إرسال رابط الدخول'}</button>
         {mode === 'login' && <div className="google-login-section">
           <span>أو</span>
           <button type="button" className="google-button" onClick={signInWithGoogle}>تسجيل الدخول باستخدام Google</button>

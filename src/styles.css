@@ -802,6 +802,31 @@ button { cursor: pointer; }
 .back { display: block; text-align: center; margin-top: 2px; color: var(--accent); font-weight: 700; }
 .login-card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
+.password-setup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 59, 53, 0.35);
+}
+
+.password-setup-card {
+  width: min(100%, 430px);
+  display: grid;
+  gap: 12px;
+  padding: 28px 22px;
+  background: #fff;
+  border: 1px solid rgba(18, 59, 53, 0.08);
+  box-shadow: 0 24px 60px rgba(18, 59, 53, 0.18);
+}
+
+.password-setup-card h2 { margin: 0; font-size: 26px; }
+.password-setup-card > p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.password-setup-card .field-label input { width: 100%; min-height: 46px; }
+.password-setup-card .primary.full { width: 100%; min-height: 48px; }
+
 .google-login-section {
   display: grid;
   justify-items: center;
