@@ -756,7 +756,7 @@ function Login() {
       const { error: authError } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : 'https://test2-mar-efc5.vercel.app',
+          emailRedirectTo: authRedirectUrl(),
         },
       });
       if (authError) {
