@@ -34,35 +34,54 @@ function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [passwordSetupRequired, setPasswordSetupRequired] = useState(false);
 
+  const isMagicLinkReturn = () => {
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const queryParams = new URLSearchParams(window.location.search);
+    return hashParams.get('type') === 'magiclink' || queryParams.get('type') === 'magiclink';
+  };
+
   const isPendingPasswordSetup = (nextSession) => {
     if (!nextSession?.user) return false;
-    const pendingEmail = sessionStorage.getItem('pending-password-setup');
-    return pendingEmail === nextSession.user.email;
+    const pendingEmail = localStorage.getItem('pending-password-setup') || sessionStorage.getItem('pending-password-setup');
+    return pendingEmail === nextSession.user.email || isMagicLinkReturn();
   };
 
   useEffect(() => {
+    let profileRequestId = 0;
     const loadProfile = async (user) => {
+      const requestId = ++profileRequestId;
       if (!user) {
         setProfile(null);
         return;
       }
-      const { data } = await supabase.from('profiles').select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').eq('id', user.id).maybeSingle();
-      setProfile(data || null);
+      try {
+        const { data } = await supabase.from('profiles').select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').eq('id', user.id).maybeSingle();
+        if (requestId === profileRequestId) setProfile(data || null);
+      } catch {
+        if (requestId === profileRequestId) setProfile(null);
+      }
     };
 
-    supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
-      setSession(currentSession);
-      setPasswordSetupRequired(isPendingPasswordSetup(currentSession));
-      await loadProfile(currentSession?.user || null);
-      setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(async ({ data: { session: currentSession }, error }) => {
+        if (error) throw error;
+        setSession(currentSession);
+        setPasswordSetupRequired(isPendingPasswordSetup(currentSession));
+        await loadProfile(currentSession?.user || null);
+      })
+      .catch(() => {
+        setSession(null);
+        setProfile(null);
+        setPasswordSetupRequired(false);
+      })
+      .finally(() => setLoading(false));
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       setPasswordSetupRequired(isPendingPasswordSetup(nextSession));
       setLoading(false);
       window.dispatchEvent(new Event('account-session-changed'));
-      if (event === 'SIGNED_OUT') setProfile(null);
+      if (!nextSession || event === 'SIGNED_OUT') setProfile(null);
       if (nextSession?.user) loadProfile(nextSession.user);
     });
     return () => subscription.unsubscribe();
@@ -71,6 +90,14 @@ function AuthProvider({ children }) {
   const value = { session, user: session?.user || null, profile, loading, passwordSetupRequired, setPasswordSetupRequired };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+const signOut = async (setError) => {
+  const { error } = await supabase.auth.signOut();
+  localStorage.removeItem('pending-password-setup');
+  sessionStorage.removeItem('pending-password-setup');
+  if (error && setError) setError('تعذر تسجيل الخروج. حاول مرة أخرى.');
+  return !error;
+};
 
 const CartContext = createContext();
 
@@ -192,23 +219,30 @@ function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <PasswordSetupGate />
-        <Routes>
-          <Route path="/" element={<Store />} />
-          <Route path="/product/:id" element={<ProductDetailPage />} />
-          <Route path="/checkout" element={<Checkout />} />
-          <Route path="/my-orders" element={<MyOrders />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/admin/*" element={<Admin />} />
-          <Route path="*" element={<Store />} />
-        </Routes>
+        <AppContent />
       </CartProvider>
     </AuthProvider>
   );
 }
 
+function AppContent() {
+  const { passwordSetupRequired } = useAuth();
+  if (passwordSetupRequired) return <PasswordSetupGate />;
+  return (
+    <Routes>
+      <Route path="/" element={<Store />} />
+      <Route path="/product/:id" element={<ProductDetailPage />} />
+      <Route path="/checkout" element={<Checkout />} />
+      <Route path="/my-orders" element={<MyOrders />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/admin/*" element={<Admin />} />
+      <Route path="*" element={<Store />} />
+    </Routes>
+  );
+}
+
 function PasswordSetupGate() {
-  const { user, passwordSetupRequired, setPasswordSetupRequired } = useAuth();
+  const { user, profile, passwordSetupRequired, setPasswordSetupRequired } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -234,11 +268,15 @@ function PasswordSetupGate() {
       setError(authErrorMessage(authError, 'تعذر تعيين كلمة المرور. حاول مرة أخرى.'));
       return;
     }
+    localStorage.removeItem('pending-password-setup');
     sessionStorage.removeItem('pending-password-setup');
     setMessage('تم تعيين كلمة المرور بنجاح');
     await new Promise((resolve) => setTimeout(resolve, 700));
     setPasswordSetupRequired(false);
-    navigate('/');
+    const { data: latestProfile } = profile
+      ? { data: profile }
+      : await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+    navigate(latestProfile?.role === 'admin' ? '/admin' : '/');
   };
 
   return (
@@ -260,6 +298,7 @@ function PasswordSetupGate() {
 function StoreNav({ settings }) {
   const { count } = useCart();
   const { user, profile } = useAuth();
+  const [logoutError, setLogoutError] = useState('');
   const storeName = settings.storeName || 'نسق';
 
   return (
@@ -270,7 +309,8 @@ function StoreNav({ settings }) {
       </Link>
       <nav>
         {!user && <Link to="/login">تسجيل الدخول</Link>}
-        {user && <button type="button" className="store-logout" onClick={() => supabase.auth.signOut()}>تسجيل الخروج</button>}
+        {user && <button type="button" className="store-logout" onClick={() => signOut(setLogoutError)}>تسجيل الخروج</button>}
+        {logoutError && <span className="error">{logoutError}</span>}
         {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
         {user && <Link to="/my-orders">طلباتي</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
@@ -718,7 +758,7 @@ function Login() {
       setError(authErrorMessage(authError, 'تعذر إرسال رابط الدخول. حاول مرة أخرى.'));
       return false;
     }
-    sessionStorage.setItem('pending-password-setup', email);
+    localStorage.setItem('pending-password-setup', email);
     setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني، يرجى الضغط عليه لإكمال التسجيل.');
     return true;
   };
@@ -727,6 +767,10 @@ function Login() {
     event.preventDefault();
     setError('');
     setMessage('');
+    if (user) {
+      navigate(profile?.role === 'admin' ? '/admin' : '/');
+      return;
+    }
     const value = identifier.trim();
     const phone = /^07\d{9}$/.test(value) ? `+964${value.slice(1)}` : value;
     const isPhone = /^\+9647\d{9}$/.test(phone);
@@ -735,6 +779,10 @@ function Login() {
       return;
     }
     const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
+    if (mode === 'login') {
+      localStorage.removeItem('pending-password-setup');
+      sessionStorage.removeItem('pending-password-setup');
+    }
     const result = mode === 'login'
       ? await supabase.auth.signInWithPassword(credentials)
       : await supabase.auth.signUp(credentials);
@@ -753,8 +801,8 @@ function Login() {
 
   const { user, profile, loading } = useAuth();
   const isPhoneRegistration = /^(07\d{9}|\+9647\d{9})$/.test(identifier.trim());
-  if (!loading && user && profile?.role === 'admin') {
-    return <Navigate to="/admin" replace />;
+  if (!loading && user) {
+    return <Navigate to={profile?.role === 'admin' ? '/admin' : '/'} replace />;
   }
 
   return (
@@ -788,6 +836,7 @@ function Admin() {
   const page = requestedPage === 'product-discounts' ? 'products' : requestedPage;
   const navigate = useNavigate();
   const { user, profile, loading } = useAuth();
+  const [logoutError, setLogoutError] = useState('');
 
   if (loading) return <div className="empty">جاري التحقق من الحساب...</div>;
   if (!user || profile?.role !== 'admin') {
@@ -815,7 +864,8 @@ function Admin() {
         <Link className={page === 'analytics' ? 'active' : ''} to="/admin/analytics">الإحصائيات</Link>
         <Link className={page === 'settings' ? 'active' : ''} to="/admin/settings">إعدادات المتجر</Link>
         <Link className={page === 'admins' ? 'active' : ''} to="/admin/admins">المشرفون</Link>
-        <button type="button" className="logout" onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}>تسجيل الخروج</button>
+        <button type="button" className="logout" onClick={async () => { if (await signOut(setLogoutError)) navigate('/'); }}>تسجيل الخروج</button>
+        {logoutError && <p className="error">{logoutError}</p>}
       </aside>
 
       <section className="admin-content">
