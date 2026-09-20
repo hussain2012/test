@@ -15,6 +15,7 @@ const mediaUrl = (value) => {
 };
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
+const authRedirectUrl = () => `${String(import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin).replace(/\/$/, '')}/login`;
 const authErrorMessage = (error, fallback) => {
   const message = String(error?.message || '').toLowerCase();
   if (message.includes('rate limit') || message.includes('too many')) return 'تم تجاوز عدد المحاولات. انتظر قليلاً ثم حاول مرة أخرى.';
@@ -740,7 +741,7 @@ function Login() {
     setError('');
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/login' },
+      options: { redirectTo: authRedirectUrl() },
     });
     if (authError) setError(authError.message || 'تعذر تسجيل الدخول بجوجل');
   };
@@ -751,16 +752,24 @@ function Login() {
       setError('أدخل بريداً إلكترونياً صحيحاً لإرسال رابط الدخول');
       return false;
     }
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email,
-    });
-    if (authError) {
-      setError(authErrorMessage(authError, 'تعذر إرسال رابط الدخول. حاول مرة أخرى.'));
+    try {
+      const { error: authError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : 'https://test2-mar-efc5.vercel.app',
+        },
+      });
+      if (authError) {
+        setError(authErrorMessage(authError, 'تعذر إرسال رابط الدخول. حاول مرة أخرى.'));
+        return false;
+      }
+      localStorage.setItem('pending-password-setup', email);
+      setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني، يرجى الضغط عليه لإكمال التسجيل.');
+      return true;
+    } catch {
+      setError('تعذر إرسال رابط الدخول حالياً. حاول مرة أخرى.');
       return false;
     }
-    localStorage.setItem('pending-password-setup', email);
-    setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني، يرجى الضغط عليه لإكمال التسجيل.');
-    return true;
   };
 
   const submit = async (event) => {
