@@ -15,11 +15,14 @@ const mediaUrl = (value) => {
 };
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
-const authRedirectUrl = () => `${String(import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin).replace(/\/$/, '')}/login`;
+const authRedirectUrl = () => typeof window !== 'undefined'
+  ? window.location.origin
+  : 'https://test2-mar-efc5.vercel.app';
 const authErrorMessage = (error, fallback) => {
   const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toLowerCase();
   if (message.includes('rate limit') || message.includes('too many')) return 'تم تجاوز عدد المحاولات. انتظر قليلاً ثم حاول مرة أخرى.';
-  if (message.includes('expired') || message.includes('invalid token')) return 'الرابط غير صحيح أو منتهي الصلاحية.';
+  if (code === 'otp_expired' || message.includes('otp_expired') || message.includes('expired') || message.includes('invalid token')) return 'انتهت صلاحية الرابط. اطلب رابط دخول جديداً من صفحة التسجيل.';
   if (message.includes('invalid email')) return 'أدخل بريداً إلكترونياً صحيحاً.';
   if (message.includes('already registered') || message.includes('user already')) return 'هذا البريد مسجل مسبقاً.';
   return fallback;
