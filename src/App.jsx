@@ -15,6 +15,7 @@ const mediaUrl = (value) => {
 };
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
+const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
 const authRedirectUrl = () => typeof window !== 'undefined'
   ? window.location.origin
   : 'https://test2-mar-efc5.vercel.app';
@@ -170,12 +171,27 @@ function CartProvider({ children }) {
 }
 
 function useSiteSettings() {
-  const [settings, setSettings] = useState(defaultSettings);
+  const [settings, setSettings] = useState(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(SITE_SETTINGS_CACHE_KEY) || 'null');
+      return cached && typeof cached === 'object' ? { ...defaultSettings, ...cached } : defaultSettings;
+    } catch {
+      return defaultSettings;
+    }
+  });
 
   useEffect(() => {
     getSiteSettings()
-      .then((data) => setSettings({ ...defaultSettings, ...(data || {}) }))
-      .catch(() => setSettings(defaultSettings));
+      .then((data) => {
+        const nextSettings = { ...defaultSettings, ...(data || {}) };
+        setSettings(nextSettings);
+        try {
+          localStorage.setItem(SITE_SETTINGS_CACHE_KEY, JSON.stringify(nextSettings));
+        } catch {
+          // Continue with the in-memory settings when browser storage is unavailable.
+        }
+      })
+      .catch(() => {});
   }, []);
 
   return settings;
@@ -330,7 +346,7 @@ function Store() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('الكل');
   const [currentPage, setCurrentPage] = useState(1);
-  const productsPerPage = 9;
+  const productsPerPage = 8;
 
   useEffect(() => {
     recordView('home').catch(() => {});
@@ -360,6 +376,10 @@ function Store() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, category]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   return (
     <>
