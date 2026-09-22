@@ -28,7 +28,8 @@ const throwIfError = ({ data, error }) => { if (error) throw error; return data;
 export const defaultSettings = {
   id: 1, storeName: 'نسق', tagline: 'اختيارات تصنع يومك', logoUrl: '', heroTitle: 'أشياء صغيرة، فرق كبير',
   heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.', heroImageUrl: '', heroButtonText: 'اكتشف المجموعة',
-  instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: 'من نحن؟', aboutText: '', maintenanceMode: false,
+  instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: 'من نحن؟', aboutText: '',
+  policyTitle: 'سياستنا', policyText: 'نراجع كل طلب ونتواصل معك لتأكيد التفاصيل قبل التجهيز.', maintenanceMode: false,
 };
 
 export async function getSiteSettings() {

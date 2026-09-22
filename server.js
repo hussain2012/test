@@ -65,6 +65,8 @@ const defaultSiteSettings = {
   whatsappUrl: '',
   aboutTitle: 'من نحن؟',
   aboutText: '',
+  policyTitle: 'سياستنا',
+  policyText: 'نراجع كل طلب ونتواصل معك لتأكيد التفاصيل قبل التجهيز.',
   maintenanceMode: false,
 };
 
@@ -113,6 +115,8 @@ const normalizeSiteSettings = (row) => ({
     whatsappUrl: row.whatsappUrl || '',
     aboutTitle: row.aboutTitle || defaultSiteSettings.aboutTitle,
     aboutText: row.aboutText || '',
+    policyTitle: row.policyTitle || defaultSiteSettings.policyTitle,
+    policyText: row.policyText || defaultSiteSettings.policyText,
     maintenanceMode: Boolean(row.maintenanceMode),
 });
 
@@ -684,6 +688,8 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
     whatsappUrl: req.body.whatsappUrl !== undefined ? String(req.body.whatsappUrl).trim() : (previous.whatsappUrl || ''),
     aboutTitle: req.body.aboutTitle !== undefined ? String(req.body.aboutTitle).trim() : (previous.aboutTitle || defaultSiteSettings.aboutTitle),
     aboutText: req.body.aboutText !== undefined ? String(req.body.aboutText).trim() : (previous.aboutText || ''),
+    policyTitle: req.body.policyTitle !== undefined ? String(req.body.policyTitle).trim() : (previous.policyTitle || defaultSiteSettings.policyTitle),
+    policyText: req.body.policyText !== undefined ? String(req.body.policyText).trim() : (previous.policyText || defaultSiteSettings.policyText),
     maintenanceMode: req.body.maintenanceMode === 'true' || req.body.maintenanceMode === true,
   };
 

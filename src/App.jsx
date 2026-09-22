@@ -37,19 +37,6 @@ function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [passwordSetupRequired, setPasswordSetupRequired] = useState(false);
-
-  const isMagicLinkReturn = () => {
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const queryParams = new URLSearchParams(window.location.search);
-    return hashParams.get('type') === 'magiclink' || queryParams.get('type') === 'magiclink';
-  };
-
-  const isPendingPasswordSetup = (nextSession) => {
-    if (!nextSession?.user) return false;
-    const pendingEmail = localStorage.getItem('pending-password-setup') || sessionStorage.getItem('pending-password-setup');
-    return pendingEmail === nextSession.user.email || isMagicLinkReturn();
-  };
 
   useEffect(() => {
     let profileRequestId = 0;
@@ -71,19 +58,16 @@ function AuthProvider({ children }) {
       .then(async ({ data: { session: currentSession }, error }) => {
         if (error) throw error;
         setSession(currentSession);
-        setPasswordSetupRequired(isPendingPasswordSetup(currentSession));
         await loadProfile(currentSession?.user || null);
       })
       .catch(() => {
         setSession(null);
         setProfile(null);
-        setPasswordSetupRequired(false);
       })
       .finally(() => setLoading(false));
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
-      setPasswordSetupRequired(isPendingPasswordSetup(nextSession));
       setLoading(false);
       window.dispatchEvent(new Event('account-session-changed'));
       if (!nextSession || event === 'SIGNED_OUT') setProfile(null);
@@ -92,14 +76,12 @@ function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const value = { session, user: session?.user || null, profile, loading, passwordSetupRequired, setPasswordSetupRequired };
+  const value = { session, user: session?.user || null, profile, loading };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 const signOut = async (setError) => {
   const { error } = await supabase.auth.signOut();
-  localStorage.removeItem('pending-password-setup');
-  sessionStorage.removeItem('pending-password-setup');
   if (error && setError) setError('تعذر تسجيل الخروج. حاول مرة أخرى.');
   return !error;
 };
@@ -246,13 +228,12 @@ function App() {
 }
 
 function AppContent() {
-  const { passwordSetupRequired } = useAuth();
-  if (passwordSetupRequired) return <PasswordSetupGate />;
   return (
     <Routes>
       <Route path="/" element={<Store />} />
       <Route path="/product/:id" element={<ProductDetailPage />} />
       <Route path="/checkout" element={<Checkout />} />
+      <Route path="/account" element={<AccountPage />} />
       <Route path="/my-orders" element={<MyOrders />} />
       <Route path="/login" element={<Login />} />
       <Route path="/admin/*" element={<Admin />} />
@@ -261,64 +242,128 @@ function AppContent() {
   );
 }
 
-function PasswordSetupGate() {
-  const { user, profile, passwordSetupRequired, setPasswordSetupRequired } = useAuth();
+function AccountPage() {
+  const { user, profile } = useAuth();
+  const settings = useSiteSettings();
+  const navigate = useNavigate();
+  const metadata = user?.user_metadata || {};
+  const [name, setName] = useState(metadata.full_name || metadata.name || profile?.displayName || '');
+  const [favoriteName, setFavoriteName] = useState('');
+  const [favorite, setFavorite] = useState({ customerName: name, province: '', address: '', nearestLandmark: '', phoneNumber: '' });
+  const [favorites, setFavorites] = useState(Array.isArray(metadata.saved_addresses) ? metadata.saved_addresses : []);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const navigate = useNavigate();
+  const [error, setError] = useState('');
+  const [passwordSet, setPasswordSet] = useState(metadata.password_set === true);
 
-  if (!passwordSetupRequired || !user) return null;
+  if (!user) return <Navigate to="/login" replace />;
 
-  const submit = async (event) => {
+  const displayName = name || profile?.displayName || user.email || 'مستخدم';
+  const updateFavoriteField = (event) => setFavorite((current) => ({ ...current, [event.target.name]: event.target.value }));
+
+  const saveAccountName = async (event) => {
     event.preventDefault();
     setError('');
     setMessage('');
-    if (newPassword.length < 6) {
-      setError('يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setError('تأكيد كلمة المرور غير مطابق.');
-      return;
-    }
-    const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
-    if (authError) {
-      setError(authErrorMessage(authError, 'تعذر تعيين كلمة المرور. حاول مرة أخرى.'));
-      return;
-    }
-    localStorage.removeItem('pending-password-setup');
-    sessionStorage.removeItem('pending-password-setup');
+    const { error: authError } = await supabase.auth.updateUser({ data: { full_name: name.trim() } });
+    if (authError) return setError('تعذر حفظ الاسم. حاول مرة أخرى.');
+    await supabase.from('profiles').update({ displayName: name.trim() }).eq('id', user.id);
+    setMessage('تم حفظ الاسم');
+  };
+
+  const savePassword = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    if (newPassword.length < 6) return setError('يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.');
+    if (newPassword !== confirmPassword) return setError('تأكيد كلمة المرور غير مطابق.');
+    const { error: authError } = await supabase.auth.updateUser({ password: newPassword, data: { password_set: true } });
+    if (authError) return setError(authErrorMessage(authError, 'تعذر حفظ كلمة المرور. حاول مرة أخرى.'));
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordSet(true);
     setMessage('تم تعيين كلمة المرور بنجاح');
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setPasswordSetupRequired(false);
-    const { data: latestProfile } = profile
-      ? { data: profile }
-      : await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    navigate(latestProfile?.role === 'admin' ? '/admin' : '/');
+  };
+
+  const saveFavorite = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    if (!favoriteName.trim() || !favorite.customerName.trim() || !favorite.province || !favorite.address.trim() || !favorite.nearestLandmark.trim() || !/^07\d{9}$/.test(favorite.phoneNumber)) {
+      return setError('أكمل اسم الخيار وكل بيانات الطلب، وتأكد من رقم الهاتف.');
+    }
+    const nextFavorites = [...favorites, { ...favorite, id: `${Date.now()}`, label: favoriteName.trim() }];
+    const { error: authError } = await supabase.auth.updateUser({ data: { saved_addresses: nextFavorites } });
+    if (authError) return setError('تعذر حفظ الخيار المفضل. حاول مرة أخرى.');
+    setFavorites(nextFavorites);
+    setFavoriteName('');
+    setFavorite({ customerName: name, province: '', address: '', nearestLandmark: '', phoneNumber: '' });
+    setMessage('تم حفظ الخيار المفضل');
+  };
+
+  const deleteFavorite = async (favoriteId) => {
+    const nextFavorites = favorites.filter((item) => item.id !== favoriteId);
+    const { error: authError } = await supabase.auth.updateUser({ data: { saved_addresses: nextFavorites } });
+    if (authError) return setError('تعذر حذف الخيار المفضل. حاول مرة أخرى.');
+    setFavorites(nextFavorites);
   };
 
   return (
-    <div className="password-setup-backdrop" role="dialog" aria-modal="true" aria-labelledby="password-setup-title">
-      <form className="password-setup-card" onSubmit={submit}>
-        <p className="eyebrow">إكمال التسجيل</p>
-        <h2 id="password-setup-title">تعيين كلمة المرور</h2>
-        <p>أنشئ كلمة مرور لتتمكن من تسجيل الدخول لاحقاً باستخدام بريدك الإلكتروني.</p>
-        <Field label="كلمة المرور الجديدة" name="newPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal />
-        <Field label="تأكيد كلمة المرور" name="confirmPassword" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal />
-        {error && <p className="error">{error}</p>}
-        {message && <p className="success-message">{message}</p>}
-        <button type="submit" className="primary full">حفظ كلمة المرور</button>
-      </form>
-    </div>
+    <>
+      <StoreNav settings={settings} />
+      <main className="account-page">
+        <div className="account-page-head">
+          <p className="eyebrow">حسابك</p>
+          <h1>أهلاً، {displayName}</h1>
+          <p>{user.email}</p>
+        </div>
+        <div className="account-actions">
+          <Link to="/my-orders" className="account-action">طلباتي السابقة</Link>
+          <button type="button" className="account-action" onClick={() => signOut(setError)}>تسجيل الخروج</button>
+        </div>
+        <div className="account-sections">
+          <form className="account-panel" onSubmit={saveAccountName}>
+            <h2>بيانات الحساب</h2>
+            <Field label="اسمك" name="accountName" value={name} onChange={(event) => setName(event.target.value)} />
+            <button type="submit" className="primary">حفظ الاسم</button>
+          </form>
+          <form className="account-panel" onSubmit={savePassword}>
+            <h2>{passwordSet ? 'تغيير كلمة المرور' : 'تنبيه: عيّن كلمة مرور'}</h2>
+            {!passwordSet && <p className="account-warning">حسابك يعمل حالياً عبر رابط البريد. عيّن كلمة مرور حتى تسجل الدخول بها لاحقاً.</p>}
+            <Field label="كلمة المرور الجديدة" name="accountPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal />
+            <Field label="تأكيد كلمة المرور" name="accountPasswordConfirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal />
+            <button type="submit" className="primary">{passwordSet ? 'تغيير كلمة المرور' : 'تعيين كلمة المرور'}</button>
+          </form>
+          <section className="account-panel account-policy">
+            <h2>{settings.policyTitle}</h2>
+            <p>{settings.policyText}</p>
+          </section>
+          <section className="account-panel account-favorites">
+            <h2>خيارات الطلب المفضلة</h2>
+            {favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}
+            {!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}
+            <form className="favorite-form" onSubmit={saveFavorite}>
+              <Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" />
+              <Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} />
+              <label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
+              <Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} />
+              <Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} />
+              <Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" />
+              <button type="submit" className="primary">حفظ الخيار</button>
+            </form>
+          </section>
+        </div>
+        {message && <p className="success-message account-status">{message}</p>}
+        {error && <p className="error account-status">{error}</p>}
+      </main>
+    </>
   );
 }
 
 function StoreNav({ settings }) {
   const { count } = useCart();
   const { user, profile } = useAuth();
-  const [logoutError, setLogoutError] = useState('');
   const storeName = settings.storeName || 'نسق';
 
   return (
@@ -329,10 +374,8 @@ function StoreNav({ settings }) {
       </Link>
       <nav>
         {!user && <Link to="/login">تسجيل الدخول</Link>}
-        {user && <button type="button" className="store-logout" onClick={() => signOut(setLogoutError)}>تسجيل الخروج</button>}
-        {logoutError && <span className="error">{logoutError}</span>}
+        {user && <Link to="/account">الحساب</Link>}
         {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
-        {user && <Link to="/my-orders">طلباتي</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
       </nav>
     </header>
@@ -584,6 +627,15 @@ function Checkout() {
   const [error, setError] = useState('');
   const [done, setDone] = useState(null);
   const navigate = useNavigate();
+  const needsPassword = Boolean(user && user.user_metadata?.password_set !== true);
+
+  useEffect(() => {
+    const favoriteId = new URLSearchParams(window.location.search).get('favorite');
+    const favorites = Array.isArray(user?.user_metadata?.saved_addresses) ? user.user_metadata.saved_addresses : [];
+    const selected = favorites.find((item) => String(item.id) === favoriteId);
+    if (!selected) return;
+    setForm((current) => ({ ...current, ...selected, discountCode: current.discountCode }));
+  }, [user]);
 
   const delivery = form.province && form.province !== 'بغداد' ? 5000 : 3000;
   const discountAmount = discount ? (discount.type === 'percentage' ? subtotal * Number(discount.value || 0) / 100 : Math.min(Number(discount.value || 0), subtotal)) : 0;
@@ -608,6 +660,7 @@ function Checkout() {
     event.preventDefault();
     setError('');
     if (!user) return setError('لا يمكنك إكمال الطلب إلا بعد تسجيل الدخول');
+    if (needsPassword) return setError('قبل إرسال الطلب، اذهب إلى الحساب وعيّن كلمة مرور أولاً.');
     if (settings.maintenanceMode) return setError('الطلبات متوقفة مؤقتاً بسبب الصيانة');
 
     if (!/^07\d{9}$/.test(form.phoneNumber)) return setError('يرجى إدخال رقم هاتف عراقي صحيح');
@@ -667,6 +720,10 @@ function Checkout() {
         ) : (
           <div className="checkout-layout">
             <form className="order-form" onSubmit={submitOrder}>
+              {Array.isArray(user?.user_metadata?.saved_addresses) && user.user_metadata.saved_addresses.length > 0 && <label className="field-label">استخدم خياراً محفوظاً<select value="" onChange={(event) => {
+                const selected = user.user_metadata.saved_addresses.find((item) => String(item.id) === event.target.value);
+                if (selected) setForm((current) => ({ ...current, ...selected, discountCode: current.discountCode }));
+              }}><option value="">اختر خياراً محفوظاً</option>{user.user_metadata.saved_addresses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
               <Field label="الاسم" name="customerName" value={form.customerName} onChange={handleChange} />
               <label className="field-label">
                 المحافظة
@@ -682,7 +739,7 @@ function Checkout() {
                 <Field label="كود خصم اذا توفر" name="discountCode" value={form.discountCode} onChange={handleChange} required={false} />
                 <button type="button" onClick={applyDiscount}>تطبيق</button>
               </div>
-              {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}</p>}
+              {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}{needsPassword && <><br /><Link to="/account">الذهاب إلى الحساب وتعيين كلمة المرور</Link></>}</p>}
               <button type="submit" className="primary full" disabled={settings.maintenanceMode}>{settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : 'تأكيد وإرسال الطلب'}</button>
             </form>
 
@@ -786,7 +843,6 @@ function Login() {
         setError(authErrorMessage(authError, 'تعذر إرسال رابط الدخول. حاول مرة أخرى.'));
         return false;
       }
-      localStorage.setItem('pending-password-setup', email);
       setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني، يرجى الضغط عليه لإكمال التسجيل.');
       return true;
     } catch {
@@ -811,16 +867,15 @@ function Login() {
       return;
     }
     const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
-    if (mode === 'login') {
-      localStorage.removeItem('pending-password-setup');
-      sessionStorage.removeItem('pending-password-setup');
-    }
     const result = mode === 'login'
       ? await supabase.auth.signInWithPassword(credentials)
       : await supabase.auth.signUp(credentials);
     if (result.error) {
       setError(authErrorMessage(result.error, 'تعذر إتمام العملية. حاول مرة أخرى.'));
       return;
+    }
+    if (mode === 'login' && !isPhone) {
+      supabase.auth.updateUser({ data: { password_set: true } }).catch(() => {});
     }
     if (mode === 'register') {
       setMessage('تم إنشاء الحساب. يمكنك تسجيل الدخول الآن.');
@@ -1410,6 +1465,8 @@ function SiteSettingsAdmin() {
       <input placeholder="رابط واتساب" value={settings.whatsappUrl} onChange={(event) => setSettings({ ...settings, whatsappUrl: event.target.value })} />
       <input placeholder="عنوان قسم من نحن" value={settings.aboutTitle} onChange={(event) => setSettings({ ...settings, aboutTitle: event.target.value })} />
       <textarea placeholder="نص من نحن" value={settings.aboutText} onChange={(event) => setSettings({ ...settings, aboutText: event.target.value })} />
+      <input placeholder="عنوان سياستنا" value={settings.policyTitle} onChange={(event) => setSettings({ ...settings, policyTitle: event.target.value })} />
+      <textarea placeholder="نص سياستنا" value={settings.policyText} onChange={(event) => setSettings({ ...settings, policyText: event.target.value })} />
       <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>السماح بتصفح المنتجات مع إيقاف إضافة المنتجات وإرسال الطلبات</small></span></label>
       <button type="submit" className="primary">حفظ الإعدادات</button>
       <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>

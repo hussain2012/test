@@ -836,6 +836,29 @@ button { cursor: pointer; }
   font-size: 12px;
 }
 
+.account-page-head h1 { margin: 0 0 8px; font-size: 38px; }
+.account-page-head > p:not(.eyebrow) { margin: 0; color: var(--muted); }
+.account-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0; }
+.account-action { border: 1px solid var(--line); background: var(--paper); color: var(--primary); padding: 11px 16px; font-weight: 700; }
+.account-actions button { font: inherit; cursor: pointer; }
+.account-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.account-panel { display: grid; align-content: start; gap: 12px; padding: 22px; background: var(--paper); border: 1px solid var(--line); }
+.account-panel h2 { margin: 0; font-size: 21px; }
+.account-panel > p { margin: 0; color: var(--muted); line-height: 1.8; font-size: 13px; }
+.account-warning { padding: 10px 12px; background: #fff3c4; color: #765b00 !important; }
+.account-status { margin-top: 18px; }
+.favorite-form { display: grid; gap: 12px; }
+.favorite-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.favorite-use { border: 0; padding: 0; background: transparent; color: var(--accent); font-weight: 800; cursor: pointer; }
+.favorite-delete { border: 0; padding: 5px 8px; cursor: pointer; }
+.account-muted { color: var(--muted); font-size: 12px; }
+
+.account-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 54px 20px 90px;
+}
+
 .google-button-loading { min-height: 40px; }
 
 .admin-shell {
@@ -1318,6 +1341,11 @@ button { cursor: pointer; }
   .login-card > p:not(.eyebrow) { line-height: 1.7; margin-bottom: 8px; }
   .login-card .field-label { gap: 7px; }
   .login-card .primary.full { min-height: 48px; }
+  .account-page { padding: 34px 14px 60px; }
+  .account-page-head h1 { font-size: 30px; }
+  .account-sections { grid-template-columns: 1fr; gap: 12px; }
+  .account-panel { padding: 16px; }
+  .account-actions { margin: 18px 0; }
 
   .back { margin-top: 4px; }
   .detail-page { padding: 32px 14px 64px; }
