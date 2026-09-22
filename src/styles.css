@@ -137,6 +137,26 @@ button { cursor: pointer; }
   justify-content: center;
 }
 
+.store-hero {
+  max-width: 1180px;
+  min-height: 350px;
+  margin-top: 12px;
+  padding: 46px clamp(20px, 6vw, 72px);
+  justify-content: space-between;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 26px;
+  overflow: hidden;
+}
+.store-hero .hero-copy { width: min(560px, 100%); text-align: right; }
+.store-hero .eyebrow { color: var(--warning); }
+.store-hero h1 { margin: 0 0 14px; max-width: 600px; }
+.store-hero p:not(.eyebrow) { color: #dfe9e3; margin: 0 0 22px; }
+.hero-cta { background: var(--accent); color: #fff; }
+.hero-product-preview { position: relative; flex: 0 0 35%; max-width: 350px; aspect-ratio: 1; overflow: hidden; border: 8px solid rgba(255,255,255,0.15); border-radius: 24px; background: var(--paper-soft); }
+.hero-product-preview img { width: 100%; height: 100%; object-fit: cover; }
+.hero-product-preview span { position: absolute; right: 12px; bottom: 12px; left: 12px; padding: 8px 10px; background: rgba(18, 59, 53, 0.9); color: #fff; font-size: 12px; font-weight: 800; }
+
 .hero-copy {
   width: min(760px, 100%);
   text-align: center;
@@ -308,6 +328,25 @@ button { cursor: pointer; }
 }
 
 .section-head h2 { margin: 0; font-size: 30px; }
+.compact-head { margin-bottom: 16px; }
+.compact-head h2 { font-size: 25px; }
+.text-action { border: 0; background: transparent; color: var(--accent); font-weight: 800; }
+
+.category-strip-section, .featured-shelf { margin-bottom: 42px; }
+.category-strip { display: flex; gap: 18px; overflow-x: auto; padding: 4px 2px 12px; scrollbar-width: thin; }
+.category-tile { flex: 0 0 94px; display: grid; justify-items: center; gap: 8px; border: 0; background: transparent; color: var(--text); }
+.category-tile strong { font-size: 12px; white-space: nowrap; }
+.category-tile-image { display: grid; place-items: center; width: 82px; height: 82px; overflow: hidden; border: 2px solid var(--line); border-radius: 50%; background: var(--paper); }
+.category-tile-image img { width: 100%; height: 100%; object-fit: cover; }
+.category-tile.active .category-tile-image { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.category-tile.active strong { color: var(--accent); }
+.category-all { background: var(--primary); color: #fff; font-size: 22px; font-weight: 800; }
+.featured-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 245px); gap: 16px; overflow-x: auto; padding: 2px 2px 12px; scrollbar-width: thin; }
+.product-compact .product-info { padding: 12px; }
+.product-compact .product-name h3 { font-size: 16px; }
+.product-compact .product-bottom strong { font-size: 15px; }
+.product-compact .mini-button { width: 34px; height: 34px; padding: 0; font-size: 0; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+.product-compact .mini-button::after { content: '+'; font-size: 23px; line-height: 1; }
 
 .filters {
   display: flex;
@@ -1296,11 +1335,22 @@ button { cursor: pointer; }
   .nav nav a { padding: 6px 2px; }
   .brand small { margin-top: 5px; }
   .hero { display: flex; flex-direction: column; align-items: stretch; gap: 22px; padding: 40px 18px 32px; min-height: auto; }
+  .store-hero { margin: 0 14px; padding: 28px 20px 22px; border-radius: 20px; align-items: stretch; }
+  .store-hero .hero-copy { text-align: right; }
+  .store-hero h1 { font-size: 34px; }
+  .hero-product-preview { flex-basis: auto; width: 100%; max-width: none; aspect-ratio: 1.8; border-width: 5px; border-radius: 16px; }
   .hero h1 { font-size: 40px; max-width: 100%; }
   .hero p:not(.eyebrow) { font-size: 14px; line-height: 1.8; }
   .hero .primary { width: 100%; }
   .hero-art { width: 100%; aspect-ratio: 1.35; margin: 0; border-radius: 24px; }
   .catalog { padding: 24px 14px 64px; }
+  .category-strip-section, .featured-shelf { margin-bottom: 30px; }
+  .category-strip { gap: 12px; }
+  .category-tile { flex-basis: 76px; }
+  .category-tile-image { width: 68px; height: 68px; }
+  .category-tile strong { font-size: 11px; }
+  .compact-head h2 { font-size: 23px; }
+  .featured-row { grid-auto-columns: minmax(168px, 46vw); gap: 10px; }
   .section-head { display: block; }
   .section-head h2 { font-size: 25px; line-height: 1.5; }
   .filters { display: grid; grid-template-columns: 1fr; margin-top: 16px; }

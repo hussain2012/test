@@ -380,7 +380,14 @@ function Store() {
   }, []);
 
   const safeProducts = Array.isArray(products) ? products : [];
-  const categories = ['الكل', ...new Set(safeProducts.map((product) => product.category || 'عام'))];
+  const categoryNames = [...new Set(safeProducts.map((product) => product.category || 'عام'))];
+  const categories = ['الكل', ...categoryNames];
+  const categoryCards = categoryNames.map((name) => ({
+    name,
+    product: safeProducts.find((product) => (product.category || 'عام') === name),
+  }));
+  const featuredProducts = safeProducts.filter((product) => product.featured || Number(product.discountPercentage || 0) > 0).slice(0, 6);
+  const promoProduct = featuredProducts[0] || safeProducts[0];
   const visibleProducts = safeProducts.filter((product) => {
     const matchesCategory = category === 'الكل' || product.category === category;
     const query = search.trim().toLowerCase();
@@ -409,13 +416,19 @@ function Store() {
       <StoreNav settings={settings} />
       <main>
         {settings.maintenanceMode && <div className="maintenance-banner">المتجر في وضع الصيانة: يمكنك تصفح المنتجات، والطلبات متوقفة مؤقتاً.</div>}
-        <section className="hero hero-text-only">
+        <section className="hero store-hero">
           <div className="hero-copy">
+            <p className="eyebrow">اختيارات اليوم</p>
             <h1>{settings.heroTitle}</h1>
+            {settings.heroDescription && <p>{settings.heroDescription}</p>}
+            <a href="#catalog" className="primary hero-cta">{settings.heroButtonText || 'تسوق الآن'}</a>
           </div>
+          {promoProduct && <Link to={`/product/${promoProduct.id}`} className="hero-product-preview"><ProductImage src={promoProduct.imageUrl} alt={promoProduct.name} /><span>{promoProduct.name}</span></Link>}
         </section>
 
         <section id="catalog" className="catalog">
+          {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p><h2>اختار ما يناسبك</h2></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">كل</span><strong>الكل</strong></button>{categoryCards.map(({ name, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={name} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
+          {!!featuredProducts.length && <section className="featured-shelf"><div className="section-head compact-head"><div><p className="eyebrow">مختارات نسق</p><h2>الأكثر طلباً</h2></div><button type="button" className="text-action" onClick={() => { setCategory('الكل'); setSearch(''); }}>عرض الكل</button></div><div className="featured-row">{featuredProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} compact />)}</div></section>}
           <div className="section-head">
             <div>
               <p className="eyebrow">المنتجات</p>
@@ -478,12 +491,12 @@ function StoreFooter({ settings }) {
   );
 }
 
-function ProductCard({ product, maintenanceMode = false }) {
+function ProductCard({ product, maintenanceMode = false, compact = false }) {
   const hasDiscount = Number(product.discountPercentage || 0) > 0;
   const unitPrice = Number(product.discountedPrice ?? product.price ?? 0);
 
   return (
-    <article className="product" key={product.id}>
+    <article className={`product ${compact ? 'product-compact' : ''}`} key={product.id}>
       <Link to={`/product/${product.id}`} className="product-image">
         <ProductImage src={product.imageUrl} alt={product.name} />
         <div className="product-badges">
