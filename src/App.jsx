@@ -874,7 +874,7 @@ function Login() {
       setError(authErrorMessage(result.error, 'تعذر إتمام العملية. حاول مرة أخرى.'));
       return;
     }
-    if (mode === 'login' && !isPhone) {
+    if (mode === 'login' || (mode === 'register' && isPhone)) {
       supabase.auth.updateUser({ data: { password_set: true } }).catch(() => {});
     }
     if (mode === 'register') {
