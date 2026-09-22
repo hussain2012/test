@@ -23,6 +23,8 @@ const authErrorMessage = (error, fallback) => {
   const message = String(error?.message || '').toLowerCase();
   const code = String(error?.code || '').toLowerCase();
   if (message.includes('rate limit') || message.includes('too many')) return 'تم تجاوز عدد المحاولات. انتظر قليلاً ثم حاول مرة أخرى.';
+  if (message.includes('invalid login credentials') || code === 'invalid_credentials') return 'البريد أو كلمة المرور غير صحيحة. إذا لم تعيّن كلمة مرور من قبل، أرسل رابط دخول جديداً أدناه.';
+  if (message.includes('email not confirmed')) return 'يجب تأكيد البريد الإلكتروني أولاً عبر الرابط المرسل إليك.';
   if (code === 'otp_expired' || message.includes('otp_expired') || message.includes('expired') || message.includes('invalid token')) return 'انتهت صلاحية الرابط. اطلب رابط دخول جديداً من صفحة التسجيل.';
   if (message.includes('invalid email')) return 'أدخل بريداً إلكترونياً صحيحاً.';
   if (message.includes('already registered') || message.includes('user already')) return 'هذا البريد مسجل مسبقاً.';
@@ -256,10 +258,11 @@ function AccountPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [passwordSet, setPasswordSet] = useState(metadata.password_set === true);
+  const [activePanel, setActivePanel] = useState('account');
 
   if (!user) return <Navigate to="/login" replace />;
 
-  const displayName = name || profile?.displayName || user.email || 'مستخدم';
+  const displayName = name || profile?.displayName || '';
   const updateFavoriteField = (event) => setFavorite((current) => ({ ...current, [event.target.name]: event.target.value }));
 
   const saveAccountName = async (event) => {
@@ -313,46 +316,23 @@ function AccountPage() {
     <>
       <StoreNav settings={settings} />
       <main className="account-page">
-        <div className="account-page-head">
-          <p className="eyebrow">حسابك</p>
-          <h1>أهلاً، {displayName}</h1>
-          <p>{user.email}</p>
-        </div>
-        <div className="account-actions">
-          <Link to="/my-orders" className="account-action">طلباتي السابقة</Link>
-          <button type="button" className="account-action" onClick={() => signOut(setError)}>تسجيل الخروج</button>
-        </div>
+        <div className="account-page-head"><p className="eyebrow">حسابك</p><h1>{displayName ? `أهلاً، ${displayName}` : 'أهلاً بك'}</h1><p>{user.email}</p></div>
+        <section className="account-menu" aria-label="قائمة الحساب">
+          <h2>الإعدادات</h2>
+          <button type="button" className={`account-menu-row ${activePanel === 'account' ? 'active' : ''}`} onClick={() => setActivePanel('account')}><span className="account-menu-icon">◉</span><strong>بيانات الحساب</strong><span className="account-menu-arrow">‹</span></button>
+          <button type="button" className={`account-menu-row ${activePanel === 'password' ? 'active' : ''}`} onClick={() => setActivePanel('password')}><span className="account-menu-icon">⌑</span><strong>{passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور'}</strong><span className="account-menu-arrow">‹</span></button>
+          <h2>المساعدة</h2>
+          <Link to="/my-orders" className="account-menu-row"><span className="account-menu-icon">★</span><strong>طلباتي السابقة</strong><span className="account-menu-arrow">‹</span></Link>
+          <button type="button" className={`account-menu-row ${activePanel === 'favorites' ? 'active' : ''}`} onClick={() => setActivePanel('favorites')}><span className="account-menu-icon">⌖</span><strong>خيارات الطلب المفضلة</strong><span className="account-menu-arrow">‹</span></button>
+          <button type="button" className={`account-menu-row ${activePanel === 'policy' ? 'active' : ''}`} onClick={() => setActivePanel('policy')}><span className="account-menu-icon">▣</span><strong>{settings.policyTitle}</strong><span className="account-menu-arrow">‹</span></button>
+          <h2>الحساب</h2>
+          <button type="button" className="account-menu-row account-logout-row" onClick={() => signOut(setError)}><span className="account-menu-icon">↪</span><strong>تسجيل الخروج</strong><span className="account-menu-arrow">‹</span></button>
+        </section>
         <div className="account-sections">
-          <form className="account-panel" onSubmit={saveAccountName}>
-            <h2>بيانات الحساب</h2>
-            <Field label="اسمك" name="accountName" value={name} onChange={(event) => setName(event.target.value)} />
-            <button type="submit" className="primary">حفظ الاسم</button>
-          </form>
-          <form className="account-panel" onSubmit={savePassword}>
-            <h2>{passwordSet ? 'تغيير كلمة المرور' : 'تنبيه: عيّن كلمة مرور'}</h2>
-            {!passwordSet && <p className="account-warning">حسابك يعمل حالياً عبر رابط البريد. عيّن كلمة مرور حتى تسجل الدخول بها لاحقاً.</p>}
-            <Field label="كلمة المرور الجديدة" name="accountPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal />
-            <Field label="تأكيد كلمة المرور" name="accountPasswordConfirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal />
-            <button type="submit" className="primary">{passwordSet ? 'تغيير كلمة المرور' : 'تعيين كلمة المرور'}</button>
-          </form>
-          <section className="account-panel account-policy">
-            <h2>{settings.policyTitle}</h2>
-            <p>{settings.policyText}</p>
-          </section>
-          <section className="account-panel account-favorites">
-            <h2>خيارات الطلب المفضلة</h2>
-            {favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}
-            {!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}
-            <form className="favorite-form" onSubmit={saveFavorite}>
-              <Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" />
-              <Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} />
-              <label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label>
-              <Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} />
-              <Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} />
-              <Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" />
-              <button type="submit" className="primary">حفظ الخيار</button>
-            </form>
-          </section>
+          {activePanel === 'account' && <form className="account-panel" onSubmit={saveAccountName}><h2>بيانات الحساب</h2><Field label="اسمك" name="accountName" value={name} onChange={(event) => setName(event.target.value)} /><button type="submit" className="primary">حفظ الاسم</button></form>}
+          {activePanel === 'password' && <form className="account-panel" onSubmit={savePassword}><h2>{passwordSet ? 'تغيير كلمة المرور' : 'تنبيه: عيّن كلمة مرور'}</h2>{!passwordSet && <p className="account-warning">حسابك يعمل حالياً عبر رابط البريد. عيّن كلمة مرور حتى تسجل الدخول بها لاحقاً.</p>}<Field label="كلمة المرور الجديدة" name="accountPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal /><Field label="تأكيد كلمة المرور" name="accountPasswordConfirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal /><button type="submit" className="primary">{passwordSet ? 'تغيير كلمة المرور' : 'تعيين كلمة المرور'}</button></form>}
+          {activePanel === 'policy' && <section className="account-panel account-policy"><h2>{settings.policyTitle}</h2><p>{settings.policyText}</p></section>}
+          {activePanel === 'favorites' && <section className="account-panel account-favorites"><h2>خيارات الطلب المفضلة</h2>{favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}{!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}<form className="favorite-form" onSubmit={saveFavorite}><Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" /><Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} /><label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} /><Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} /><Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" /><button type="submit" className="primary">حفظ الخيار</button></form></section>}
         </div>
         {message && <p className="success-message account-status">{message}</p>}
         {error && <p className="error account-status">{error}</p>}
@@ -535,17 +515,19 @@ function ProductDetailPage() {
   const [error, setError] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState('');
+  const [similarProducts, setSimilarProducts] = useState([]);
 
   useEffect(() => {
     recordView('product').catch(() => {});
 
     setLoading(true);
     setError('');
-    getProduct(id)
-      .then((data) => { if (!data) throw new Error('تعذر تحميل المنتج'); return data; })
-      .then((data) => {
+    Promise.all([getProduct(id), listProducts()])
+      .then(([data, products]) => {
+        if (!data) throw new Error('تعذر تحميل المنتج');
         setProduct(data);
         setSelectedImage(data.productImages?.[0] || data.imageUrl || '');
+        setSimilarProducts(products.filter((item) => item.id !== data.id && item.category === data.category).slice(0, 4));
       })
       .catch((reason) => setError(reason.message))
       .finally(() => setLoading(false));
@@ -578,16 +560,19 @@ function ProductDetailPage() {
             </div>
           </div>
           <div className="detail-content">
-            <span className="category-badge">{product.category}</span>
+            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{hasDiscount && <span className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
             <h1>{product.name}</h1>
             <div className="price-stack">
               {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(finalPrice)}</strong></> : <strong>{money(product.price)}</strong>}
             </div>
-            {hasDiscount && <span className="saving-note">توفير</span>}
             <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : (product.inStock ? 'available' : 'unavailable')}`}>
               {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (product.inStock ? `متوفر في المخزون: ${product.stockQuantity} قطعة` : 'طلب مسبق')}
             </div>
             <p className="detail-description">{product.description}</p>
+            <div className="detail-promises">
+              <div><span>🚚</span><strong>توصيل لكل المحافظات</strong><small>ننسق معك قبل التجهيز</small></div>
+              <div><span>💵</span><strong>الدفع عند الاستلام</strong><small>ادفع عند وصول طلبك</small></div>
+            </div>
             <div className="quantity-row">
               <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
               <span>{quantity}</span>
@@ -597,6 +582,10 @@ function ProductDetailPage() {
             <Link to="/" className="back-link">العودة إلى المتجر</Link>
           </div>
         </div>
+        {similarProducts.length > 0 && <section className="similar-products">
+          <div className="similar-heading"><div><p className="eyebrow">قد يعجبك أيضاً</p><h2>منتجات مشابهة</h2></div><Link to="/" className="back-link">عرض الكل</Link></div>
+          <div className="product-grid">{similarProducts.map((item) => <ProductCard key={item.id} product={item} maintenanceMode={settings.maintenanceMode} />)}</div>
+        </section>}
       </main>
     </>
   );
@@ -819,11 +808,15 @@ function Login() {
 
   const signInWithGoogle = async () => {
     setError('');
-    const { error: authError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: authRedirectUrl() },
-    });
-    if (authError) setError(authError.message || 'تعذر تسجيل الدخول بجوجل');
+    try {
+      const { error: authError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: authRedirectUrl() },
+      });
+      if (authError) setError(authErrorMessage(authError, 'تعذر تسجيل الدخول بجوجل. حاول مرة أخرى.'));
+    } catch {
+      setError('تعذر تسجيل الدخول بجوجل حالياً. حاول مرة أخرى.');
+    }
   };
 
   const sendMagicLink = async () => {
@@ -867,9 +860,15 @@ function Login() {
       return;
     }
     const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
-    const result = mode === 'login'
-      ? await supabase.auth.signInWithPassword(credentials)
-      : await supabase.auth.signUp(credentials);
+    let result;
+    try {
+      result = mode === 'login'
+        ? await supabase.auth.signInWithPassword(credentials)
+        : await supabase.auth.signUp(credentials);
+    } catch {
+      setError('تعذر الاتصال بخدمة تسجيل الدخول. حاول مرة أخرى.');
+      return;
+    }
     if (result.error) {
       setError(authErrorMessage(result.error, 'تعذر إتمام العملية. حاول مرة أخرى.'));
       return;
@@ -907,6 +906,7 @@ function Login() {
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إرسال رابط الدخول'}</button>
+        {mode === 'login' && error && <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول جديد إلى البريد</button>}
         {mode === 'login' && <div className="google-login-section">
           <span>أو</span>
           <button type="button" className="google-button" onClick={signInWithGoogle}>تسجيل الدخول باستخدام Google</button>
