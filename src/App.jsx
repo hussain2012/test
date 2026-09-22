@@ -22,6 +22,7 @@ const parseVariantLines = (value) => String(value || '').split('\n').map((line) 
 }).filter((variant) => variant.name && variant.values.length);
 const variantsToText = (variants) => (Array.isArray(variants) ? variants : []).map((variant) => `${variant.name}: ${variant.values.join(', ')}`).join('\n');
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
+const variantKey = (variants) => JSON.stringify(variants || {});
 const authRedirectUrl = () => typeof window !== 'undefined'
   ? window.location.origin
   : 'https://test2-mar-efc5.vercel.app';
@@ -200,7 +201,8 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
   const { addItem, cart } = useCart();
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
-  const inCart = cart.some((item) => item.id === Number(product.id));
+  const productVariantKey = variantKey(product.selectedVariants);
+  const inCart = cart.some((item) => item.id === Number(product.id) && variantKey(item.selectedVariants) === productVariantKey);
 
   useEffect(() => {
     if (!status) return undefined;
@@ -548,6 +550,7 @@ function ProductDetailPage() {
         if (!data) throw new Error('تعذر تحميل المنتج');
         setProduct(data);
         setSelectedImage(data.productImages?.[0] || data.imageUrl || '');
+        setSelectedVariants({});
         setLoading(false);
         listProducts()
           .then((products) => setSimilarProducts(products.filter((item) => item.id !== data.id && item.category === data.category).slice(0, 4)))
@@ -567,6 +570,7 @@ function ProductDetailPage() {
 
   const hasDiscount = Number(product.discountPercentage || 0) > 0;
   const finalPrice = Number(product.discountedPrice ?? product.price ?? 0);
+  const variantsComplete = (product.variants || []).every((variant) => selectedVariants[variant.name]);
 
   return (
     <>
@@ -603,7 +607,7 @@ function ProductDetailPage() {
               <span>{quantity}</span>
               <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
             </div>
-            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={!product.inStock || settings.maintenanceMode} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : 'غير متوفر'} />
+            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={!product.inStock || settings.maintenanceMode || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
             <Link to="/" className="back-link">العودة إلى المتجر</Link>
           </div>
         </div>
