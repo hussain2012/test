@@ -424,6 +424,7 @@ button { cursor: pointer; }
   font-size: 11px;
   font-weight: 800;
 }
+.product-code { color: var(--muted); font-size: 10px; font-weight: 700; }
 
 .product-info p {
   color: var(--muted);
@@ -578,6 +579,7 @@ button { cursor: pointer; }
   line-height: 1.8;
   margin: 0;
 }
+.detail-variants { display: grid; gap: 12px; padding: 14px; background: var(--paper-soft); border: 1px solid var(--line); border-radius: 10px; }
 
 .detail-promises { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .detail-promises > div { display: grid; grid-template-columns: auto 1fr; column-gap: 9px; align-items: center; padding: 12px; background: var(--paper-soft); border: 1px solid var(--line); border-radius: 10px; }
@@ -1078,6 +1080,8 @@ button { cursor: pointer; }
 }
 
 .admin-form textarea { grid-column: 1 / -1; min-height: 100px; }
+.admin-form .variants-input { min-height: 88px; }
+.account-order-items span small { display: block; color: var(--accent); font-size: 10px; margin-top: 3px; }
 .admin-form .image-list-input { min-height: 72px; }
 
 .admin-form .primary, .admin-form .secondary-button { width: fit-content; }

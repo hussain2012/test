@@ -16,6 +16,12 @@ const mediaUrl = (value) => {
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
 const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
+const parseVariantLines = (value) => String(value || '').split('\n').map((line) => {
+  const [name, values] = line.split(':');
+  return { name: String(name || '').trim(), values: String(values || '').split(',').map((item) => item.trim()).filter(Boolean) };
+}).filter((variant) => variant.name && variant.values.length);
+const variantsToText = (variants) => (Array.isArray(variants) ? variants : []).map((variant) => `${variant.name}: ${variant.values.join(', ')}`).join('\n');
+const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const authRedirectUrl = () => typeof window !== 'undefined'
   ? window.location.origin
   : 'https://test2-mar-efc5.vercel.app';
@@ -391,7 +397,7 @@ function Store() {
   const visibleProducts = safeProducts.filter((product) => {
     const matchesCategory = category === 'الكل' || product.category === category;
     const query = search.trim().toLowerCase();
-    const matchesQuery = !query || product.name.toLowerCase().includes(query);
+    const matchesQuery = !query || product.name.toLowerCase().includes(query) || String(product.productCode || '').toLowerCase().includes(query);
     return matchesCategory && matchesQuery;
   });
   const totalPages = Math.max(1, Math.ceil(visibleProducts.length / productsPerPage));
@@ -434,7 +440,7 @@ function Store() {
               <p className="eyebrow">المنتجات</p>
             </div>
             <div className="filters">
-              <input aria-label="بحث" placeholder="ابحث عن منتج..." value={search} onChange={(event) => setSearch(event.target.value)} />
+              <input aria-label="بحث" placeholder="ابحث عن اسم المنتج أو الكود..." value={search} onChange={(event) => setSearch(event.target.value)} />
               <select value={category} onChange={(event) => setCategory(event.target.value)}>
                 {categories.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
@@ -508,6 +514,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
       </Link>
       <div className="product-info">
         <span>{product.category}</span>
+        {product.productCode && <small className="product-code">كود: {product.productCode}</small>}
         <Link to={`/product/${product.id}`} className="product-name"><h3>{product.name}</h3></Link>
         <div className="product-bottom">
           <div className="price-wrap">
@@ -528,6 +535,7 @@ function ProductDetailPage() {
   const [error, setError] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [selectedImage, setSelectedImage] = useState('');
+  const [selectedVariants, setSelectedVariants] = useState({});
   const [similarProducts, setSimilarProducts] = useState([]);
 
   useEffect(() => {
@@ -535,12 +543,15 @@ function ProductDetailPage() {
 
     setLoading(true);
     setError('');
-    Promise.all([getProduct(id), listProducts()])
-      .then(([data, products]) => {
+    getProduct(id)
+      .then((data) => {
         if (!data) throw new Error('تعذر تحميل المنتج');
         setProduct(data);
         setSelectedImage(data.productImages?.[0] || data.imageUrl || '');
-        setSimilarProducts(products.filter((item) => item.id !== data.id && item.category === data.category).slice(0, 4));
+        setLoading(false);
+        listProducts()
+          .then((products) => setSimilarProducts(products.filter((item) => item.id !== data.id && item.category === data.category).slice(0, 4)))
+          .catch(() => setSimilarProducts([]));
       })
       .catch((reason) => setError(reason.message))
       .finally(() => setLoading(false));
@@ -573,7 +584,7 @@ function ProductDetailPage() {
             </div>
           </div>
           <div className="detail-content">
-            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{hasDiscount && <span className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
+            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
             <h1>{product.name}</h1>
             <div className="price-stack">
               {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(finalPrice)}</strong></> : <strong>{money(product.price)}</strong>}
@@ -582,6 +593,7 @@ function ProductDetailPage() {
               {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (product.inStock ? `متوفر في المخزون: ${product.stockQuantity} قطعة` : 'طلب مسبق')}
             </div>
             <p className="detail-description">{product.description}</p>
+            {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required><option value="">اختر {variant.name}</option>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
             <div className="detail-promises">
               <div><span>🚚</span><strong>توصيل لكل المحافظات</strong><small>ننسق معك قبل التجهيز</small></div>
               <div><span>💵</span><strong>الدفع عند الاستلام</strong><small>ادفع عند وصول طلبك</small></div>
@@ -591,7 +603,7 @@ function ProductDetailPage() {
               <span>{quantity}</span>
               <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
             </div>
-            <AddToCartButton product={product} quantity={quantity} disabled={!product.inStock || settings.maintenanceMode} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : 'غير متوفر'} />
+            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={!product.inStock || settings.maintenanceMode} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : 'غير متوفر'} />
             <Link to="/" className="back-link">العودة إلى المتجر</Link>
           </div>
         </div>
@@ -670,7 +682,7 @@ function Checkout() {
     if (!cart.length) return setError('السلة فارغة');
 
     const payload = {
-      items: (Array.isArray(cart) ? cart : []).map((item) => ({ productId: item.id, name: item.name, price: Number(item.price || 0), quantity: Number(item.quantity || 0) })),
+      items: (Array.isArray(cart) ? cart : []).map((item) => ({ productId: item.id, name: item.name, price: Number(item.price || 0), quantity: Number(item.quantity || 0), selectedVariants: item.selectedVariants || {} })),
       customerName: form.customerName,
       province: form.province,
       address: form.address,
@@ -800,7 +812,7 @@ function MyOrders() {
           <div className="account-order-list">
             {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
               <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
-              <div className="account-order-items">{(Array.isArray(order.items) ? order.items : []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
+              <div className="account-order-items">{(Array.isArray(order.items) ? order.items : []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && <small>{selectedVariantText(item.selectedVariants)}</small>}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
               <div className="account-order-totals"><span>المجموع: {money(order.subtotal)}</span><span>الخصم {order.discountValue ? `(${order.discountType === 'percentage' ? `${order.discountValue}%` : money(order.discountValue)})` : ''}: - {money(order.discountAmount)}</span><span>التوصيل: {money(order.deliveryFee)}</span><strong>الإجمالي: {money(order.finalTotal)}</strong></div>
             </article>)}
           </div>
@@ -1012,7 +1024,7 @@ function Overview() {
 }
 
 function ProductsAdmin() {
-  const emptyForm = { name: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], stockQuantity: 10, inStock: true, featured: false, isNew: false };
+  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], variantsText: '', stockQuantity: 10, inStock: true, featured: false, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
@@ -1048,7 +1060,7 @@ function ProductsAdmin() {
     setMessage('');
     setError('');
     const save = editingId ? updateProduct : createProduct;
-    await save({ ...form, productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
+    await save({ ...form, variants: parseVariantLines(form.variantsText), productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
 
     resetForm();
     setMessage(editingId ? 'تم تحديث المنتج' : 'تمت إضافة المنتج');
@@ -1070,6 +1082,7 @@ function ProductsAdmin() {
     setEditingId(product.id);
     setForm({
       name: product.name,
+      productCode: product.productCode || '',
       description: product.description,
       price: product.price,
       costPrice: product.costPrice ?? 0,
@@ -1077,6 +1090,8 @@ function ProductsAdmin() {
       category: product.category,
       imageUrl: product.imageUrl || '',
       productImages: product.productImages || [],
+      variants: product.variants || [],
+      variantsText: variantsToText(product.variants),
       stockQuantity: product.stockQuantity ?? 0,
       inStock: product.inStock,
       featured: Boolean(product.featured),
@@ -1091,10 +1106,12 @@ function ProductsAdmin() {
       <form className="admin-form" onSubmit={submit}>
         <h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2>
         <input placeholder="اسم المنتج" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+        <input placeholder="كود المنتج (مثلاً: PRD-001)" value={form.productCode} onChange={(event) => setForm({ ...form, productCode: event.target.value })} />
         <input placeholder="سعر البيع" type="number" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} />
         <input placeholder="سعر الشراء" type="number" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} />
         <label className="field-label">نسبة الخصم %<input aria-label="نسبة الخصم" placeholder="0 بدون خصم" type="number" min="0" max="100" value={form.discountPercentage} onChange={(event) => setForm({ ...form, discountPercentage: event.target.value })} /></label>
         <input placeholder="التصنيف" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
+        <textarea className="variants-input" placeholder={'المتغيرات، سطر لكل خيار: مثال\nاللون: أبيض، أسود\nالمقاس: S، M، L'} value={form.variantsText} onChange={(event) => setForm({ ...form, variantsText: event.target.value })} />
         <label className="field-label">الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value })} /></label>
         <label className="check-label"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />منتج مميّز ويظهر أولاً</label>
         <label className="check-label"><input type="checkbox" checked={form.isNew} onChange={(event) => setForm({ ...form, isNew: event.target.checked })} />منتج جديد</label>
@@ -1120,6 +1137,7 @@ function ProductsAdmin() {
           <div className="table-row product-row" key={product.id}>
             <ProductImage src={product.imageUrl} alt={product.name} />
             <strong>{product.name}</strong>
+            <span>{product.productCode ? `كود: ${product.productCode}` : 'بدون كود'}</span>
             <span>{product.category}</span>
             <span>{money(product.price)}</span>
             <span>{product.discountPercentage ? `${product.discountPercentage}% خصم` : 'بدون خصم'}</span>
@@ -1239,7 +1257,7 @@ function OrdersAdmin() {
           </div>
 
           <div className="ordered-items">
-            {(Array.isArray(order.items) ? order.items : []).map((item) => <span key={`${order.id}-${item.productId}`}>{item.name} × {item.quantity}</span>)}
+            {(Array.isArray(order.items) ? order.items : []).map((item) => <span key={`${order.id}-${item.productId}`}>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && ` (${selectedVariantText(item.selectedVariants)})`}</span>)}
           </div>
         </article>
       ))}
