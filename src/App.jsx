@@ -1248,15 +1248,15 @@ function ProductsAdmin() {
         {(Array.isArray(items) ? items : []).map((product) => (
           <div className="table-row product-row" key={product.id}>
             <ProductImage src={product.imageUrl} alt={product.name} />
-            <strong>{product.name}</strong>
-            <span>{product.productCode ? `كود: ${product.productCode}` : 'بدون كود'}</span>
-            <span>{product.category}</span>
+            <div className="product-main">
+              <strong>{product.name}</strong>
+              <small>{product.productCode ? `كود: ${product.productCode}` : 'بدون كود'}</small>
+            </div>
+            <span>{product.category || 'غير مصنَّف'}</span>
             <span>{money(product.price)}</span>
             <span>{product.discountPercentage ? `${product.discountPercentage}% خصم` : 'بدون خصم'}</span>
             <span>{product.inStock ? `${product.stockQuantity} قطعة` : 'طلب مسبق'}</span>
-            <span>{money(product.costPrice || 0)}</span>
-            <span>{money(product.profit || 0)}</span>
-            <span>{product.inStock ? 'متوفر' : 'غير متوفر'}</span>
+            <span className={product.inStock ? 'status-ok' : 'status-warn'}>{product.inStock ? 'متوفر' : 'غير متوفر'}</span>
             <div className="inline-actions">
               <button type="button" onClick={() => startEdit(product)}>تعديل</button>
               <button type="button" className="danger" onClick={() => handleDelete(product.id)}>حذف</button>

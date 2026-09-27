@@ -1450,7 +1450,36 @@ button { cursor: pointer; }
 }
 
 .product-row {
-  grid-template-columns: 50px 1.5fr 1fr 1fr 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 52px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  padding: 14px 0;
+}
+
+.product-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.product-main strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.product-main small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.status-ok {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.status-warn {
+  color: var(--warning);
+  font-weight: 700;
 }
 
 .discount-row {
@@ -1461,6 +1490,7 @@ button { cursor: pointer; }
   width: 44px;
   height: 44px;
   object-fit: cover;
+  border-radius: 8px;
 }
 
 .table-row button {
@@ -1471,7 +1501,12 @@ button { cursor: pointer; }
 
 .table-row button.danger { color: var(--danger); }
 
-.inline-actions { display: flex; gap: 8px; }
+.inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 .orders {
   display: grid;
