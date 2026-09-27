@@ -1614,6 +1614,15 @@ button { cursor: pointer; }
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes route-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.route-transition {
+  animation: route-enter 280ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
