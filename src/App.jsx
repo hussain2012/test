@@ -1255,27 +1255,34 @@ function ProductsAdmin() {
         <footer className="product-editor-actions"><button type="submit" className="primary">{editingId ? 'حفظ التعديلات' : 'حفظ المنتج'}</button>{message && <p className="success-message">{message}</p>}{error && <p className="error">{error}</p>}</footer>
       </form>
 
-      <div className="admin-table">
+      <div className="admin-table product-inventory">
         <div className="table-title">
           <h2>كل المنتجات</h2>
           <span>{items.length} منتجات</span>
         </div>
-        {(Array.isArray(items) ? items : []).map((product) => (
-          <div className="table-row product-row" key={product.id}>
-            <ProductImage src={product.imageUrl} alt={product.name} />
-            <div className="product-main">
-              <strong>{product.name}</strong>
-              <small>{product.category || 'غير مصنَّف'}</small>
-            </div>
-            <span>{money(product.price)}</span>
-            <span>{product.inStock ? `${product.stockQuantity} قطعة` : 'طلب مسبق'}</span>
-            <span className={product.inStock ? 'status-ok' : 'status-warn'}>{product.inStock ? 'متوفر' : 'غير متوفر'}</span>
-            <div className="inline-actions">
-              <button type="button" onClick={() => startEdit(product)}>تعديل</button>
-              <button type="button" className="danger" onClick={() => handleDelete(product.id)}>حذف</button>
-            </div>
-          </div>
-        ))}
+        <div className="product-inventory-list">
+          {(Array.isArray(items) ? items : []).map((product) => (
+            <article className="product-inventory-card" key={product.id}>
+              <ProductImage src={product.imageUrl} alt={product.name} />
+              <div className="product-inventory-details">
+                <div className="product-main">
+                  <strong>{product.name}</strong>
+                  <small>{product.category || 'غير مصنَّف'}</small>
+                </div>
+                <div className="product-inventory-meta">
+                  <strong>{money(product.price)}</strong>
+                  <span>{product.inStock ? `${product.stockQuantity} قطعة` : 'طلب مسبق'}</span>
+                  <span className={product.inStock ? 'status-ok' : 'status-warn'}>{product.inStock ? 'متوفر' : 'غير متوفر'}</span>
+                </div>
+              </div>
+              <div className="inline-actions">
+                <button type="button" onClick={() => startEdit(product)}>تعديل</button>
+                <button type="button" className="danger" onClick={() => handleDelete(product.id)}>حذف</button>
+              </div>
+            </article>
+          ))}
+          {!items.length && <p className="product-inventory-empty">لا توجد منتجات بعد.</p>}
+        </div>
       </div>
     </>
   );
