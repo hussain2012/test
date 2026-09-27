@@ -165,7 +165,14 @@ function useSiteSettings() {
   const [settings, setSettings] = useState(() => {
     try {
       const cached = JSON.parse(localStorage.getItem(SITE_SETTINGS_CACHE_KEY) || 'null');
-      return cached && typeof cached === 'object' ? { ...defaultSettings, ...cached } : defaultSettings;
+      return cached && typeof cached === 'object'
+        ? {
+          ...defaultSettings,
+          ...cached,
+          policyTitle: String(cached.policyTitle || '').trim() || defaultSettings.policyTitle,
+          policyText: String(cached.policyText || '').trim() || defaultSettings.policyText,
+        }
+        : defaultSettings;
     } catch {
       return defaultSettings;
     }
@@ -1300,8 +1307,21 @@ function ProductDiscountAdmin() {
 function OrdersAdmin() {
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
 
-  const load = () => listOrders().then((data) => setOrders(Array.isArray(data) ? data : []));
+  const load = async () => {
+    try {
+      const data = await listOrders();
+      setOrders(Array.isArray(data) ? data : []);
+      setError('');
+    } catch {
+      setError('تعذر تحميل قائمة الطلبات. تحقق من الاتصال ثم حاول مرة أخرى.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -1310,8 +1330,16 @@ function OrdersAdmin() {
   }, []);
 
   const changeOrderStatus = async (id, status) => {
-    await updateOrder(id, { status, isRead: true });
-    load();
+    setError('');
+    setUpdatingOrderId(id);
+    try {
+      await updateOrder(id, { status, isRead: true });
+      setOrders((current) => current.map((order) => order.id === id ? { ...order, status, isRead: true } : order));
+    } catch {
+      setError('تعذر تحديث حالة الطلب. حاول مرة أخرى.');
+    } finally {
+      setUpdatingOrderId(null);
+    }
   };
 
   const visibleOrders = orders.filter((order) => filter === 'all' || order.status === filter);
@@ -1329,8 +1357,9 @@ function OrdersAdmin() {
         </select>
       </div>
       <div className="order-legend"><span><i className="legend-dot delivered-dot" />مكتمل</span><span><i className="legend-dot cancelled-dot" />ملغي</span><span><i className="legend-dot processing-dot" />قيد التجهيز</span><span><i className="legend-unread" />غير مقروء</span></div>
+      {error && <p className="error order-error" role="alert">{error}</p>}
 
-      {(Array.isArray(visibleOrders) ? visibleOrders : []).map((order) => (
+      {loading ? <div className="empty">جاري تحميل الطلبات...</div> : (Array.isArray(visibleOrders) ? visibleOrders : []).map((order) => (
         <article className={`order-card status-${order.status} ${order.isRead ? '' : 'unread-order'}`} key={order.id}>
           <div className="order-card-head">
             <div>
@@ -1338,7 +1367,7 @@ function OrdersAdmin() {
               <small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small>
               {!order.isRead && <b className="unread-badge">طلب غير مقروء</b>}
             </div>
-            <select value={order.status} onChange={(event) => changeOrderStatus(order.id, event.target.value)}>
+            <select value={order.status} disabled={updatingOrderId === order.id} onChange={(event) => changeOrderStatus(order.id, event.target.value)}>
               <option value="new">جديد</option>
               <option value="processing">قيد التجهيز</option>
               <option value="delivered">تم التوصيل</option>
@@ -1352,11 +1381,11 @@ function OrdersAdmin() {
             <p><b>العنوان</b>{order.address}</p>
             <p><b>اقرب نقطة دالة</b>{order.nearestLandmark}</p>
             <p><b>رقم هاتف</b>{order.phoneNumber}</p>
-            <p><b>السعر الاجمالي</b>{money(order.subtotal)}</p>
+            <p><b>المجموع الفرعي</b>{money(order.subtotal)}</p>
             <p><b>كود الخصم</b>{order.discountCode || 'لا يوجد'}</p>
             <p><b>الخصم</b>{money(order.discountAmount)}</p>
             <p><b>التوصيل</b>{money(order.deliveryFee)}</p>
-            <p><b>السعر الاجمالي</b><strong>{money(order.finalTotal)}</strong></p>
+            <p><b>الإجمالي النهائي</b><strong>{money(order.finalTotal)}</strong></p>
           </div>
 
           <div className="ordered-items">
@@ -1365,7 +1394,7 @@ function OrdersAdmin() {
         </article>
       ))}
 
-      {!visibleOrders.length && <div className="empty">لا توجد طلبات حالياً</div>}
+      {!loading && !error && !visibleOrders.length && <div className="empty">لا توجد طلبات حالياً</div>}
     </div>
   );
 }
