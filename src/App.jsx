@@ -232,6 +232,7 @@ function App() {
     <AuthProvider>
       <CartProvider>
         <AppContent />
+        <BottomNav />
       </CartProvider>
     </AuthProvider>
   );
@@ -244,6 +245,10 @@ function AppContent() {
       <Route path="/product/:id" element={<ProductDetailPage />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/account" element={<AccountPage />} />
+      <Route path="/account/profile" element={<AccountPage />} />
+      <Route path="/account/password" element={<AccountPage />} />
+      <Route path="/account/favorites" element={<AccountPage />} />
+      <Route path="/account/policy" element={<AccountPage />} />
       <Route path="/my-orders" element={<MyOrders />} />
       <Route path="/login" element={<Login />} />
       <Route path="/admin/*" element={<Admin />} />
@@ -252,25 +257,61 @@ function AppContent() {
   );
 }
 
+function BottomNav() {
+  const { count } = useCart();
+  const { user, profile } = useAuth();
+  const location = useLocation();
+  const items = [
+    { label: 'الرئيسية', icon: '⌂', to: '/', active: location.pathname === '/' },
+    { label: 'طلباتي السابقة', icon: '◷', to: user ? '/my-orders' : '/login', active: location.pathname === '/my-orders' },
+    { label: 'سلة التسوق', icon: '🛒', to: '/checkout', active: location.pathname === '/checkout', count },
+    { label: 'الحساب', icon: '♙', to: user ? '/account' : '/login', active: location.pathname.startsWith('/account') },
+  ];
+  if (profile?.role === 'admin') items.push({ label: 'لوحة الإدارة', icon: '▦', to: '/admin', active: location.pathname.startsWith('/admin') });
+
+  return (
+    <nav className="bottom-nav" aria-label="التنقل الرئيسي">
+      <div className="bottom-nav-inner">
+        {items.map((item) => (
+          <Link key={item.label} to={item.to} className={`bottom-nav-item ${item.active ? 'active' : ''}`} aria-current={item.active ? 'page' : undefined}>
+            <span className="bottom-nav-icon" aria-hidden="true">{item.icon}{item.count > 0 && <small>{item.count}</small>}</span>
+            <span className="bottom-nav-label">{item.label}</span>
+          </Link>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 function AccountPage() {
   const { user, profile } = useAuth();
   const settings = useSiteSettings();
+  const location = useLocation();
   const navigate = useNavigate();
   const metadata = user?.user_metadata || {};
   const [name, setName] = useState(metadata.full_name || metadata.name || profile?.displayName || '');
   const [favoriteName, setFavoriteName] = useState('');
   const [favorite, setFavorite] = useState({ customerName: name, province: '', address: '', nearestLandmark: '', phoneNumber: '' });
   const [favorites, setFavorites] = useState(Array.isArray(metadata.saved_addresses) ? metadata.saved_addresses : []);
+  const [savedProducts, setSavedProducts] = useState(Array.isArray(metadata.saved_products) ? metadata.saved_products : []);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [passwordSet, setPasswordSet] = useState(metadata.password_set === true);
-  const [activePanel, setActivePanel] = useState('account');
 
   if (!user) return <Navigate to="/login" replace />;
 
   const displayName = name || profile?.displayName || '';
+  const activePanel = location.pathname === '/account'
+    ? 'menu'
+    : location.pathname.endsWith('/password')
+      ? 'password'
+      : location.pathname.endsWith('/favorites')
+        ? 'favorites'
+        : location.pathname.endsWith('/policy')
+          ? 'policy'
+          : 'account';
   const updateFavoriteField = (event) => setFavorite((current) => ({ ...current, [event.target.name]: event.target.value }));
 
   const saveAccountName = async (event) => {
@@ -320,19 +361,27 @@ function AccountPage() {
     setFavorites(nextFavorites);
   };
 
+  const deleteSavedProduct = async (productId) => {
+    const nextProducts = savedProducts.filter((item) => String(item.id) !== String(productId));
+    const { error: authError } = await supabase.auth.updateUser({ data: { saved_products: nextProducts } });
+    if (authError) return setError('تعذر حذف المنتج من المفضلة. حاول مرة أخرى.');
+    setSavedProducts(nextProducts);
+  };
+
   return (
     <>
       <StoreNav settings={settings} />
-      <main className="account-page">
-        <div className="account-page-head"><p className="eyebrow">حسابك</p><h1>{displayName ? `أهلاً، ${displayName}` : 'أهلاً بك'}</h1><p>{user.email}</p></div>
+      <main className={`account-page ${activePanel === 'menu' ? 'account-menu-view' : 'account-detail-view'}`}>
+        <div className="account-page-head"><p className="eyebrow">حسابك</p><h1>{activePanel === 'menu' ? (displayName ? `أهلاً، ${displayName}` : 'أهلاً بك') : activePanel === 'account' ? 'بيانات الحساب' : activePanel === 'password' ? (passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور') : activePanel === 'favorites' ? 'المفضلة' : settings.policyTitle}</h1>{activePanel === 'menu' && <p>{user.email}</p>}</div>
+        {activePanel !== 'menu' && <Link to="/account" className="account-back"><span aria-hidden="true">›</span> العودة إلى الحساب</Link>}
         <section className="account-menu" aria-label="قائمة الحساب">
           <h2>الإعدادات</h2>
-          <button type="button" className={`account-menu-row ${activePanel === 'account' ? 'active' : ''}`} onClick={() => setActivePanel('account')}><span className="account-menu-icon">◉</span><strong>بيانات الحساب</strong><span className="account-menu-arrow">‹</span></button>
-          <button type="button" className={`account-menu-row ${activePanel === 'password' ? 'active' : ''}`} onClick={() => setActivePanel('password')}><span className="account-menu-icon">⌑</span><strong>{passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور'}</strong><span className="account-menu-arrow">‹</span></button>
+          <Link to="/account/profile" className={`account-menu-row ${activePanel === 'account' ? 'active' : ''}`}><span className="account-menu-icon">◉</span><strong>بيانات الحساب</strong><span className="account-menu-arrow">‹</span></Link>
+          <Link to="/account/password" className={`account-menu-row ${activePanel === 'password' ? 'active' : ''}`}><span className="account-menu-icon">⌑</span><strong>{passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور'}</strong><span className="account-menu-arrow">‹</span></Link>
           <h2>المساعدة</h2>
           <Link to="/my-orders" className="account-menu-row"><span className="account-menu-icon">★</span><strong>طلباتي السابقة</strong><span className="account-menu-arrow">‹</span></Link>
-          <button type="button" className={`account-menu-row ${activePanel === 'favorites' ? 'active' : ''}`} onClick={() => setActivePanel('favorites')}><span className="account-menu-icon">⌖</span><strong>خيارات الطلب المفضلة</strong><span className="account-menu-arrow">‹</span></button>
-          <button type="button" className={`account-menu-row ${activePanel === 'policy' ? 'active' : ''}`} onClick={() => setActivePanel('policy')}><span className="account-menu-icon">▣</span><strong>{settings.policyTitle}</strong><span className="account-menu-arrow">‹</span></button>
+          <Link to="/account/favorites" className={`account-menu-row ${activePanel === 'favorites' ? 'active' : ''}`}><span className="account-menu-icon">⌖</span><strong>خيارات الطلب المفضلة</strong><span className="account-menu-arrow">‹</span></Link>
+          <Link to="/account/policy" className={`account-menu-row ${activePanel === 'policy' ? 'active' : ''}`}><span className="account-menu-icon">▣</span><strong>{settings.policyTitle}</strong><span className="account-menu-arrow">‹</span></Link>
           <h2>الحساب</h2>
           <button type="button" className="account-menu-row account-logout-row" onClick={() => signOut(setError)}><span className="account-menu-icon">↪</span><strong>تسجيل الخروج</strong><span className="account-menu-arrow">‹</span></button>
         </section>
@@ -340,7 +389,7 @@ function AccountPage() {
           {activePanel === 'account' && <form className="account-panel" onSubmit={saveAccountName}><h2>بيانات الحساب</h2><Field label="اسمك" name="accountName" value={name} onChange={(event) => setName(event.target.value)} /><button type="submit" className="primary">حفظ الاسم</button></form>}
           {activePanel === 'password' && <form className="account-panel" onSubmit={savePassword}><h2>{passwordSet ? 'تغيير كلمة المرور' : 'تنبيه: عيّن كلمة مرور'}</h2>{!passwordSet && <p className="account-warning">حسابك يعمل حالياً عبر رابط البريد. عيّن كلمة مرور حتى تسجل الدخول بها لاحقاً.</p>}<Field label="كلمة المرور الجديدة" name="accountPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal /><Field label="تأكيد كلمة المرور" name="accountPasswordConfirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal /><button type="submit" className="primary">{passwordSet ? 'تغيير كلمة المرور' : 'تعيين كلمة المرور'}</button></form>}
           {activePanel === 'policy' && <section className="account-panel account-policy"><h2>{settings.policyTitle}</h2><p>{settings.policyText}</p></section>}
-          {activePanel === 'favorites' && <section className="account-panel account-favorites"><h2>خيارات الطلب المفضلة</h2>{favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}{!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}<form className="favorite-form" onSubmit={saveFavorite}><Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" /><Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} /><label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} /><Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} /><Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" /><button type="submit" className="primary">حفظ الخيار</button></form></section>}
+          {activePanel === 'favorites' && <section className="account-panel account-favorites"><h2>خيارات الطلب المفضلة</h2>{favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}{!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}<form className="favorite-form" onSubmit={saveFavorite}><Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" /><Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} /><label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} /><Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} /><Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" /><button type="submit" className="primary">حفظ الخيار</button></form><h2 className="saved-products-heading">المنتجات المفضلة</h2>{savedProducts.map((item) => <div className="saved-product-row" key={item.id}><Link to={`/product/${item.id}`} className="saved-product-link"><ProductImage src={item.imageUrl} alt={item.name} /><span><strong>{item.name}</strong><small>{money(item.price)}</small></span></Link><button type="button" className="danger favorite-delete" onClick={() => deleteSavedProduct(item.id)}>حذف</button></div>)}{!savedProducts.length && <p className="account-muted">المنتجات التي تحفظها بالقلب ستظهر هنا.</p>}</section>}
         </div>
         {message && <p className="success-message account-status">{message}</p>}
         {error && <p className="error account-status">{error}</p>}
@@ -531,6 +580,8 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
 
 function ProductDetailPage() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const settings = useSiteSettings();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -539,6 +590,8 @@ function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState('');
   const [selectedVariants, setSelectedVariants] = useState({});
   const [similarProducts, setSimilarProducts] = useState([]);
+  const [isProductSaved, setIsProductSaved] = useState(false);
+  const [productActionMessage, setProductActionMessage] = useState('');
 
   useEffect(() => {
     recordView('product').catch(() => {});
@@ -571,6 +624,46 @@ function ProductDetailPage() {
   const hasDiscount = Number(product.discountPercentage || 0) > 0;
   const finalPrice = Number(product.discountedPrice ?? product.price ?? 0);
   const variantsComplete = (product.variants || []).every((variant) => selectedVariants[variant.name]);
+  const isProductFavorite = isProductSaved || (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
+
+  const toggleProductFavorite = async () => {
+    if (!user) {
+      navigate('/login', { state: { returnTo: `/product/${product.id}` } });
+      return;
+    }
+    setProductActionMessage('');
+    const currentProducts = Array.isArray(user.user_metadata?.saved_products) ? user.user_metadata.saved_products : [];
+    const alreadySaved = currentProducts.some((item) => String(item.id) === String(product.id));
+    const nextProducts = alreadySaved
+      ? currentProducts.filter((item) => String(item.id) !== String(product.id))
+      : [...currentProducts, { id: product.id, name: product.name, imageUrl: product.imageUrl, price: finalPrice }];
+    const { error: authError } = await supabase.auth.updateUser({ data: { saved_products: nextProducts } });
+    if (authError) {
+      setProductActionMessage('تعذر تحديث المفضلة. حاول مرة أخرى.');
+      return;
+    }
+    setIsProductSaved(!alreadySaved);
+  };
+
+  const shareProduct = async () => {
+    const url = window.location.href;
+    setProductActionMessage('');
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: product.name, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setProductActionMessage('تم نسخ رابط المنتج');
+      }
+    } catch (reason) {
+      if (reason.name !== 'AbortError') setProductActionMessage('تعذرت مشاركة الرابط');
+    }
+  };
+
+  const goBack = () => {
+    if (window.history.state?.idx > 0) navigate(-1);
+    else navigate('/');
+  };
 
   return (
     <>
@@ -588,6 +681,14 @@ function ProductDetailPage() {
             </div>
           </div>
           <div className="detail-content">
+            <div className="product-detail-actions">
+              <button type="button" className="product-image-action back-product" onClick={goBack} aria-label="رجوع خطوة للوراء" title="رجوع خطوة للوراء"><span aria-hidden="true">›</span></button>
+              <div className="product-detail-action-group">
+                <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><span aria-hidden="true">{isProductFavorite ? '♥' : '♡'}</span></button>
+                <button type="button" className="product-image-action share-product" onClick={shareProduct} aria-label="مشاركة رابط المنتج" title="مشاركة رابط المنتج"><span aria-hidden="true">⇧</span></button>
+              </div>
+            </div>
+            {productActionMessage && <span className="product-action-message" role="status">{productActionMessage}</span>}
             <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
             <h1>{product.name}</h1>
             <div className="price-stack">
@@ -598,10 +699,6 @@ function ProductDetailPage() {
             </div>
             <p className="detail-description">{product.description}</p>
             {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required><option value="">اختر {variant.name}</option>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
-            <div className="detail-promises">
-              <div><span>🚚</span><strong>توصيل لكل المحافظات</strong><small>ننسق معك قبل التجهيز</small></div>
-              <div><span>💵</span><strong>الدفع عند الاستلام</strong><small>ادفع عند وصول طلبك</small></div>
-            </div>
             <div className="quantity-row">
               <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
               <span>{quantity}</span>
@@ -834,6 +931,8 @@ function Login() {
   const [message, setMessage] = useState('');
   const [capsLock, setCapsLock] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith('/') ? location.state.returnTo : '/';
 
   const signInWithGoogle = async () => {
     setError('');
@@ -878,7 +977,7 @@ function Login() {
     setError('');
     setMessage('');
     if (user) {
-      navigate(profile?.role === 'admin' ? '/admin' : '/');
+      navigate(profile?.role === 'admin' ? '/admin' : returnTo);
       return;
     }
     const value = identifier.trim();
@@ -911,13 +1010,13 @@ function Login() {
       setPassword('');
       return;
     }
-    navigate('/');
+    navigate(returnTo);
   };
 
   const { user, profile, loading } = useAuth();
   const isPhoneRegistration = /^(07\d{9}|\+9647\d{9})$/.test(identifier.trim());
   if (!loading && user) {
-    return <Navigate to={profile?.role === 'admin' ? '/admin' : '/'} replace />;
+    return <Navigate to={profile?.role === 'admin' ? '/admin' : returnTo} replace />;
   }
 
   return (
