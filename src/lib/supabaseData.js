@@ -30,6 +30,13 @@ const productView = (row) => {
 };
 const orderView = (row) => ({ ...row, items: asJsonArray(row?.items), isRead: Boolean(row?.isRead), accountOrderNumber: row?.accountOrderNumber || null });
 const throwIfError = ({ data, error }) => { if (error) throw error; return data; };
+const getFeaturedProductIds = (data) => {
+  const fromCurrent = data?.featuredProductIds;
+  const fromLegacy = data?.featuredProducts;
+  if (Array.isArray(fromCurrent)) return fromCurrent.map(String);
+  if (Array.isArray(fromLegacy)) return fromLegacy.map(String);
+  return null;
+};
 
 export const defaultSettings = {
   id: 1, storeName: 'نسق', tagline: 'اختيارات تصنع يومك', logoUrl: '', heroTitle: 'أشياء صغيرة، فرق كبير',
@@ -45,7 +52,7 @@ const normalizeSettings = (data) => ({
   policyTitle: String(data?.policyTitle || '').trim() || defaultSettings.policyTitle,
   policyText: String(data?.policyText || '').trim() || defaultSettings.policyText,
   featuredSectionTitle: String(data?.featuredSectionTitle || '').trim() || defaultSettings.featuredSectionTitle,
-  featuredProductIds: Array.isArray(data?.featuredProductIds) ? data.featuredProductIds.map(String) : null,
+  featuredProductIds: getFeaturedProductIds(data),
   maintenanceMode: Boolean(data?.maintenanceMode),
 });
 
@@ -80,5 +87,14 @@ export async function accountCount() { const { count, error } = await supabase.f
 export async function listAdmins() { const [admins, invites] = await Promise.all([supabase.from('profiles').select('id,identifier,createdAt,isOwner').eq('role', 'admin').order('createdAt'), supabase.from('admin_invites').select('identifier,createdAt').order('createdAt', { ascending: false })]); return { admins: asArray(throwIfError(admins)), invites: asArray(throwIfError(invites)) }; }
 export async function inviteAdmin(identifier) { const normalized = String(identifier).trim().toLowerCase(); const profile = throwIfError(await supabase.from('profiles').select('id,role').eq('identifier', normalized).maybeSingle()); if (profile?.role === 'admin') throw new Error('هذا الحساب مشرف مسبقاً'); if (profile) return throwIfError(await supabase.from('profiles').update({ role: 'admin' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').upsert({ identifier: normalized }, { onConflict: 'identifier' })); }
 export async function removeAdmin(identifier) { const profile = throwIfError(await supabase.from('profiles').select('id,isOwner').eq('identifier', String(identifier).toLowerCase()).eq('role', 'admin').maybeSingle()); if (profile?.isOwner) throw new Error('لا يمكن حذف مالك المتجر'); if (profile) await supabase.from('profiles').update({ role: 'customer' }).eq('id', profile.id); return throwIfError(await supabase.from('admin_invites').delete().eq('identifier', String(identifier).toLowerCase())); }
-export async function saveSiteSettings(settings) { const current = await getSiteSettings(); const data = throwIfError(await supabase.from('site_settings').update({ ...settings, id: undefined }).eq('id', current.id).select().single()); return { ...defaultSettings, ...data }; }
+export async function saveSiteSettings(settings) {
+  const current = await getSiteSettings();
+  const payload = { ...settings, id: undefined };
+  if (Object.prototype.hasOwnProperty.call(current || {}, 'featuredProducts') && !Object.prototype.hasOwnProperty.call(payload, 'featuredProducts')) {
+    payload.featuredProducts = payload.featuredProductIds ?? null;
+    delete payload.featuredProductIds;
+  }
+  const data = throwIfError(await supabase.from('site_settings').update(payload).eq('id', current.id).select().single());
+  return { ...defaultSettings, ...data, featuredProductIds: getFeaturedProductIds(data) };
+}
 export async function resetStore() { await Promise.all([supabase.from('account_coupons').delete().neq('discountId', 0), supabase.from('account_carts').delete().neq('accountId', ''), supabase.from('orders').delete().neq('id', 0), supabase.from('products').delete().neq('id', 0), supabase.from('discounts').delete().neq('id', 0), supabase.from('page_views').delete().neq('id', 0), supabase.from('admin_invites').delete().neq('identifier', ''), supabase.from('site_settings').delete().neq('id', 0)]); throwIfError(await supabase.from('site_settings').insert(defaultSettings)); throwIfError(await supabase.from('discounts').insert({ code: 'NASAQ10', type: 'percentage', value: 10, active: true })); }
