@@ -1630,10 +1630,10 @@ function SiteSettingsAdmin() {
 
   return (
     <form className="admin-form settings-form" onSubmit={save}>
-      <header className="settings-heading"><div><p className="eyebrow">إدارة المتجر</p><h2>إعدادات المتجر</h2></div><p>تُحفظ تغييراتك تلقائيًا، ويمكنك الحفظ يدويًا في أي وقت.</p></header>
+      <header className="settings-heading"><div><p className="eyebrow">إدارة المتجر</p><h2>إعدادات المتجر</h2></div></header>
 
       <section className="settings-section" aria-labelledby="settings-appearance-title">
-        <div className="settings-section-heading"><span>01</span><div><h3 id="settings-appearance-title">واجهة المتجر</h3><p>اسم المتجر والنصوص التي تظهر للزوار.</p></div></div>
+        <div className="settings-section-heading"><span>01</span><div><h3 id="settings-appearance-title">واجهة المتجر</h3></div></div>
         <div className="settings-fields">
           <label>اسم المتجر<input placeholder="مثال: نسق" value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
           <label>الشعار النصي<input placeholder="عبارة قصيرة تحت اسم المتجر" value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} /></label>
@@ -1643,7 +1643,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section" aria-labelledby="settings-featured-title">
-        <div className="settings-section-heading"><span>02</span><div><h3 id="settings-featured-title">المنتجات المختارة</h3><p>حدد ما يظهر في قسم المنتجات على الصفحة الرئيسية.</p></div></div>
+        <div className="settings-section-heading"><span>02</span><div><h3 id="settings-featured-title">المنتجات المختارة</h3></div></div>
         <div className="settings-fields">
           <label className="featured-section-title-input">عنوان القسم<input placeholder="عنوان المنتجات المختارة" value={settings.featuredSectionTitle || ''} onChange={(event) => setSettings({ ...settings, featuredSectionTitle: event.target.value })} /></label>
           <div className="featured-product-settings">
@@ -1658,7 +1658,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section" aria-labelledby="settings-contact-title">
-        <div className="settings-section-heading"><span>03</span><div><h3 id="settings-contact-title">التواصل الاجتماعي</h3><p>أضف روابط قنوات المتجر للتواصل معه.</p></div></div>
+        <div className="settings-section-heading"><span>03</span><div><h3 id="settings-contact-title">التواصل الاجتماعي</h3></div></div>
         <div className="settings-fields">
           <label>إنستغرام<input placeholder="https://instagram.com/..." value={settings.instagramUrl} onChange={(event) => setSettings({ ...settings, instagramUrl: event.target.value })} /></label>
           <label>تيك توك<input placeholder="https://tiktok.com/@..." value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} /></label>
@@ -1668,7 +1668,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section" aria-labelledby="settings-content-title">
-        <div className="settings-section-heading"><span>04</span><div><h3 id="settings-content-title">المحتوى والسياسات</h3><p>عرّف الزوار بمتجرك ووضّح سياسة الطلب.</p></div></div>
+        <div className="settings-section-heading"><span>04</span><div><h3 id="settings-content-title">المحتوى والسياسات</h3></div></div>
         <div className="settings-fields">
           <label>عنوان «من نحن»<input placeholder="عنوان قسم من نحن" value={settings.aboutTitle} onChange={(event) => setSettings({ ...settings, aboutTitle: event.target.value })} /></label>
           <label>نص «من نحن»<textarea placeholder="اكتب نبذة عن المتجر" value={settings.aboutText} onChange={(event) => setSettings({ ...settings, aboutText: event.target.value })} /></label>
