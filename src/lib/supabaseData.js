@@ -34,6 +34,7 @@ const throwIfError = ({ data, error }) => { if (error) throw error; return data;
 export const defaultSettings = {
   id: 1, storeName: 'نسق', tagline: 'اختيارات تصنع يومك', logoUrl: '', heroTitle: 'أشياء صغيرة، فرق كبير',
   heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.', heroImageUrl: '', heroButtonText: 'اكتشف المجموعة',
+  featuredSectionTitle: 'مختارات نسق', featuredProductIds: null,
   instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: 'من نحن؟', aboutText: '',
   policyTitle: 'سياستنا', policyText: 'نراجع كل طلب ونتواصل معك لتأكيد التفاصيل قبل التجهيز.', maintenanceMode: false,
 };
@@ -43,6 +44,8 @@ const normalizeSettings = (data) => ({
   ...(data || {}),
   policyTitle: String(data?.policyTitle || '').trim() || defaultSettings.policyTitle,
   policyText: String(data?.policyText || '').trim() || defaultSettings.policyText,
+  featuredSectionTitle: String(data?.featuredSectionTitle || '').trim() || defaultSettings.featuredSectionTitle,
+  featuredProductIds: Array.isArray(data?.featuredProductIds) ? data.featuredProductIds.map(String) : null,
   maintenanceMode: Boolean(data?.maintenanceMode),
 });
 

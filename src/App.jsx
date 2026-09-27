@@ -171,6 +171,8 @@ function useSiteSettings() {
           ...cached,
           policyTitle: String(cached.policyTitle || '').trim() || defaultSettings.policyTitle,
           policyText: String(cached.policyText || '').trim() || defaultSettings.policyText,
+          featuredSectionTitle: String(cached.featuredSectionTitle || '').trim() || defaultSettings.featuredSectionTitle,
+          featuredProductIds: Array.isArray(cached.featuredProductIds) ? cached.featuredProductIds.map(String) : null,
         }
         : defaultSettings;
     } catch {
@@ -450,7 +452,9 @@ function Store() {
     name,
     product: safeProducts.find((product) => (product.category || 'عام') === name),
   }));
-  const featuredProducts = safeProducts.filter((product) => product.featured || Number(product.discountPercentage || 0) > 0).slice(0, 6);
+  const featuredProducts = Array.isArray(settings.featuredProductIds)
+    ? settings.featuredProductIds.map((productId) => safeProducts.find((product) => String(product.id) === String(productId))).filter(Boolean)
+    : safeProducts.filter((product) => product.featured || Number(product.discountPercentage || 0) > 0).slice(0, 6);
   const promoProduct = featuredProducts[0] || safeProducts[0];
   const visibleProducts = safeProducts.filter((product) => {
     const matchesCategory = category === 'الكل' || product.category === category;
@@ -491,8 +495,8 @@ function Store() {
         </section>
 
         <section id="catalog" className="catalog">
-          {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p><h2>اختار ما يناسبك</h2></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">كل</span><strong>الكل</strong></button>{categoryCards.map(({ name, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={name} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
-          {!!featuredProducts.length && <section className="featured-shelf"><div className="section-head compact-head"><div><p className="eyebrow">مختارات نسق</p><h2>الأكثر طلباً</h2></div><button type="button" className="text-action" onClick={() => { setCategory('الكل'); setSearch(''); }}>عرض الكل</button></div><div className="featured-row">{featuredProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} compact />)}</div></section>}
+          {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">كل</span><strong>الكل</strong></button>{categoryCards.map(({ name, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={name} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
+          {!!featuredProducts.length && <section className="featured-shelf"><div className="section-head compact-head"><div><h2>{settings.featuredSectionTitle || defaultSettings.featuredSectionTitle}</h2></div><button type="button" className="text-action" onClick={() => { setCategory('الكل'); setSearch(''); }}>عرض الكل</button></div><div className="featured-row">{featuredProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} compact />)}</div></section>}
           <div className="section-head">
             <div>
               <p className="eyebrow">المنتجات</p>
@@ -1549,6 +1553,7 @@ function AdminsAdmin() {
 
 function SiteSettingsAdmin() {
   const [settings, setSettings] = useState(defaultSettings);
+  const [products, setProducts] = useState([]);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusError, setStatusError] = useState('');
   const lastSavedSettings = useRef('');
@@ -1583,6 +1588,7 @@ function SiteSettingsAdmin() {
 
   useEffect(() => {
     loadSettings();
+    listProducts().then((data) => setProducts(Array.isArray(data) ? data : [])).catch(() => setProducts([]));
   }, []);
 
   useEffect(() => {
@@ -1595,6 +1601,15 @@ function SiteSettingsAdmin() {
   const save = (event) => {
     event.preventDefault();
     saveSettings(settings);
+  };
+
+  const toggleFeaturedProduct = (productId) => {
+    const selectedIds = Array.isArray(settings.featuredProductIds) ? settings.featuredProductIds.map(String) : [];
+    const normalizedId = String(productId);
+    const nextIds = selectedIds.includes(normalizedId)
+      ? selectedIds.filter((id) => id !== normalizedId)
+      : [...selectedIds, normalizedId];
+    setSettings({ ...settings, featuredProductIds: nextIds });
   };
 
   const resetStore = async () => {
@@ -1622,6 +1637,16 @@ function SiteSettingsAdmin() {
       <input placeholder="الشعار / العنوان الفرعي" value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} />
       <input placeholder="عنوان الهيرو" value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} />
       <textarea placeholder="وصف الهيرو" value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} />
+      <input className="featured-section-title-input" placeholder="عنوان المنتجات المختارة" value={settings.featuredSectionTitle || ''} onChange={(event) => setSettings({ ...settings, featuredSectionTitle: event.target.value })} />
+      <div className="featured-product-settings">
+        <strong>منتجات قسم الصفحة الرئيسية</strong>
+        <p>يعرض القسم المنتجات المميزة أو المخفّضة تلقائيًا، أو اختر المنتجات التي تريدها.</p>
+        <button type="button" className="featured-product-auto" onClick={() => setSettings({ ...settings, featuredProductIds: null })}>إعادة للاختيار التلقائي</button>
+        {products.length ? <div className="featured-product-options">{products.map((product) => {
+          const selectedIds = Array.isArray(settings.featuredProductIds) ? settings.featuredProductIds.map(String) : [];
+          return <label className="featured-product-option" key={product.id}><input type="checkbox" checked={selectedIds.includes(String(product.id))} onChange={() => toggleFeaturedProduct(product.id)} /><ProductImage src={product.imageUrl} alt="" /><span>{product.name}</span></label>;
+        })}</div> : <p className="account-muted">لا توجد منتجات متاحة للاختيار.</p>}
+      </div>
       <input placeholder="رابط إنستغرام" value={settings.instagramUrl} onChange={(event) => setSettings({ ...settings, instagramUrl: event.target.value })} />
       <input placeholder="رابط تيك توك" value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} />
       <input placeholder="رابط فيسبوك" value={settings.facebookUrl} onChange={(event) => setSettings({ ...settings, facebookUrl: event.target.value })} />
