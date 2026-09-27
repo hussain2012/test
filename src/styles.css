@@ -997,53 +997,75 @@ button { cursor: pointer; }
 }
 
 .admin-side {
-  width: 230px;
-  background: var(--primary);
-  color: #dfe9e3;
-  padding: 24px 18px;
+  width: 220px;
+  background: linear-gradient(180deg, #0c3d36 0%, #0d2f2c 100%);
+  color: #edf3ee;
+  padding: 18px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .admin-side .brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: #fff;
-  margin-bottom: 26px;
+  padding: 8px 10px 16px;
+  margin-bottom: 8px;
+  font-weight: 800;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
 }
 
 .admin-side .brand small {
-  color: #dfe9e3;
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .admin-side a {
-  padding: 10px 12px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ebf3ee;
+  text-decoration: none;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.admin-side a.active, .admin-side a:hover { background: rgba(255,255,255,0.08); }
+.admin-side a:hover,
+.admin-side a.active {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(-1px);
+}
 
 .logout {
   margin-top: auto;
   background: transparent;
-  color: #dfe9e3;
+  color: #edf3ee;
   text-align: right;
-  padding: 12px 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  font-weight: 700;
 }
 
 .admin-content {
   flex: 1;
-  padding: 36px clamp(20px, 4vw, 70px);
+  padding: 28px clamp(20px, 3vw, 48px);
 }
 
 .admin-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 30px;
+  margin-bottom: 24px;
+  gap: 20px;
 }
 
-.admin-top h1 { margin: 0; font-size: 32px; }
+.admin-top h1 { margin: 0; font-size: 28px; }
 
 .view-store { color: var(--accent); font-weight: 700; }
 
