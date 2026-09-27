@@ -493,7 +493,7 @@ function Store() {
       <main>
         {settings.maintenanceMode && <div className="maintenance-banner">المتجر في وضع الصيانة: يمكنك تصفح المنتجات، والطلبات متوقفة مؤقتاً.</div>}
         <section id="catalog" className="catalog">
-          {!!featuredProducts.length && <section className="featured-shelf"><div className="section-head compact-head"><div><h2>{settings.featuredSectionTitle || defaultSettings.featuredSectionTitle}</h2></div><button type="button" className="text-action" onClick={() => { setCategory('الكل'); setSearch(''); }}>عرض الكل</button></div><div className="featured-row">{featuredProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} compact />)}</div></section>}
+          {!!featuredProducts.length && <section className="featured-shelf"><div className="section-head compact-head"><div><h2>{settings.featuredSectionTitle || defaultSettings.featuredSectionTitle}</h2></div></div><div className="featured-row">{featuredProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} compact />)}</div></section>}
           {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">كل</span><strong>الكل</strong></button>{categoryCards.map(({ name, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={name} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
           <div className="section-head">
             <div>
@@ -868,7 +868,7 @@ function Checkout() {
             </form>
 
             <aside className="receipt">
-              <h2>ملخص الطلب</h2>
+              <h2>تفاصيل الطلب</h2>
               {(Array.isArray(cart) ? cart : []).map((item) => (
                 <div className="receipt-item" key={item.id}>
                   <ProductImage src={item.imageUrl} alt={item.name} />
