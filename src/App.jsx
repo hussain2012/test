@@ -260,6 +260,7 @@ function AppContent() {
         <Route path="/account/profile" element={<AccountPage />} />
         <Route path="/account/password" element={<AccountPage />} />
         <Route path="/account/favorites" element={<AccountPage />} />
+        <Route path="/account/products" element={<AccountPage />} />
         <Route path="/account/policy" element={<AccountPage />} />
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/login" element={<Login />} />
@@ -322,6 +323,8 @@ function AccountPage() {
       ? 'password'
       : location.pathname.endsWith('/favorites')
         ? 'favorites'
+        : location.pathname.endsWith('/products')
+          ? 'products'
         : location.pathname.endsWith('/policy')
           ? 'policy'
           : 'account';
@@ -385,15 +388,15 @@ function AccountPage() {
     <>
       <StoreNav settings={settings} />
       <main className={`account-page ${activePanel === 'menu' ? 'account-menu-view' : 'account-detail-view'}`}>
-        <div className="account-page-head"><p className="eyebrow">حسابك</p><h1>{activePanel === 'menu' ? (displayName ? `أهلاً، ${displayName}` : 'أهلاً بك') : activePanel === 'account' ? 'بيانات الحساب' : activePanel === 'password' ? (passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور') : activePanel === 'favorites' ? 'المفضلة' : settings.policyTitle}</h1>{activePanel === 'menu' && <p>{user.email}</p>}</div>
+        <div className="account-page-head"><p className="eyebrow">حسابك</p><h1>{activePanel === 'menu' ? (displayName ? `أهلاً، ${displayName}` : 'أهلاً بك') : activePanel === 'account' ? 'بيانات الحساب' : activePanel === 'password' ? (passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور') : activePanel === 'favorites' ? 'خيارات الطلب المفضلة' : activePanel === 'products' ? 'المنتجات المفضلة' : settings.policyTitle}</h1>{activePanel === 'menu' && <p>{user.email}</p>}</div>
         {activePanel !== 'menu' && <Link to="/account" className="account-back"><span aria-hidden="true">›</span> العودة إلى الحساب</Link>}
         <section className="account-menu" aria-label="قائمة الحساب">
           <h2>الإعدادات</h2>
           <Link to="/account/profile" className={`account-menu-row ${activePanel === 'account' ? 'active' : ''}`}><span className="account-menu-icon">◉</span><strong>بيانات الحساب</strong><span className="account-menu-arrow">‹</span></Link>
           <Link to="/account/password" className={`account-menu-row ${activePanel === 'password' ? 'active' : ''}`}><span className="account-menu-icon">⌑</span><strong>{passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور'}</strong><span className="account-menu-arrow">‹</span></Link>
-          <h2>المساعدة</h2>
           <Link to="/my-orders" className="account-menu-row"><span className="account-menu-icon">★</span><strong>طلباتي السابقة</strong><span className="account-menu-arrow">‹</span></Link>
           <Link to="/account/favorites" className={`account-menu-row ${activePanel === 'favorites' ? 'active' : ''}`}><span className="account-menu-icon">⌖</span><strong>خيارات الطلب المفضلة</strong><span className="account-menu-arrow">‹</span></Link>
+          <Link to="/account/products" className={`account-menu-row ${activePanel === 'products' ? 'active' : ''}`}><span className="account-menu-icon">♥</span><strong>المنتجات المفضلة</strong><span className="account-menu-arrow">‹</span></Link>
           <Link to="/account/policy" className={`account-menu-row ${activePanel === 'policy' ? 'active' : ''}`}><span className="account-menu-icon">▣</span><strong>{settings.policyTitle}</strong><span className="account-menu-arrow">‹</span></Link>
           <h2>الحساب</h2>
           <button type="button" className="account-menu-row account-logout-row" onClick={() => signOut(setError)}><span className="account-menu-icon">↪</span><strong>تسجيل الخروج</strong><span className="account-menu-arrow">‹</span></button>
@@ -402,7 +405,8 @@ function AccountPage() {
           {activePanel === 'account' && <form className="account-panel" onSubmit={saveAccountName}><h2>بيانات الحساب</h2><Field label="اسمك" name="accountName" value={name} onChange={(event) => setName(event.target.value)} /><button type="submit" className="primary">حفظ الاسم</button></form>}
           {activePanel === 'password' && <form className="account-panel" onSubmit={savePassword}><h2>{passwordSet ? 'تغيير كلمة المرور' : 'تنبيه: عيّن كلمة مرور'}</h2>{!passwordSet && <p className="account-warning">حسابك يعمل حالياً عبر رابط البريد. عيّن كلمة مرور حتى تسجل الدخول بها لاحقاً.</p>}<Field label="كلمة المرور الجديدة" name="accountPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal /><Field label="تأكيد كلمة المرور" name="accountPasswordConfirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal /><button type="submit" className="primary">{passwordSet ? 'تغيير كلمة المرور' : 'تعيين كلمة المرور'}</button></form>}
           {activePanel === 'policy' && <section className="account-panel account-policy"><h2>{settings.policyTitle}</h2><p>{settings.policyText}</p></section>}
-          {activePanel === 'favorites' && <section className="account-panel account-favorites"><h2>خيارات الطلب المفضلة</h2>{favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}{!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}<form className="favorite-form" onSubmit={saveFavorite}><Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" /><Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} /><label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} /><Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} /><Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" /><button type="submit" className="primary">حفظ الخيار</button></form><h2 className="saved-products-heading">المنتجات المفضلة</h2>{savedProducts.map((item) => <div className="saved-product-row" key={item.id}><Link to={`/product/${item.id}`} className="saved-product-link"><ProductImage src={item.imageUrl} alt={item.name} /><span><strong>{item.name}</strong><small>{money(item.price)}</small></span></Link><button type="button" className="danger favorite-delete" onClick={() => deleteSavedProduct(item.id)}>حذف</button></div>)}{!savedProducts.length && <p className="account-muted">المنتجات التي تحفظها بالقلب ستظهر هنا.</p>}</section>}
+          {activePanel === 'favorites' && <section className="account-panel account-favorites"><h2>خيارات الطلب المفضلة</h2>{favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}{!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}<form className="favorite-form" onSubmit={saveFavorite}><Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" /><Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} /><label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} /><Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} /><Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" /><button type="submit" className="primary">حفظ الخيار</button></form></section>}
+          {activePanel === 'products' && <section className="account-panel account-favorites"><h2>المنتجات المفضلة</h2>{savedProducts.map((item) => <div className="saved-product-row" key={item.id}><Link to={`/product/${item.id}`} className="saved-product-link"><ProductImage src={item.imageUrl} alt={item.name} /><span><strong>{item.name}</strong><small>{money(item.price)}</small></span></Link><button type="button" className="danger favorite-delete" onClick={() => deleteSavedProduct(item.id)}>حذف</button></div>)}{!savedProducts.length && <p className="account-muted">المنتجات التي تحفظها بالقلب ستظهر هنا.</p>}</section>}
         </div>
         {message && <p className="success-message account-status">{message}</p>}
         {error && <p className="error account-status">{error}</p>}
@@ -426,6 +430,7 @@ function StoreNav({ settings }) {
         {!user && <Link to="/login">تسجيل الدخول</Link>}
         {user && <Link to="/account">الحساب</Link>}
         {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
+        {user && <Link to="/my-orders">طلباتي السابقة</Link>}
         <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
       </nav>
     </header>
