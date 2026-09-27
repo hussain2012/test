@@ -1625,34 +1625,63 @@ function SiteSettingsAdmin() {
 
   return (
     <form className="admin-form settings-form" onSubmit={save}>
-      <h2>إعدادات المتجر</h2>
-      <input placeholder="اسم المتجر" value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} />
-      <input placeholder="الشعار / العنوان الفرعي" value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} />
-      <input placeholder="عنوان الهيرو" value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} />
-      <textarea placeholder="وصف الهيرو" value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} />
-      <input className="featured-section-title-input" placeholder="عنوان المنتجات المختارة" value={settings.featuredSectionTitle || ''} onChange={(event) => setSettings({ ...settings, featuredSectionTitle: event.target.value })} />
-      <div className="featured-product-settings">
-        <strong>منتجات قسم الصفحة الرئيسية</strong>
-        <p>يعرض القسم المنتجات المميزة أو المخفّضة تلقائيًا، أو اختر المنتجات التي تريدها.</p>
-        <button type="button" className="featured-product-auto" onClick={() => setSettings({ ...settings, featuredProductIds: null })}>إعادة للاختيار التلقائي</button>
-        {products.length ? <div className="featured-product-options">{products.map((product) => {
-          const selectedIds = Array.isArray(settings.featuredProductIds) ? settings.featuredProductIds.map(String) : [];
-          return <label className="featured-product-option" key={product.id}><input type="checkbox" checked={selectedIds.includes(String(product.id))} onChange={() => toggleFeaturedProduct(product.id)} /><ProductImage src={product.imageUrl} alt="" /><span>{product.name}</span></label>;
-        })}</div> : <p className="account-muted">لا توجد منتجات متاحة للاختيار.</p>}
-      </div>
-      <input placeholder="رابط إنستغرام" value={settings.instagramUrl} onChange={(event) => setSettings({ ...settings, instagramUrl: event.target.value })} />
-      <input placeholder="رابط تيك توك" value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} />
-      <input placeholder="رابط فيسبوك" value={settings.facebookUrl} onChange={(event) => setSettings({ ...settings, facebookUrl: event.target.value })} />
-      <input placeholder="رابط واتساب" value={settings.whatsappUrl} onChange={(event) => setSettings({ ...settings, whatsappUrl: event.target.value })} />
-      <input placeholder="عنوان قسم من نحن" value={settings.aboutTitle} onChange={(event) => setSettings({ ...settings, aboutTitle: event.target.value })} />
-      <textarea placeholder="نص من نحن" value={settings.aboutText} onChange={(event) => setSettings({ ...settings, aboutText: event.target.value })} />
-      <input placeholder="عنوان سياستنا" value={settings.policyTitle} onChange={(event) => setSettings({ ...settings, policyTitle: event.target.value })} />
-      <textarea placeholder="نص سياستنا" value={settings.policyText} onChange={(event) => setSettings({ ...settings, policyText: event.target.value })} />
-      <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>السماح بتصفح المنتجات مع إيقاف إضافة المنتجات وإرسال الطلبات</small></span></label>
-      <button type="submit" className="primary">حفظ الإعدادات</button>
-      <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>
+      <header className="settings-heading"><div><p className="eyebrow">إدارة المتجر</p><h2>إعدادات المتجر</h2></div><p>تُحفظ تغييراتك تلقائيًا، ويمكنك الحفظ يدويًا في أي وقت.</p></header>
+
+      <section className="settings-section" aria-labelledby="settings-appearance-title">
+        <div className="settings-section-heading"><span>01</span><div><h3 id="settings-appearance-title">واجهة المتجر</h3><p>اسم المتجر والنصوص التي تظهر للزوار.</p></div></div>
+        <div className="settings-fields">
+          <label>اسم المتجر<input placeholder="مثال: نسق" value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
+          <label>الشعار النصي<input placeholder="عبارة قصيرة تحت اسم المتجر" value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} /></label>
+          <label>عنوان الواجهة<input placeholder="عنوان الواجهة الرئيسية" value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} /></label>
+          <label>وصف الواجهة<textarea placeholder="اكتب وصفًا مختصرًا للمتجر" value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} /></label>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-featured-title">
+        <div className="settings-section-heading"><span>02</span><div><h3 id="settings-featured-title">المنتجات المختارة</h3><p>حدد ما يظهر في قسم المنتجات على الصفحة الرئيسية.</p></div></div>
+        <div className="settings-fields">
+          <label className="featured-section-title-input">عنوان القسم<input placeholder="عنوان المنتجات المختارة" value={settings.featuredSectionTitle || ''} onChange={(event) => setSettings({ ...settings, featuredSectionTitle: event.target.value })} /></label>
+          <div className="featured-product-settings">
+            <div><strong>المنتجات المعروضة</strong><p>تلقائيًا يعرض المنتجات المميزة أو المخفّضة. يمكنك تحديد المنتجات يدويًا.</p></div>
+            <button type="button" className="featured-product-auto" onClick={() => setSettings({ ...settings, featuredProductIds: null })}>استخدام الاختيار التلقائي</button>
+            {products.length ? <div className="featured-product-options">{products.map((product) => {
+              const selectedIds = Array.isArray(settings.featuredProductIds) ? settings.featuredProductIds.map(String) : [];
+              return <label className="featured-product-option" key={product.id}><input type="checkbox" checked={selectedIds.includes(String(product.id))} onChange={() => toggleFeaturedProduct(product.id)} /><ProductImage src={product.imageUrl} alt="" /><span>{product.name}</span></label>;
+            })}</div> : <p className="account-muted">لا توجد منتجات متاحة للاختيار.</p>}
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-contact-title">
+        <div className="settings-section-heading"><span>03</span><div><h3 id="settings-contact-title">التواصل الاجتماعي</h3><p>أضف روابط قنوات المتجر للتواصل معه.</p></div></div>
+        <div className="settings-fields">
+          <label>إنستغرام<input placeholder="https://instagram.com/..." value={settings.instagramUrl} onChange={(event) => setSettings({ ...settings, instagramUrl: event.target.value })} /></label>
+          <label>تيك توك<input placeholder="https://tiktok.com/@..." value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} /></label>
+          <label>فيسبوك<input placeholder="https://facebook.com/..." value={settings.facebookUrl} onChange={(event) => setSettings({ ...settings, facebookUrl: event.target.value })} /></label>
+          <label>واتساب<input placeholder="رابط محادثة واتساب" value={settings.whatsappUrl} onChange={(event) => setSettings({ ...settings, whatsappUrl: event.target.value })} /></label>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="settings-content-title">
+        <div className="settings-section-heading"><span>04</span><div><h3 id="settings-content-title">المحتوى والسياسات</h3><p>عرّف الزوار بمتجرك ووضّح سياسة الطلب.</p></div></div>
+        <div className="settings-fields">
+          <label>عنوان «من نحن»<input placeholder="عنوان قسم من نحن" value={settings.aboutTitle} onChange={(event) => setSettings({ ...settings, aboutTitle: event.target.value })} /></label>
+          <label>نص «من نحن»<textarea placeholder="اكتب نبذة عن المتجر" value={settings.aboutText} onChange={(event) => setSettings({ ...settings, aboutText: event.target.value })} /></label>
+          <label>عنوان السياسة<input placeholder="عنوان صفحة السياسة" value={settings.policyTitle} onChange={(event) => setSettings({ ...settings, policyTitle: event.target.value })} /></label>
+          <label>نص السياسة<textarea placeholder="اكتب سياسة المتجر" value={settings.policyText} onChange={(event) => setSettings({ ...settings, policyText: event.target.value })} /></label>
+        </div>
+      </section>
+
+      <section className="settings-section settings-operations" aria-labelledby="settings-operations-title">
+        <div className="settings-section-heading"><span>05</span><div><h3 id="settings-operations-title">حالة المتجر</h3><p>تحكم بتوفر الطلبات أو أعد ضبط بيانات المتجر.</p></div></div>
+        <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>يسمح بالتصفح ويوقف إضافة المنتجات وإرسال الطلبات.</small></span></label>
+        <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>
+      </section>
+
+      <div className="settings-actions"><button type="submit" className="primary">حفظ الإعدادات</button>
       {statusMessage && <p className="success-message">{statusMessage}</p>}
       {statusError && <p className="error">{statusError}</p>}
+      </div>
     </form>
   );
 }
