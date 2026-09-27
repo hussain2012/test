@@ -16,11 +16,6 @@ const mediaUrl = (value) => {
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
 const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
-const parseVariantLines = (value) => String(value || '').split('\n').map((line) => {
-  const [name, values] = line.split(':');
-  return { name: String(name || '').trim(), values: String(values || '').split(',').map((item) => item.trim()).filter(Boolean) };
-}).filter((variant) => variant.name && variant.values.length);
-const variantsToText = (variants) => (Array.isArray(variants) ? variants : []).map((variant) => `${variant.name}: ${variant.values.join(', ')}`).join('\n');
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
 const authRedirectUrl = () => typeof window !== 'undefined'
@@ -1136,7 +1131,7 @@ function Overview() {
 }
 
 function ProductsAdmin() {
-  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], variantsText: '', stockQuantity: 10, inStock: true, featured: false, isNew: false };
+  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, inStock: true, featured: false, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
@@ -1167,12 +1162,31 @@ function ProductsAdmin() {
     setEditingId(null);
   };
 
+  const updateVariant = (index, field, value) => {
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant, variantIndex) => variantIndex === index ? { ...variant, [field]: value } : variant),
+    }));
+  };
+
+  const addVariant = () => {
+    setForm((current) => ({ ...current, variants: [...current.variants, { name: '', valuesText: '' }] }));
+  };
+
+  const removeVariant = (index) => {
+    setForm((current) => ({ ...current, variants: current.variants.filter((_, variantIndex) => variantIndex !== index) }));
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setMessage('');
     setError('');
     const save = editingId ? updateProduct : createProduct;
-    await save({ ...form, variants: parseVariantLines(form.variantsText), productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
+    const variants = form.variants.map((variant) => ({
+      name: String(variant.name || '').trim(),
+      values: String(variant.valuesText || '').split(',').map((value) => value.trim()).filter(Boolean),
+    })).filter((variant) => variant.name && variant.values.length);
+    await save({ ...form, variants, productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
 
     resetForm();
     setMessage(editingId ? 'تم تحديث المنتج' : 'تمت إضافة المنتج');
@@ -1202,8 +1216,10 @@ function ProductsAdmin() {
       category: product.category,
       imageUrl: product.imageUrl || '',
       productImages: product.productImages || [],
-      variants: product.variants || [],
-      variantsText: variantsToText(product.variants),
+      variants: (Array.isArray(product.variants) ? product.variants : []).map((variant) => ({
+        name: String(variant.name || ''),
+        valuesText: Array.isArray(variant.values) ? variant.values.join(', ') : '',
+      })),
       stockQuantity: product.stockQuantity ?? 0,
       inStock: product.inStock,
       featured: Boolean(product.featured),
@@ -1225,7 +1241,15 @@ function ProductsAdmin() {
             <label>كود المنتج<input placeholder="مثال: PRD-001" value={form.productCode} onChange={(event) => setForm({ ...form, productCode: event.target.value })} /></label>
             <label>التصنيف<input placeholder="مثال: حقائب" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
             <label className="product-editor-wide">الوصف<textarea placeholder="اكتب وصفًا مختصرًا وواضحًا للمنتج" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
-            <label className="product-editor-wide">المتغيرات <small>كل خيار في سطر، مثل: اللون: أبيض، أسود</small><textarea className="variants-input" placeholder={'اللون: أبيض، أسود\nالمقاس: S، M، L'} value={form.variantsText} onChange={(event) => setForm({ ...form, variantsText: event.target.value })} /></label>
+            <div className="product-variants product-editor-wide">
+              <div className="product-variants-heading"><div><strong>متغيرات المنتج</strong><small>أضف مثلًا اللون أو المقاس، ثم اكتب الخيارات مفصولة بفاصلة.</small></div><button type="button" className="add-variant-button" onClick={addVariant}>+ إضافة متغير</button></div>
+              {form.variants.map((variant, index) => <div className="product-variant-row" key={`variant-${index}`}>
+                <label>اسم المتغير<input placeholder="مثال: اللون" value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
+                <label>الخيارات<input placeholder="مثال: أبيض، أسود" value={variant.valuesText} onChange={(event) => updateVariant(index, 'valuesText', event.target.value)} /></label>
+                <button type="button" className="remove-variant-button" aria-label={`حذف المتغير ${variant.name || index + 1}`} onClick={() => removeVariant(index)}>حذف</button>
+              </div>)}
+              {!form.variants.length && <p className="product-variants-empty">لا توجد متغيرات. أضف متغيرًا إذا كان المنتج متاحًا بأكثر من خيار.</p>}
+            </div>
           </div>
         </section>
 

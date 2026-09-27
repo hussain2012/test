@@ -1229,6 +1229,44 @@ button { cursor: pointer; }
 .product-editor-fields .variants-input { min-height: 72px; }
 .product-editor-wide { grid-column: 1 / -1; }
 
+.product-variants {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fcfdfa;
+}
+
+.product-variants-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-variants-heading > div { display: grid; gap: 3px; }
+.product-variants-heading strong { font-size: 12px; }
+.product-variants-heading small { color: var(--muted); font-size: 10px; font-weight: 400; }
+.product-variants-heading button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid var(--primary); border-radius: 3px; background: var(--paper); color: var(--primary); font-size: 11px; font-weight: 700; }
+.product-variants-heading button:hover { background: var(--primary-soft); }
+
+.product-variant-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.product-variant-row > label { display: grid; gap: 5px; min-width: 0; color: var(--text); font-size: 11px; font-weight: 700; }
+.product-variant-row > label input { width: 100%; min-height: 40px; font-size: 12px; }
+.product-variant-row .remove-variant-button { min-height: 38px; padding: 6px 9px; border: 1px solid #e5c4bd; border-radius: 3px; background: var(--paper); color: var(--danger); font-size: 11px; }
+.product-variant-row .remove-variant-button:hover { background: #f8e9e5; }
+.product-variants-empty { margin: 0; color: var(--muted); font-size: 11px; }
+
 .product-editor-checks {
   display: flex;
   flex-wrap: wrap;
@@ -1872,6 +1910,8 @@ button { cursor: pointer; }
   .product-editor-section { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 18px 16px; }
   .product-editor-fields { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .product-editor-wide { grid-column: auto; }
+  .product-variant-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .product-variant-row .remove-variant-button { grid-column: 1 / -1; justify-self: start; }
   .product-editor-checks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
   .product-editor-actions { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
   .settings-form { padding: 0; }
