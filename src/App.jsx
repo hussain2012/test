@@ -1215,29 +1215,44 @@ function ProductsAdmin() {
 
   return (
     <>
-      <form className="admin-form" onSubmit={submit}>
-        <h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2>
-        <input placeholder="اسم المنتج" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-        <input placeholder="كود المنتج (مثلاً: PRD-001)" value={form.productCode} onChange={(event) => setForm({ ...form, productCode: event.target.value })} />
-        <input placeholder="سعر البيع" type="number" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} />
-        <input placeholder="سعر الشراء" type="number" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} />
-        <label className="field-label">نسبة الخصم %<input aria-label="نسبة الخصم" placeholder="0 بدون خصم" type="number" min="0" max="100" value={form.discountPercentage} onChange={(event) => setForm({ ...form, discountPercentage: event.target.value })} /></label>
-        <input placeholder="التصنيف" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
-        <textarea className="variants-input" placeholder={'المتغيرات، سطر لكل خيار: مثال\nاللون: أبيض، أسود\nالمقاس: S، M، L'} value={form.variantsText} onChange={(event) => setForm({ ...form, variantsText: event.target.value })} />
-        <label className="field-label">الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value })} /></label>
-        <label className="check-label"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />منتج مميّز ويظهر أولاً</label>
-        <label className="check-label"><input type="checkbox" checked={form.isNew} onChange={(event) => setForm({ ...form, isNew: event.target.checked })} />منتج جديد</label>
-        <label className="field-label">الصورة الرئيسية<input type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
-        <label className="field-label">صور إضافية<input type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
-        <textarea placeholder="الوصف" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
-        <label className="check-label">
-          <input type="checkbox" checked={form.inStock} onChange={(event) => setForm({ ...form, inStock: event.target.checked })} />
-          متوفر في المخزون
-        </label>
-        <button type="submit" className="primary">{editingId ? 'حفظ التعديلات' : 'حفظ المنتج'}</button>
-        {editingId && <button type="button" className="secondary-button" onClick={resetForm}>إلغاء</button>}
-        {message && <p className="success-message">{message}</p>}
-        {error && <p className="error">{error}</p>}
+      <form className="admin-form product-editor" onSubmit={submit}>
+        <header className="product-editor-heading"><div><p className="eyebrow">كتالوج المتجر</p><h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2></div>{editingId && <button type="button" className="secondary-button" onClick={resetForm}>إلغاء التعديل</button>}</header>
+
+        <section className="product-editor-section" aria-labelledby="product-info-title">
+          <div className="product-editor-section-heading"><h3 id="product-info-title">معلومات المنتج</h3><p>الاسم والتصنيف والتفاصيل التي ستظهر للزبائن.</p></div>
+          <div className="product-editor-fields">
+            <label>اسم المنتج<input placeholder="مثال: حقيبة يومية" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+            <label>كود المنتج<input placeholder="مثال: PRD-001" value={form.productCode} onChange={(event) => setForm({ ...form, productCode: event.target.value })} /></label>
+            <label>التصنيف<input placeholder="مثال: حقائب" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
+            <label className="product-editor-wide">الوصف<textarea placeholder="اكتب وصفًا مختصرًا وواضحًا للمنتج" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+            <label className="product-editor-wide">المتغيرات <small>كل خيار في سطر، مثل: اللون: أبيض، أسود</small><textarea className="variants-input" placeholder={'اللون: أبيض، أسود\nالمقاس: S، M، L'} value={form.variantsText} onChange={(event) => setForm({ ...form, variantsText: event.target.value })} /></label>
+          </div>
+        </section>
+
+        <section className="product-editor-section" aria-labelledby="product-price-title">
+          <div className="product-editor-section-heading"><h3 id="product-price-title">السعر والمخزون</h3><p>حدد الأسعار والكمية وحالة توفر المنتج.</p></div>
+          <div className="product-editor-fields">
+            <label>سعر البيع<input type="number" min="0" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label>
+            <label>سعر الشراء<input type="number" min="0" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></label>
+            <label>نسبة الخصم %<input placeholder="0 بدون خصم" type="number" min="0" max="100" value={form.discountPercentage} onChange={(event) => setForm({ ...form, discountPercentage: event.target.value })} /></label>
+            <label>الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value })} /></label>
+            <div className="product-editor-checks">
+              <label className="check-label"><input type="checkbox" checked={form.inStock} onChange={(event) => setForm({ ...form, inStock: event.target.checked })} />متوفر في المخزون</label>
+              <label className="check-label"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />منتج مميّز ويظهر أولاً</label>
+              <label className="check-label"><input type="checkbox" checked={form.isNew} onChange={(event) => setForm({ ...form, isNew: event.target.checked })} />منتج جديد</label>
+            </div>
+          </div>
+        </section>
+
+        <section className="product-editor-section" aria-labelledby="product-images-title">
+          <div className="product-editor-section-heading"><h3 id="product-images-title">صور المنتج</h3><p>اختر صورة رئيسية وصورًا إضافية للمعرض.</p></div>
+          <div className="product-editor-fields">
+            <label className="product-file-field">الصورة الرئيسية<input type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
+            <label className="product-file-field">صور إضافية<input type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
+          </div>
+        </section>
+
+        <footer className="product-editor-actions"><button type="submit" className="primary">{editingId ? 'حفظ التعديلات' : 'حفظ المنتج'}</button>{message && <p className="success-message">{message}</p>}{error && <p className="error">{error}</p>}</footer>
       </form>
 
       <div className="admin-table">
@@ -1250,11 +1265,9 @@ function ProductsAdmin() {
             <ProductImage src={product.imageUrl} alt={product.name} />
             <div className="product-main">
               <strong>{product.name}</strong>
-              <small>{product.productCode ? `كود: ${product.productCode}` : 'بدون كود'}</small>
+              <small>{product.category || 'غير مصنَّف'}</small>
             </div>
-            <span>{product.category || 'غير مصنَّف'}</span>
             <span>{money(product.price)}</span>
-            <span>{product.discountPercentage ? `${product.discountPercentage}% خصم` : 'بدون خصم'}</span>
             <span>{product.inStock ? `${product.stockQuantity} قطعة` : 'طلب مسبق'}</span>
             <span className={product.inStock ? 'status-ok' : 'status-warn'}>{product.inStock ? 'متوفر' : 'غير متوفر'}</span>
             <div className="inline-actions">
