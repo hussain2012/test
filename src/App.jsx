@@ -638,7 +638,7 @@ function ProductDetailPage() {
       .then((data) => {
         if (!data) throw new Error('تعذر تحميل المنتج');
         setProduct(data);
-        setSelectedImage(data.productImages?.[0] || data.imageUrl || '');
+        setSelectedImage(data?.productImages?.[0] ?? data?.imageUrl ?? '');
         setSelectedVariants({});
         setLoading(false);
         listProducts()
@@ -659,6 +659,8 @@ function ProductDetailPage() {
 
   const hasDiscount = Number(product.discountPercentage || 0) > 0;
   const finalPrice = Number(product.discountedPrice ?? product.price ?? 0);
+  const productImages = Array.isArray(product?.productImages) ? product.productImages : [];
+  const thumbnailImages = (productImages.length ? productImages : [product?.imageUrl]).filter(Boolean);
   const variantsComplete = (product.variants || []).every((variant) => selectedVariants[variant.name]);
   const isProductFavorite = isProductSaved || (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
 
@@ -718,7 +720,7 @@ function ProductDetailPage() {
               </div>
             </div>
             <div className="detail-thumbnails">
-              {(Array.isArray(product.productImages) && product.productImages.length ? product.productImages : [product.imageUrl]).filter(Boolean).map((image, index) => (
+              {(thumbnailImages ?? []).map((image, index) => (
                 <button type="button" className={selectedImage === image ? 'selected' : ''} key={`${image}-${index}`} onClick={() => setSelectedImage(image)}>
                   <ProductImage src={image} alt={`${product.name} ${index + 1}`} />
                 </button>
@@ -1251,6 +1253,10 @@ function ProductsAdmin() {
   };
 
   const startEdit = (product) => {
+    if (!product) {
+      setError('تعذر تحميل بيانات المنتج للتعديل');
+      return;
+    }
     setEditingId(product.id);
     setForm({
       name: product.name,
@@ -1261,7 +1267,7 @@ function ProductsAdmin() {
       discountPercentage: product.discountPercentage ?? 0,
       category: product.category,
       imageUrl: product.imageUrl || '',
-      productImages: product.productImages || [],
+      productImages: Array.isArray(product?.productImages) ? product.productImages : [],
       variants: (Array.isArray(product.variants) ? product.variants : []).map((variant) => ({
         name: String(variant.name || ''),
         valuesText: Array.isArray(variant.values) ? variant.values.join(', ') : '',

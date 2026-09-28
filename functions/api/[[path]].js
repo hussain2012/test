@@ -56,17 +56,19 @@ const parseBody = async (request) => {
   return request.json().catch(() => ({}));
 };
 const normalizeProduct = (row) => {
-  const images = Array.isArray(row.productImages) ? row.productImages : parseJson(row.productImages);
-  const price = number(row.price);
-  const discount = number(row.discountPercentage);
+  if (!row || typeof row !== 'object') return null;
+  const storedImages = row?.productImages ?? [];
+  const images = Array.isArray(storedImages) ? storedImages : parseJson(storedImages) ?? [];
+  const price = number(row?.price);
+  const discount = number(row?.discountPercentage);
   return {
-    id: row.id, name: row.name, description: row.description, price,
+    id: row?.id, name: row?.name, description: row?.description, price,
     discountPercentage: discount,
     discountedPrice: Number((price * (1 - discount / 100)).toFixed(2)),
-    imageUrl: row.imageUrl || '', productImages: [...new Set([row.imageUrl, ...images].filter(Boolean))],
-    category: row.category || 'عام', stockQuantity: number(row.stockQuantity),
-    preOrder: !Boolean(row.inStock), inStock: Boolean(row.inStock),
-    featured: Boolean(row.featured), isNew: Boolean(row.isNew),
+    imageUrl: row?.imageUrl || '', productImages: [...new Set([row?.imageUrl, ...(images ?? [])].filter(Boolean))],
+    category: row?.category || 'عام', stockQuantity: number(row?.stockQuantity),
+    preOrder: !Boolean(row?.inStock), inStock: Boolean(row?.inStock),
+    featured: Boolean(row?.featured), isNew: Boolean(row?.isNew),
   };
 };
 const normalizeOrder = (row) => ({
@@ -120,7 +122,7 @@ export async function onRequest(context) {
     if (route === 'products' && method === 'GET') {
       const { data, error } = await supabase.from('products').select('*').order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false });
       if (error) throw error;
-      return json((data || []).map(normalizeProduct));
+      return json((data || []).filter(Boolean).map(normalizeProduct).filter(Boolean));
     }
     if (parts[0] === 'products' && parts.length === 2 && method === 'GET') {
       const { data, error } = await supabase.from('products').select('*').eq('id', parts[1]).maybeSingle();
@@ -131,17 +133,17 @@ export async function onRequest(context) {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
       const { data, error } = await supabase.from('products').select('*').order('id', { ascending: false });
       if (error) throw error;
-      return json((data || []).map((row) => ({ ...normalizeProduct(row), costPrice: number(row.costPrice), profit: Number((number(row.price) - number(row.costPrice)).toFixed(2)) })));
+      return json((data || []).filter(Boolean).map((row) => ({ ...normalizeProduct(row), costPrice: number(row.costPrice), profit: Number((number(row.price) - number(row.costPrice)).toFixed(2)) })).filter(Boolean));
     }
     if (parts[0] === 'admin' && parts[1] === 'products' && parts.length === 2 && ['POST'].includes(method)) {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
       const form = await request.formData();
       const files = await uploadFormFiles(request, form, supabase);
       const body = Object.fromEntries([...form.entries()].filter(([key, value]) => typeof value === 'string'));
-      const images = [...parseJson(body.existingProductImages), ...(files.productImages ? [files.productImages] : [])];
+      const images = [...(parseJson(body.existingProductImages) ?? []), ...(files?.productImages ? [files.productImages] : [])];
       const { data, error } = await supabase.from('products').insert({
         name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice), discountPercentage: number(body.discountPercentage),
-        imageUrl: files.primaryImage || body.imageUrl || images[0] || '', productImages: images, category: body.category || 'عام', stockQuantity: Math.max(0, number(body.stockQuantity, 10)),
+        imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: body.category || 'عام', stockQuantity: Math.max(0, number(body.stockQuantity, 10)),
         inStock: !['false', '0'].includes(String(body.inStock)), featured: bool(body.featured), isNew: bool(body.isNew),
       }).select().single();
       if (error) throw error;
@@ -157,16 +159,18 @@ export async function onRequest(context) {
       const form = await request.formData();
       const files = await uploadFormFiles(request, form, supabase);
       const body = Object.fromEntries([...form.entries()].filter(([key, value]) => typeof value === 'string'));
-      const { data: existing, error: existingError } = await supabase.from('products').select('*').eq('id', parts[2]).single();
+      const { data: existing, error: existingError } = await supabase.from('products').select('*').eq('id', parts[2]).maybeSingle();
       if (existingError) throw existingError;
-      const images = [...parseJson(body.existingProductImages), ...(files.productImages ? [files.productImages] : [])];
+      if (!existing) return errorResponse('المنتج غير موجود', 404);
+      const images = [...(parseJson(body.existingProductImages) ?? []), ...(files?.productImages ? [files.productImages] : [])];
       const { data, error } = await supabase.from('products').update({
-        name: body.name ?? existing.name, description: body.description ?? existing.description, price: number(body.price, existing.price), costPrice: number(body.costPrice, existing.costPrice),
-        discountPercentage: number(body.discountPercentage, existing.discountPercentage), imageUrl: files.primaryImage || body.imageUrl || images[0] || existing.imageUrl || '', productImages: images,
-        category: body.category ?? existing.category, stockQuantity: Math.max(0, number(body.stockQuantity, existing.stockQuantity)), inStock: body.inStock === undefined ? existing.inStock : !['false', '0'].includes(String(body.inStock)),
-        featured: body.featured === undefined ? existing.featured : bool(body.featured), isNew: body.isNew === undefined ? existing.isNew : bool(body.isNew),
+        name: body.name ?? existing?.name, description: body.description ?? existing?.description, price: number(body.price, existing?.price), costPrice: number(body.costPrice, existing?.costPrice),
+        discountPercentage: number(body.discountPercentage, existing?.discountPercentage), imageUrl: files?.primaryImage || body.imageUrl || images[0] || existing?.imageUrl || '', productImages: images ?? [],
+        category: body.category ?? existing?.category, stockQuantity: Math.max(0, number(body.stockQuantity, existing?.stockQuantity)), inStock: body.inStock === undefined ? existing?.inStock : !['false', '0'].includes(String(body.inStock)),
+        featured: body.featured === undefined ? existing?.featured : bool(body.featured), isNew: body.isNew === undefined ? existing?.isNew : bool(body.isNew),
       }).eq('id', parts[2]).select().single();
       if (error) throw error;
+      if (!data) return errorResponse('تعذر استرجاع المنتج بعد التحديث', 404);
       return json(normalizeProduct(data));
     }
 

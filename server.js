@@ -373,8 +373,8 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
   const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, featured, isNew } = req.body;
   if (!name || !description || !price) return res.status(400).json({ error: 'يرجى إكمال بيانات المنتج' });
 
-  const uploadedImages = (req.files?.productImages || []).map(uploadedImageUrl);
-  const images = [...parseImageList(req.body.existingProductImages), ...uploadedImages];
+  const uploadedImages = (req.files?.productImages ?? []).map(uploadedImageUrl);
+  const images = [...parseImageList(req.body?.existingProductImages), ...uploadedImages];
   const uploadedPrimaryImage = uploadedImageUrl(req.files?.primaryImage?.[0]);
   const primaryImage = uploadedPrimaryImage || imageUrl || images[0] || '';
   const { data, error } = await supabaseServer.from('products').insert({
@@ -384,7 +384,7 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
     costPrice: Number(costPrice || 0),
     discountPercentage: Number(discountPercentage || 0),
     imageUrl: primaryImage,
-    productImages: images,
+    productImages: images ?? [],
     category: category || 'عام',
     stockQuantity: Math.max(0, Number(stockQuantity ?? 10)),
     inStock: !(inStock === false || inStock === 'false'),
@@ -411,18 +411,18 @@ app.put('/api/admin/products/:id', productUpload, async (req, res) => {
     category: req.body.category ?? existingProduct.category,
     inStock: req.body.inStock === false || req.body.inStock === 'false' ? false : (req.body.inStock === true || req.body.inStock === 'true' ? true : existingProduct.inStock),
     imageUrl: req.body.imageUrl ?? existingProduct.imageUrl,
-    productImages: parseImageList(req.body.existingProductImages).concat((req.files?.productImages || []).map(uploadedImageUrl)),
+    productImages: parseImageList(req.body?.existingProductImages).concat((req.files?.productImages ?? []).map(uploadedImageUrl)),
     stockQuantity: Math.max(0, Number(req.body.stockQuantity ?? existingProduct.stockQuantity ?? 10)),
     featured: req.body.featured === true || req.body.featured === 'true' ? true : (req.body.featured === false || req.body.featured === 'false' ? false : existingProduct.featured),
     isNew: req.body.isNew === true || req.body.isNew === 'true' ? true : (req.body.isNew === false || req.body.isNew === 'false' ? false : existingProduct.isNew),
   };
 
-  const images = body.productImages;
+  const images = Array.isArray(body?.productImages) ? body.productImages : [];
   const primaryImage = uploadedImageUrl(req.files?.primaryImage?.[0]) || body.imageUrl || images[0] || '';
   const { data, error } = await supabaseServer.from('products').update({
     ...body,
     imageUrl: primaryImage,
-    productImages: images,
+    productImages: images ?? [],
   }).eq('id', req.params.id).select().single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(adminProductData(normalizeProductRow(data)));

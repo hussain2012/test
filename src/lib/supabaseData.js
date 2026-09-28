@@ -18,7 +18,7 @@ const productView = (row) => {
     discountedPrice: Number((price * (1 - discountPercentage / 100)).toFixed(2)),
     imageUrl: row?.imageUrl || '',
     productCode: String(row?.productCode || '').trim().toUpperCase(),
-    productImages: [...new Set([row?.imageUrl, ...asJsonArray(row?.productImages)].filter(Boolean))],
+    productImages: [...new Set([row?.imageUrl, ...asJsonArray(row?.productImages ?? [])].filter(Boolean))],
     variants: asVariants(row?.variants),
     category: row?.category || 'عام',
     stockQuantity: Number(row?.stockQuantity ?? 0),
@@ -96,8 +96,51 @@ const safeUploadName = (file) => String(file?.name || 'upload').replace(/[^a-zA-
 async function uploadFiles(primaryImageFile, additionalImageFiles = []) { const urls = []; for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) { const path = `products/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); urls.push(supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl); } return urls; }
 export async function uploadCategoryImage(file) { const path = `categories/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl; }
 export async function moveProductsToCategory(currentCategory, nextCategory) { if (currentCategory === nextCategory) return; return throwIfError(await supabase.from('products').update({ category: nextCategory }).eq('category', currentCategory)); }
-export async function createProduct(form, primaryFile, additionalFiles) { const uploaded = await uploadFiles(primaryFile, additionalFiles); const images = [...asArray(form.productImages), ...uploaded]; const data = throwIfError(await supabase.from('products').insert({ name: form.name, productCode: String(form.productCode || '').trim().toUpperCase() || null, description: form.description, price: Number(form.price), costPrice: Number(form.costPrice || 0), discountPercentage: Number(form.discountPercentage || 0), category: form.category || 'عام', imageUrl: uploaded[0] || form.imageUrl || images[0] || '', productImages: images, variants: asVariants(form.variants), stockQuantity: Math.max(0, Number(form.stockQuantity ?? 10)), inStock: Boolean(form.inStock), featured: Boolean(form.featured), isNew: Boolean(form.isNew) }).select().single()); return productView(data); }
-export async function updateProduct(id, form, primaryFile, additionalFiles) { const uploaded = await uploadFiles(primaryFile, additionalFiles); const images = [...asArray(form.productImages), ...uploaded]; const data = throwIfError(await supabase.from('products').update({ name: form.name, productCode: String(form.productCode || '').trim().toUpperCase() || null, description: form.description, price: Number(form.price), costPrice: Number(form.costPrice || 0), discountPercentage: Number(form.discountPercentage || 0), category: form.category || 'عام', imageUrl: uploaded[0] || form.imageUrl || images[0] || '', productImages: images, variants: asVariants(form.variants), stockQuantity: Math.max(0, Number(form.stockQuantity ?? 10)), inStock: Boolean(form.inStock), featured: Boolean(form.featured), isNew: Boolean(form.isNew) }).eq('id', id).select().single()); return productView(data); }
+export async function createProduct(form, primaryFile, additionalFiles) {
+  const productForm = form ?? {};
+  const uploaded = await uploadFiles(primaryFile, additionalFiles);
+  const images = [...asArray(productForm.productImages), ...uploaded];
+  const data = throwIfError(await supabase.from('products').insert({
+    name: productForm.name,
+    productCode: String(productForm.productCode || '').trim().toUpperCase() || null,
+    description: productForm.description,
+    price: Number(productForm.price),
+    costPrice: Number(productForm.costPrice || 0),
+    discountPercentage: Number(productForm.discountPercentage || 0),
+    category: productForm.category || 'عام',
+    imageUrl: uploaded[0] || productForm.imageUrl || images[0] || '',
+    productImages: images ?? [],
+    variants: asVariants(productForm.variants),
+    stockQuantity: Math.max(0, Number(productForm.stockQuantity ?? 10)),
+    inStock: Boolean(productForm.inStock),
+    featured: Boolean(productForm.featured),
+    isNew: Boolean(productForm.isNew),
+  }).select().single());
+  return productView(data);
+}
+
+export async function updateProduct(id, form, primaryFile, additionalFiles) {
+  const productForm = form ?? {};
+  const uploaded = await uploadFiles(primaryFile, additionalFiles);
+  const images = [...asArray(productForm.productImages), ...uploaded];
+  const data = throwIfError(await supabase.from('products').update({
+    name: productForm.name,
+    productCode: String(productForm.productCode || '').trim().toUpperCase() || null,
+    description: productForm.description,
+    price: Number(productForm.price),
+    costPrice: Number(productForm.costPrice || 0),
+    discountPercentage: Number(productForm.discountPercentage || 0),
+    category: productForm.category || 'عام',
+    imageUrl: uploaded[0] || productForm.imageUrl || images[0] || '',
+    productImages: images ?? [],
+    variants: asVariants(productForm.variants),
+    stockQuantity: Math.max(0, Number(productForm.stockQuantity ?? 10)),
+    inStock: Boolean(productForm.inStock),
+    featured: Boolean(productForm.featured),
+    isNew: Boolean(productForm.isNew),
+  }).eq('id', id).select().single());
+  return productView(data);
+}
 export async function deleteProduct(id) { return throwIfError(await supabase.from('products').delete().eq('id', id)); }
 export async function listOrders() { const data = throwIfError(await supabase.from('orders').select('*').order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
 export async function updateOrder(id, updates) { return throwIfError(await supabase.from('orders').update(updates).eq('id', id)); }
