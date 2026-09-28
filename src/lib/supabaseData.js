@@ -125,27 +125,55 @@ export async function createProduct(form, primaryFile, additionalFiles) {
   return productView(data);
 }
 
-export async function updateProduct(id, form, primaryFile, additionalFiles) {
-  const productForm = form ?? {};
-  const uploaded = await uploadFiles(primaryFile, additionalFiles);
-  const images = [...asArray(productForm.productImages), ...uploaded];
-  const data = throwIfError(await supabase.from('products').update({
-    name: productForm.name,
-    ...productCodeColumn(productForm),
-    description: productForm.description,
-    price: Number(productForm.price),
-    costPrice: Number(productForm.costPrice || 0),
-    discountPercentage: Number(productForm.discountPercentage || 0),
-    category: productForm.category || 'عام',
-    imageUrl: uploaded[0] || productForm.imageUrl || images[0] || '',
-    productImages: images ?? [],
-    variants: asVariants(productForm.variants),
-    stockQuantity: Math.max(0, Number(productForm.stockQuantity ?? 10)),
-    inStock: Boolean(productForm.inStock),
-    featured: Boolean(productForm.featured),
-    isNew: Boolean(productForm.isNew),
-  }).eq('id', id).select().single());
-  return productView(data);
+export async function updateProduct(idOrForm, form, primaryFile, additionalFiles) {
+  // حماية ذكية: إذا الكود أرسل النموذج كأول عنصر، نستخرج منه الـ id والفروم تلقائياً
+  let productId = typeof idOrForm === 'object' ? (idOrForm?.id || idOrForm?.value) : idOrForm;
+  let actualForm = typeof idOrForm === 'object' ? idOrForm : form;
+
+  // استخراج الـ ID الصافي كنص أو رقم
+  if (typeof productId === 'object' && productId !== null) {
+    productId = productId.id || productId.value;
+  }
+  
+  productId = String(productId ?? '').trim();
+
+  // التأكد من أن الـ ID صالح وليس [object Object]
+  if (!productId || productId === '[object Object]' || productId === 'undefined') {
+    throw new Error('معرّف المنتج (ID) غير صالح أو مفقود');
+  }
+
+  // رفع الصور إذا وجد ملفات جديدة
+  const uploaded = typeof uploadFiles === 'function' ? await uploadFiles(primaryFile, additionalFiles) : [];
+  const productImages = [
+    ...(Array.isArray(actualForm?.productImages) ? actualForm.productImages : []),
+    ...uploaded,
+  ];
+
+  // تجهيز وتنظيف البيانات قبل الإرسال
+  const rawPayload = {
+    ...actualForm,
+    imageUrl: uploaded[0] || actualForm?.imageUrl || productImages[0] || '',
+    productImages,
+  };
+
+  // استخدام دالة التنظيف إذا كانت موجودة، أو تنظيف الـ ID على الأقل
+  const payload = typeof sanitizeProductPayload === 'function' 
+    ? sanitizeProductPayload(rawPayload) 
+    : { ...rawPayload };
+
+  // حذف الـ id من داخل الـ payload حتى لا يتصادم مع استعلام Supabase
+  delete payload.id;
+
+  // إرسال الاستعلام لـ Supabase باستخدام رقم مجرد 100%
+  const { data, error } = await supabase
+    .from('products')
+    .update(payload)
+    .eq('id', Number(productId))
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 export async function deleteProduct(id) { return throwIfError(await supabase.from('products').delete().eq('id', id)); }
 export async function listOrders() { const data = throwIfError(await supabase.from('orders').select('*').order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
