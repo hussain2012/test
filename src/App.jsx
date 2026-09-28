@@ -527,7 +527,7 @@ function Store() {
               <p className="eyebrow">المنتجات</p>
             </div>
             <div className="filters">
-              <input aria-label="بحث" placeholder="ابحث عن اسم المنتج أو الكود..." value={search} onChange={(event) => setSearch(event.target.value)} />
+              <input aria-label="بحث" placeholder="بحث" value={search} onChange={(event) => setSearch(event.target.value)} />
               <select value={category} onChange={(event) => setCategory(event.target.value)}>
                 {categories.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>

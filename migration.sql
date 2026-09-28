@@ -1,19 +1,7 @@
--- Supabase migration for the existing SQLite catalog.
--- Run this file in Supabase SQL Editor before deploying the application.
+-- Non-destructive Supabase schema migration.
+-- Creates missing application objects and adds missing columns without deleting store data.
 
 create extension if not exists pgcrypto;
-
--- This migration intentionally starts from a clean schema.
--- It removes only the application tables created below.
-drop table if exists public.account_coupons cascade;
-drop table if exists public.account_carts cascade;
-drop table if exists public.orders cascade;
-drop table if exists public.admin_invites cascade;
-drop table if exists public.page_views cascade;
-drop table if exists public.site_settings cascade;
-drop table if exists public.products cascade;
-drop table if exists public.discounts cascade;
-drop table if exists public.profiles cascade;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
