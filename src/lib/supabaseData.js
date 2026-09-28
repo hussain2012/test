@@ -126,45 +126,46 @@ export async function createProduct(form, primaryFile, additionalFiles) {
 }
 
 export async function updateProduct(idOrForm, form, primaryFile, additionalFiles) {
-  // حماية ذكية: إذا الكود أرسل النموذج كأول عنصر، نستخرج منه الـ id والفروم تلقائياً
-  let productId = typeof idOrForm === 'object' ? (idOrForm?.id || idOrForm?.value) : idOrForm;
-  let actualForm = typeof idOrForm === 'object' ? idOrForm : form;
+  // 1. استخراج النموذج (Form) والـ ID بشكل مرن من أي مكان
+  let actualForm = typeof idOrForm === 'object' && idOrForm !== null ? idOrForm : (form || {});
+  let rawId = typeof idOrForm !== 'object' ? idOrForm : (idOrForm?.id || idOrForm?.productId || form?.id || form?.productId);
 
-  // استخراج الـ ID الصافي كنص أو رقم
-  if (typeof productId === 'object' && productId !== null) {
-    productId = productId.id || productId.value;
-  }
-  
-  productId = String(productId ?? '').trim();
-
-  // التأكد من أن الـ ID صالح وليس [object Object]
-  if (!productId || productId === '[object Object]' || productId === 'undefined') {
-    throw new Error('معرّف المنتج (ID) غير صالح أو مفقود');
+  // تنظيف الـ ID إذا كان كائناً
+  if (typeof rawId === 'object' && rawId !== null) {
+    rawId = rawId.id || rawId.value;
   }
 
-  // رفع الصور إذا وجد ملفات جديدة
+  let productId = String(rawId ?? '').trim();
+
+  // 2. إذا لم يكن هناك ID صالح (منتج جديد أو غير محدد)، تحويل العملية تلقائياً إلى إنشاء منتج جديد
+  if (!productId || productId === 'null' || productId === 'undefined' || productId === '[object Object]' || productId === '0') {
+    if (typeof createProduct === 'function') {
+      return await createProduct(actualForm, primaryFile, additionalFiles);
+    }
+  }
+
+  // 3. رفع الصور إذا وجد ملفات جديدة
   const uploaded = typeof uploadFiles === 'function' ? await uploadFiles(primaryFile, additionalFiles) : [];
   const productImages = [
     ...(Array.isArray(actualForm?.productImages) ? actualForm.productImages : []),
     ...uploaded,
   ];
 
-  // تجهيز وتنظيف البيانات قبل الإرسال
+  // 4. تجهيز البيانات
   const rawPayload = {
     ...actualForm,
     imageUrl: uploaded[0] || actualForm?.imageUrl || productImages[0] || '',
     productImages,
   };
 
-  // استخدام دالة التنظيف إذا كانت موجودة، أو تنظيف الـ ID على الأقل
   const payload = typeof sanitizeProductPayload === 'function' 
     ? sanitizeProductPayload(rawPayload) 
     : { ...rawPayload };
 
-  // حذف الـ id من داخل الـ payload حتى لا يتصادم مع استعلام Supabase
+  // حذف الـ id من الحمولة حتى لا يتعارض مع استعلام Supabase
   delete payload.id;
 
-  // إرسال الاستعلام لـ Supabase باستخدام رقم مجرد 100%
+  // 5. تنفيذ التحديث في Supabase
   const { data, error } = await supabase
     .from('products')
     .update(payload)
