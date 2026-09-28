@@ -78,7 +78,8 @@ const uploadFormFiles = async (request, form, supabase) => {
   const uploaded = {};
   for (const [key, value] of [...form.entries()]) {
     if (!value || typeof value === 'string' || !value.name) continue;
-    const path = `uploads/${crypto.randomUUID()}-${value.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
+    const fileName = String(value.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
+    const path = `uploads/${crypto.randomUUID()}-${fileName}`;
     const { error } = await supabase.storage.from('uploads').upload(path, value, { contentType: value.type || 'application/octet-stream', upsert: false });
     if (error) throw error;
     const { data } = supabase.storage.from('uploads').getPublicUrl(path);

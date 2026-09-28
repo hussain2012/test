@@ -1225,7 +1225,7 @@ function ProductsAdmin() {
     const wasEditing = editingId !== null;
     const variants = form.variants.map((variant) => ({
       name: String(variant.name || '').trim(),
-      values: String(variant.valuesText || '').split(',').map((value) => value.trim()).filter(Boolean),
+      values: String(variant.valuesText || '').split(/[,،]/).map((value) => value.trim()).filter(Boolean),
     })).filter((variant) => variant.name && variant.values.length);
     try {
       await save({ ...form, variants, productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
