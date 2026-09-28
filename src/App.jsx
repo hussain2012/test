@@ -1229,8 +1229,13 @@ function ProductsAdmin() {
       name: String(variant.name || '').trim(),
       values: String(variant.valuesText || '').split(/[,،]/).map((value) => value.trim()).filter(Boolean),
     })).filter((variant) => variant.name && variant.values.length);
-    try {
-      await save({ ...form, variants, productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
+   try {
+      await saveFn({
+        ...form,
+        id: editingId,
+        variants,
+        productImages: Array.isArray(form.productImages) ? form.productImages : []
+      }, primaryImageFile, additionalImageFiles);
       resetForm();
       setMessage(wasEditing ? 'تم تحديث المنتج' : 'تمت إضافة المنتج');
       await load();
