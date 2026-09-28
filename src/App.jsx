@@ -738,7 +738,7 @@ function ProductDetailPage() {
               {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (product.inStock ? `متوفر في المخزون: ${product.stockQuantity} قطعة` : 'طلب مسبق')}
             </div>
             <p className="detail-description">{product.description}</p>
-            {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required><option value="">اختر {variant.name}</option>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
+            {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
             <div className="quantity-row">
               <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
               <span>{quantity}</span>
