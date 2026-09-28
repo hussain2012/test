@@ -1223,19 +1223,27 @@ function ProductsAdmin() {
     setMessage('');
     setError('');
     setSaving(true);
-    const save = editingId ? updateProduct : createProduct;
+    
     const wasEditing = editingId !== null;
     const variants = form.variants.map((variant) => ({
       name: String(variant.name || '').trim(),
       values: String(variant.valuesText || '').split(/[,،]/).map((value) => value.trim()).filter(Boolean),
     })).filter((variant) => variant.name && variant.values.length);
-   try {
-      await saveFn({
+
+    try {
+      const payload = {
         ...form,
         id: editingId,
         variants,
         productImages: Array.isArray(form.productImages) ? form.productImages : []
-      }, primaryImageFile, additionalImageFiles);
+      };
+
+      if (editingId) {
+        await updateProduct(payload, primaryImageFile, additionalImageFiles);
+      } else {
+        await createProduct(payload, primaryImageFile, additionalImageFiles);
+      }
+
       resetForm();
       setMessage(wasEditing ? 'تم تحديث المنتج' : 'تمت إضافة المنتج');
       await load();
