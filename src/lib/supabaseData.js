@@ -41,7 +41,7 @@ const getFeaturedProductIds = (data) => {
 export const defaultSettings = {
   id: 1, storeName: 'نسق', tagline: 'اختيارات تصنع يومك', logoUrl: '', heroTitle: 'أشياء صغيرة، فرق كبير',
   heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.', heroImageUrl: '', heroButtonText: 'اكتشف المجموعة',
-  featuredSectionTitle: 'مختارات نسق', featuredProductIds: null,
+  featuredSectionTitle: 'مختارات نسق', featuredProductIds: null, storeCategories: null,
   instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: 'من نحن؟', aboutText: '',
   policyTitle: 'سياستنا', policyText: 'نراجع كل طلب ونتواصل معك لتأكيد التفاصيل قبل التجهيز.', maintenanceMode: false,
 };
@@ -53,6 +53,7 @@ const normalizeSettings = (data) => ({
   policyText: String(data?.policyText || '').trim() || defaultSettings.policyText,
   featuredSectionTitle: String(data?.featuredSectionTitle || '').trim() || defaultSettings.featuredSectionTitle,
   featuredProductIds: getFeaturedProductIds(data),
+  storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
   maintenanceMode: Boolean(data?.maintenanceMode),
 });
 
@@ -72,6 +73,8 @@ export async function getAccountOrders(userId) { const data = throwIfError(await
 
 export async function adminProducts() { const data = throwIfError(await supabase.from('products').select('*').order('id', { ascending: false })); return asArray(data).map((row) => ({ ...productView(row), costPrice: Number(row.costPrice || 0), profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)) })); }
 async function uploadFiles(primaryImageFile, additionalImageFiles = []) { const urls = []; for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) { const path = `products/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type, upsert: false })); urls.push(supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl); } return urls; }
+export async function uploadCategoryImage(file) { const path = `categories/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type, upsert: false })); return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl; }
+export async function moveProductsToCategory(currentCategory, nextCategory) { if (currentCategory === nextCategory) return; return throwIfError(await supabase.from('products').update({ category: nextCategory }).eq('category', currentCategory)); }
 export async function createProduct(form, primaryFile, additionalFiles) { const uploaded = await uploadFiles(primaryFile, additionalFiles); const images = [...asArray(form.productImages), ...uploaded]; const data = throwIfError(await supabase.from('products').insert({ name: form.name, productCode: String(form.productCode || '').trim().toUpperCase() || null, description: form.description, price: Number(form.price), costPrice: Number(form.costPrice || 0), discountPercentage: Number(form.discountPercentage || 0), category: form.category || 'عام', imageUrl: uploaded[0] || form.imageUrl || images[0] || '', productImages: images, variants: asVariants(form.variants), stockQuantity: Math.max(0, Number(form.stockQuantity ?? 10)), inStock: Boolean(form.inStock), featured: Boolean(form.featured), isNew: Boolean(form.isNew) }).select().single()); return productView(data); }
 export async function updateProduct(id, form, primaryFile, additionalFiles) { const uploaded = await uploadFiles(primaryFile, additionalFiles); const images = [...asArray(form.productImages), ...uploaded]; const data = throwIfError(await supabase.from('products').update({ name: form.name, productCode: String(form.productCode || '').trim().toUpperCase() || null, description: form.description, price: Number(form.price), costPrice: Number(form.costPrice || 0), discountPercentage: Number(form.discountPercentage || 0), category: form.category || 'عام', imageUrl: uploaded[0] || form.imageUrl || images[0] || '', productImages: images, variants: asVariants(form.variants), stockQuantity: Math.max(0, Number(form.stockQuantity ?? 10)), inStock: Boolean(form.inStock), featured: Boolean(form.featured), isNew: Boolean(form.isNew) }).eq('id', id).select().single()); return productView(data); }
 export async function deleteProduct(id) { return throwIfError(await supabase.from('products').delete().eq('id', id)); }
@@ -95,6 +98,6 @@ export async function saveSiteSettings(settings) {
     delete payload.featuredProductIds;
   }
   const data = throwIfError(await supabase.from('site_settings').update(payload).eq('id', current.id).select().single());
-  return { ...defaultSettings, ...data, featuredProductIds: getFeaturedProductIds(data) };
+  return { ...defaultSettings, ...data, featuredProductIds: getFeaturedProductIds(data), storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null };
 }
 export async function resetStore() { await Promise.all([supabase.from('account_coupons').delete().neq('discountId', 0), supabase.from('account_carts').delete().neq('accountId', ''), supabase.from('orders').delete().neq('id', 0), supabase.from('products').delete().neq('id', 0), supabase.from('discounts').delete().neq('id', 0), supabase.from('page_views').delete().neq('id', 0), supabase.from('admin_invites').delete().neq('identifier', ''), supabase.from('site_settings').delete().neq('id', 0)]); throwIfError(await supabase.from('site_settings').insert(defaultSettings)); throwIfError(await supabase.from('discounts').insert({ code: 'NASAQ10', type: 'percentage', value: 10, active: true })); }

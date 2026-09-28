@@ -4,8 +4,8 @@ import { supabase } from './lib/supabaseClient';
 import {
   accountCount, adminProducts, analytics, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
   defaultSettings, getAccountOrders, getCart, getProduct, getSiteSettings, inviteAdmin, listAdmins, listDiscounts,
-  listOrders, listProducts, recordView, removeAdmin, resetStore as resetStoreData, saveCart, saveCoupon, saveSiteSettings, updateDiscount,
-  unreadOrderCount, updateOrder, updateProduct, validateDiscount,
+  listOrders, listProducts, moveProductsToCategory, recordView, removeAdmin, resetStore as resetStoreData, saveCart, saveCoupon,
+  saveSiteSettings, updateDiscount, unreadOrderCount, updateOrder, updateProduct, uploadCategoryImage, validateDiscount,
 } from './lib/supabaseData';
 
 const mediaUrl = (value) => {
@@ -18,6 +18,26 @@ const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value |
 const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
+const getStoreCategories = (configuredCategories, products) => {
+  const productNames = [...new Set(products.map((product) => String(product.category || 'عام').trim()).filter(Boolean))];
+  const source = Array.isArray(configuredCategories) ? configuredCategories : productNames.map((name) => ({ name }));
+  const categories = [];
+  const seenNames = new Set();
+  source.forEach((category) => {
+    const name = String(category?.name || '').trim();
+    const normalizedName = name.toLocaleLowerCase();
+    if (!name || seenNames.has(normalizedName)) return;
+    categories.push({ id: String(category?.id || `category-${name}`), name, imageUrl: mediaUrl(category?.imageUrl) });
+    seenNames.add(normalizedName);
+  });
+  productNames.forEach((name) => {
+    const normalizedName = name.toLocaleLowerCase();
+    if (seenNames.has(normalizedName)) return;
+    categories.push({ id: `category-${name}`, name, imageUrl: '' });
+    seenNames.add(normalizedName);
+  });
+  return categories;
+};
 const authRedirectUrl = () => typeof window !== 'undefined'
   ? window.location.origin
   : 'https://test2-mar-efc5.vercel.app';
@@ -461,11 +481,12 @@ function Store() {
   }, []);
 
   const safeProducts = Array.isArray(products) ? products : [];
-  const categoryNames = [...new Set(safeProducts.map((product) => product.category || 'عام'))];
+  const storeCategories = getStoreCategories(settings.storeCategories, safeProducts);
+  const categoryNames = storeCategories.map((item) => item.name);
   const categories = ['الكل', ...categoryNames];
-  const categoryCards = categoryNames.map((name) => ({
-    name,
-    product: safeProducts.find((product) => (product.category || 'عام') === name),
+  const categoryCards = storeCategories.map((item) => ({
+    ...item,
+    product: safeProducts.find((product) => (product.category || 'عام') === item.name),
   }));
   const featuredProducts = Array.isArray(settings.featuredProductIds)
     ? settings.featuredProductIds.map((productId) => safeProducts.find((product) => String(product.id) === String(productId))).filter(Boolean)
@@ -500,7 +521,7 @@ function Store() {
         {settings.maintenanceMode && <div className="maintenance-banner">المتجر في وضع الصيانة: يمكنك تصفح المنتجات، والطلبات متوقفة مؤقتاً.</div>}
         <section id="catalog" className="catalog">
           {!!featuredProducts.length && <section className="featured-shelf"><div className="section-head compact-head"><div><h2>{settings.featuredSectionTitle || defaultSettings.featuredSectionTitle}</h2></div></div><div className="featured-row">{featuredProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} compact />)}</div></section>}
-          {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">كل</span><strong>الكل</strong></button>{categoryCards.map(({ name, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={name} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
+          {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">كل</span><strong>الكل</strong></button>{categoryCards.map(({ id, name, imageUrl, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={id} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={imageUrl || product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
           <div className="section-head">
             <div>
               <p className="eyebrow">المنتجات</p>
@@ -574,7 +595,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
         <div className="product-badges">
           {product.featured && <span className="product-badge featured-badge">مميز</span>}
           {product.isNew && <span className="product-badge new-badge">جديد</span>}
-          {hasDiscount && <span className="product-badge offer-badge">-{Math.round(Number(product.discountPercentage))}%</span>}
+          {hasDiscount && <span dir="ltr" className="product-badge offer-badge">-{Math.round(Number(product.discountPercentage))}%</span>}
         </div>
         {!product.inStock && <span className="sold">{maintenanceMode ? 'المتجر في وضع الصيانة' : 'طلب مسبق'}</span>}
       </Link>
@@ -704,7 +725,7 @@ function ProductDetailPage() {
               </div>
             </div>
             {productActionMessage && <span className="product-action-message" role="status">{productActionMessage}</span>}
-            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
+            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span dir="ltr" className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
             <h1>{product.name}</h1>
             <div className="price-stack">
               {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(finalPrice)}</strong></> : <strong>{money(product.price)}</strong>}
@@ -1607,9 +1628,13 @@ function AdminsAdmin() {
 function SiteSettingsAdmin() {
   const [settings, setSettings] = useState(defaultSettings);
   const [products, setProducts] = useState([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryNameDrafts, setCategoryNameDrafts] = useState({});
+  const [uploadingCategoryId, setUploadingCategoryId] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [statusError, setStatusError] = useState('');
   const lastSavedSettings = useRef('');
+  const categoryItems = getStoreCategories(settings.storeCategories, products);
 
   const loadSettings = () => {
     getSiteSettings()
@@ -1665,6 +1690,79 @@ function SiteSettingsAdmin() {
     setSettings({ ...settings, featuredProductIds: nextIds });
   };
 
+  const addStoreCategory = () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    if (categoryItems.some((category) => category.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setStatusError('هذه الفئة موجودة مسبقًا');
+      return;
+    }
+    setSettings((current) => ({ ...current, storeCategories: [...categoryItems, { id: crypto.randomUUID(), name, imageUrl: '' }] }));
+    setNewCategoryName('');
+    setStatusError('');
+    setStatusMessage('تمت إضافة الفئة');
+  };
+
+  const saveStoreCategoryName = async (category) => {
+    const name = String(categoryNameDrafts[category.id] ?? category.name).trim();
+    if (!name) {
+      setStatusError('اكتب اسم الفئة');
+      return;
+    }
+    if (categoryItems.some((item) => item.id !== category.id && item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setStatusError('هذه الفئة موجودة مسبقًا');
+      return;
+    }
+    if (name === category.name) return;
+
+    setStatusMessage('');
+    setStatusError('');
+    try {
+      await moveProductsToCategory(category.name, name);
+      setProducts((current) => current.map((product) => product.category === category.name ? { ...product, category: name } : product));
+      setSettings((current) => ({ ...current, storeCategories: categoryItems.map((item) => item.id === category.id ? { ...item, name } : item) }));
+      setCategoryNameDrafts((current) => ({ ...current, [category.id]: name }));
+      setStatusMessage('تم تحديث اسم الفئة');
+    } catch (reason) {
+      setStatusError(reason.message || 'تعذر تحديث اسم الفئة');
+    }
+  };
+
+  const deleteStoreCategory = async (category) => {
+    const categoryProducts = products.filter((product) => product.category === category.name);
+    const message = categoryProducts.length
+      ? `سيتم حذف فئة «${category.name}» ونقل ${categoryProducts.length} من منتجاتها إلى فئة «عام». هل تريد المتابعة؟`
+      : `هل تريد حذف فئة «${category.name}»؟`;
+    if (!window.confirm(message)) return;
+
+    setStatusMessage('');
+    setStatusError('');
+    try {
+      if (categoryProducts.length) await moveProductsToCategory(category.name, 'عام');
+      setProducts((current) => current.map((product) => product.category === category.name ? { ...product, category: 'عام' } : product));
+      setSettings((current) => ({ ...current, storeCategories: categoryItems.filter((item) => item.id !== category.id) }));
+      setStatusMessage('تم حذف الفئة');
+    } catch (reason) {
+      setStatusError(reason.message || 'تعذر حذف الفئة');
+    }
+  };
+
+  const changeStoreCategoryImage = async (category, file) => {
+    if (!file) return;
+    setUploadingCategoryId(category.id);
+    setStatusMessage('');
+    setStatusError('');
+    try {
+      const imageUrl = await uploadCategoryImage(file);
+      setSettings((current) => ({ ...current, storeCategories: categoryItems.map((item) => item.id === category.id ? { ...item, imageUrl } : item) }));
+      setStatusMessage('تم تحديث صورة الفئة');
+    } catch (reason) {
+      setStatusError(reason.message || 'تعذر رفع صورة الفئة');
+    } finally {
+      setUploadingCategoryId('');
+    }
+  };
+
   const resetStore = async () => {
     const confirmed = window.confirm('هل أنت متأكد؟ سيؤدي هذا إلى حذف المنتجات والطلبات والإحصائيات والخصومات وكل بيانات المتجر، مع الاحتفاظ بحسابات المديرين.');
     if (!confirmed) return;
@@ -1712,8 +1810,30 @@ function SiteSettingsAdmin() {
         </div>
       </section>
 
+      <section className="settings-section" aria-labelledby="settings-categories-title">
+        <div className="settings-section-heading"><span>03</span><div><h3 id="settings-categories-title">فئات المتجر</h3><p>أضف الفئات وعدّل أسماءها وصورها. عند حذف فئة تنتقل منتجاتها إلى «عام».</p></div></div>
+        <div className="settings-category-manager">
+          <div className="settings-category-add">
+            <label>اسم الفئة الجديدة<input placeholder="مثال: حقائب" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} /></label>
+            <button type="button" className="secondary-button" onClick={addStoreCategory}>+ إضافة فئة</button>
+          </div>
+          <div className="settings-category-list">
+            {categoryItems.map((category) => {
+              const product = products.find((item) => item.category === category.name);
+              return <div className="settings-category-row" key={category.id}>
+                <div className="settings-category-preview"><ProductImage src={category.imageUrl || product?.imageUrl} alt={category.name} /></div>
+                <label className="settings-category-name">اسم الفئة<input value={categoryNameDrafts[category.id] ?? category.name} onChange={(event) => setCategoryNameDrafts((current) => ({ ...current, [category.id]: event.target.value }))} /></label>
+                <label className="settings-category-image">{uploadingCategoryId === category.id ? 'جاري رفع الصورة...' : 'تغيير الصورة'}<input type="file" accept="image/*" disabled={uploadingCategoryId === category.id} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; changeStoreCategoryImage(category, file); }} /></label>
+                <div className="settings-category-actions"><button type="button" className="secondary-button" onClick={() => saveStoreCategoryName(category)}>حفظ الاسم</button><button type="button" className="danger" disabled={category.name === 'عام'} onClick={() => deleteStoreCategory(category)}>حذف</button></div>
+              </div>;
+            })}
+            {!categoryItems.length && <p className="account-muted">لا توجد فئات بعد.</p>}
+          </div>
+        </div>
+      </section>
+
       <section className="settings-section" aria-labelledby="settings-contact-title">
-        <div className="settings-section-heading"><span>03</span><div><h3 id="settings-contact-title">التواصل الاجتماعي</h3></div></div>
+        <div className="settings-section-heading"><span>04</span><div><h3 id="settings-contact-title">التواصل الاجتماعي</h3></div></div>
         <div className="settings-fields">
           <label>إنستغرام<input placeholder="https://instagram.com/..." value={settings.instagramUrl} onChange={(event) => setSettings({ ...settings, instagramUrl: event.target.value })} /></label>
           <label>تيك توك<input placeholder="https://tiktok.com/@..." value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} /></label>
@@ -1723,7 +1843,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section" aria-labelledby="settings-content-title">
-        <div className="settings-section-heading"><span>04</span><div><h3 id="settings-content-title">المحتوى والسياسات</h3></div></div>
+        <div className="settings-section-heading"><span>05</span><div><h3 id="settings-content-title">المحتوى والسياسات</h3></div></div>
         <div className="settings-fields">
           <label>عنوان «من نحن»<input placeholder="عنوان قسم من نحن" value={settings.aboutTitle} onChange={(event) => setSettings({ ...settings, aboutTitle: event.target.value })} /></label>
           <label>نص «من نحن»<textarea placeholder="اكتب نبذة عن المتجر" value={settings.aboutText} onChange={(event) => setSettings({ ...settings, aboutText: event.target.value })} /></label>
@@ -1733,7 +1853,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section settings-operations" aria-labelledby="settings-operations-title">
-        <div className="settings-section-heading"><span>05</span><div><h3 id="settings-operations-title">حالة المتجر</h3><p>تحكم بتوفر الطلبات أو أعد ضبط بيانات المتجر.</p></div></div>
+        <div className="settings-section-heading"><span>06</span><div><h3 id="settings-operations-title">حالة المتجر</h3><p>تحكم بتوفر الطلبات أو أعد ضبط بيانات المتجر.</p></div></div>
         <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>يسمح بالتصفح ويوقف إضافة المنتجات وإرسال الطلبات.</small></span></label>
         <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>
       </section>
