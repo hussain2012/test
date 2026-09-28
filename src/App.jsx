@@ -271,7 +271,6 @@ function BottomNav() {
   const { user, profile } = useAuth();
   const location = useLocation();
   const items = [
-<<<<<<< HEAD
     { label: 'الرئيسية', to: '/', icon: 'home', active: location.pathname === '/' },
     ...(profile?.role === 'admin' ? [{ label: 'لوحة الإدارة', to: '/admin', icon: 'grid', active: location.pathname.startsWith('/admin') }] : []),
     { label: 'سلة التسوق', to: '/checkout', icon: 'cart', active: location.pathname === '/checkout', count },
@@ -286,29 +285,16 @@ function BottomNav() {
     receipt: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></>,
     account: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
   };
-=======
-    { label: 'الرئيسية', icon: '⌂', to: '/', active: location.pathname === '/' },
-    { label: 'طلباتي السابقة', icon: '◷', to: user ? '/my-orders' : '/login', active: location.pathname === '/my-orders' },
-    { label: 'سلة التسوق', icon: '🛒', to: '/checkout', active: location.pathname === '/checkout', count },
-    { label: 'الحساب', icon: '♙', to: user ? '/account' : '/login', active: location.pathname.startsWith('/account') },
-  ];
-  if (profile?.role === 'admin') items.push({ label: 'لوحة الإدارة', icon: '▦', to: '/admin', active: location.pathname.startsWith('/admin') });
->>>>>>> 910709a9f412bf556e5a0248d935bef7779e3b82
 
   return (
     <nav className="bottom-nav" aria-label="التنقل الرئيسي">
       <div className="bottom-nav-inner">
         {items.map((item) => (
-<<<<<<< HEAD
           <Link key={item.label} to={item.to} className={`bottom-nav-item ${item.active ? 'active' : ''}`} aria-current={item.active ? 'page' : undefined} aria-label={item.count > 0 ? `${item.label} (${item.count})` : item.label}>
             <span className="bottom-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{icons[item.icon]}</svg>
               {item.count > 0 && <span className="bottom-nav-count">{item.count}</span>}
             </span>
-=======
-          <Link key={item.label} to={item.to} className={`bottom-nav-item ${item.active ? 'active' : ''}`} aria-current={item.active ? 'page' : undefined}>
-            <span className="bottom-nav-icon" aria-hidden="true">{item.icon}{item.count > 0 && <small>{item.count}</small>}</span>
->>>>>>> 910709a9f412bf556e5a0248d935bef7779e3b82
             <span className="bottom-nav-label">{item.label}</span>
           </Link>
         ))}
@@ -588,13 +574,9 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
         <div className="product-badges">
           {product.featured && <span className="product-badge featured-badge">مميز</span>}
           {product.isNew && <span className="product-badge new-badge">جديد</span>}
-<<<<<<< HEAD
           {hasDiscount && <span className="product-badge offer-badge">-{Math.round(Number(product.discountPercentage))}%</span>}
-=======
-          {hasDiscount && <span className="product-badge offer-badge">توفير</span>}
->>>>>>> 910709a9f412bf556e5a0248d935bef7779e3b82
         </div>
-            {!product.inStock && <span className="sold">{maintenanceMode ? 'المتجر في وضع الصيانة' : 'طلب مسبق'}</span>}
+        {!product.inStock && <span className="sold">{maintenanceMode ? 'المتجر في وضع الصيانة' : 'طلب مسبق'}</span>}
       </Link>
       <div className="product-info">
         <span>{product.category}</span>
