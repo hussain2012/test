@@ -521,7 +521,7 @@ function Store() {
         {settings.maintenanceMode && <div className="maintenance-banner">المتجر في وضع الصيانة: يمكنك تصفح المنتجات، والطلبات متوقفة مؤقتاً.</div>}
         <section id="catalog" className="catalog">
           {!!featuredProducts.length && <section className="featured-shelf"><div className="section-head compact-head"><div><h2>{settings.featuredSectionTitle || defaultSettings.featuredSectionTitle}</h2></div></div><div className="featured-row">{featuredProducts.map((product) => <ProductCard key={product.id} product={product} maintenanceMode={settings.maintenanceMode} compact />)}</div></section>}
-          {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">كل</span><strong>الكل</strong></button>{categoryCards.map(({ id, name, imageUrl, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={id} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={imageUrl || product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
+          {!!categoryCards.length && <div className="category-strip-section"><div className="section-head compact-head"><div><p className="eyebrow">تسوق حسب الفئة</p></div></div><div className="category-strip"><button type="button" className={`category-tile ${category === 'الكل' ? 'active' : ''}`} onClick={() => setCategory('الكل')}><span className="category-tile-image category-all">الكل</span><strong>الكل</strong></button>{categoryCards.map(({ id, name, imageUrl, product }) => <button type="button" className={`category-tile ${category === name ? 'active' : ''}`} key={id} onClick={() => setCategory(name)}><span className="category-tile-image"><ProductImage src={imageUrl || product?.imageUrl} alt={name} /></span><strong>{name}</strong></button>)}</div></div>}
           <div className="section-head">
             <div>
               <p className="eyebrow">المنتجات</p>
@@ -707,7 +707,16 @@ function ProductDetailPage() {
       <main className="detail-page">
         <div className="product-detail-layout">
           <div className="detail-image-wrap">
-            <ProductImage src={selectedImage} alt={product.name} />
+            <div className="detail-main-image">
+              <ProductImage src={selectedImage} alt={product.name} />
+              <div className="product-detail-actions">
+                <button type="button" className="product-image-action back-product" onClick={goBack} aria-label="رجوع خطوة للوراء" title="رجوع خطوة للوراء"><span aria-hidden="true">›</span></button>
+                <div className="product-detail-action-group">
+                  <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><span aria-hidden="true">{isProductFavorite ? '♥' : '♡'}</span></button>
+                  <button type="button" className="product-image-action share-product" onClick={shareProduct} aria-label="مشاركة رابط المنتج" title="مشاركة رابط المنتج"><span aria-hidden="true">⇧</span></button>
+                </div>
+              </div>
+            </div>
             <div className="detail-thumbnails">
               {(Array.isArray(product.productImages) && product.productImages.length ? product.productImages : [product.imageUrl]).filter(Boolean).map((image, index) => (
                 <button type="button" className={selectedImage === image ? 'selected' : ''} key={`${image}-${index}`} onClick={() => setSelectedImage(image)}>
@@ -717,13 +726,6 @@ function ProductDetailPage() {
             </div>
           </div>
           <div className="detail-content">
-            <div className="product-detail-actions">
-              <button type="button" className="product-image-action back-product" onClick={goBack} aria-label="رجوع خطوة للوراء" title="رجوع خطوة للوراء"><span aria-hidden="true">›</span></button>
-              <div className="product-detail-action-group">
-                <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><span aria-hidden="true">{isProductFavorite ? '♥' : '♡'}</span></button>
-                <button type="button" className="product-image-action share-product" onClick={shareProduct} aria-label="مشاركة رابط المنتج" title="مشاركة رابط المنتج"><span aria-hidden="true">⇧</span></button>
-              </div>
-            </div>
             {productActionMessage && <span className="product-action-message" role="status">{productActionMessage}</span>}
             <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span dir="ltr" className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
             <h1>{product.name}</h1>
@@ -741,7 +743,6 @@ function ProductDetailPage() {
               <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
             </div>
             <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={!product.inStock || settings.maintenanceMode || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
-            <Link to="/" className="back-link">العودة إلى المتجر</Link>
           </div>
         </div>
         {similarProducts.length > 0 && <section className="similar-products">
@@ -950,7 +951,12 @@ function MyOrders() {
             {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
               <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
               <div className="account-order-items">{(Array.isArray(order.items) ? order.items : []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && <small>{selectedVariantText(item.selectedVariants)}</small>}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
-              <div className="account-order-totals"><span>المجموع: {money(order.subtotal)}</span><span>الخصم {order.discountValue ? `(${order.discountType === 'percentage' ? `${order.discountValue}%` : money(order.discountValue)})` : ''}: - {money(order.discountAmount)}</span><span>التوصيل: {money(order.deliveryFee)}</span><strong>الإجمالي: {money(order.finalTotal)}</strong></div>
+              <div className="account-order-totals">
+                <div><span>المجموع</span><strong>{money(order.subtotal)}</strong></div>
+                <div><span>الخصم {order.discountValue ? `(${order.discountType === 'percentage' ? `${order.discountValue}%` : money(order.discountValue)})` : ''}</span><strong>- {money(order.discountAmount)}</strong></div>
+                <div><span>التوصيل</span><strong>{money(order.deliveryFee)}</strong></div>
+                <div className="account-order-final"><span>الإجمالي</span><strong>{money(order.finalTotal)}</strong></div>
+              </div>
             </article>)}
           </div>
         )}
@@ -1171,6 +1177,7 @@ function ProductsAdmin() {
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     try {
@@ -1213,16 +1220,23 @@ function ProductsAdmin() {
     event.preventDefault();
     setMessage('');
     setError('');
+    setSaving(true);
     const save = editingId ? updateProduct : createProduct;
+    const wasEditing = editingId !== null;
     const variants = form.variants.map((variant) => ({
       name: String(variant.name || '').trim(),
       values: String(variant.valuesText || '').split(',').map((value) => value.trim()).filter(Boolean),
     })).filter((variant) => variant.name && variant.values.length);
-    await save({ ...form, variants, productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
-
-    resetForm();
-    setMessage(editingId ? 'تم تحديث المنتج' : 'تمت إضافة المنتج');
-    await load();
+    try {
+      await save({ ...form, variants, productImages: Array.isArray(form.productImages) ? form.productImages : [] }, primaryImageFile, additionalImageFiles);
+      resetForm();
+      setMessage(wasEditing ? 'تم تحديث المنتج' : 'تمت إضافة المنتج');
+      await load();
+    } catch (reason) {
+      setError(reason.message || (wasEditing ? 'تعذر تحديث المنتج' : 'تعذرت إضافة المنتج'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -1241,7 +1255,7 @@ function ProductsAdmin() {
     setForm({
       name: product.name,
       productCode: product.productCode || '',
-      description: product.description,
+      description: product.description || '',
       price: product.price,
       costPrice: product.costPrice ?? 0,
       discountPercentage: product.discountPercentage ?? 0,
@@ -1272,7 +1286,7 @@ function ProductsAdmin() {
             <label>اسم المنتج<input placeholder="مثال: حقيبة يومية" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
             <label>كود المنتج<input placeholder="مثال: PRD-001" value={form.productCode} onChange={(event) => setForm({ ...form, productCode: event.target.value })} /></label>
             <label>التصنيف<input placeholder="مثال: حقائب" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
-            <label className="product-editor-wide">الوصف<textarea placeholder="اكتب وصفًا مختصرًا وواضحًا للمنتج" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+            <label className="product-editor-wide">الوصف<textarea placeholder="اكتب وصفًا مختصرًا وواضحًا للمنتج" required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="product-variants product-editor-wide">
               <div className="product-variants-heading"><div><strong>متغيرات المنتج</strong><small>أضف مثلًا اللون أو المقاس، ثم اكتب الخيارات مفصولة بفاصلة.</small></div><button type="button" className="add-variant-button" onClick={addVariant}>+ إضافة متغير</button></div>
               {form.variants.map((variant, index) => <div className="product-variant-row" key={`variant-${index}`}>
@@ -1308,7 +1322,7 @@ function ProductsAdmin() {
           </div>
         </section>
 
-        <footer className="product-editor-actions"><button type="submit" className="primary">{editingId ? 'حفظ التعديلات' : 'حفظ المنتج'}</button>{message && <p className="success-message">{message}</p>}{error && <p className="error">{error}</p>}</footer>
+        <footer className="product-editor-actions"><button type="submit" className="primary" disabled={saving}>{saving ? 'جاري الحفظ...' : (editingId ? 'حفظ التعديلات' : 'حفظ المنتج')}</button>{message && <p className="success-message">{message}</p>}{error && <p className="error">{error}</p>}</footer>
       </form>
 
       <div className="admin-table product-inventory">

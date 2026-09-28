@@ -68,7 +68,27 @@ export async function getCart(userId) { const data = throwIfError(await supabase
 export async function saveCart(userId, items) { return throwIfError(await supabase.from('account_carts').upsert({ accountId: userId, items: asArray(items), updatedAt: new Date().toISOString() }, { onConflict: 'accountId' })); }
 export async function validateDiscount(code) { return throwIfError(await supabase.from('discounts').select('*').eq('code', String(code).toUpperCase()).eq('active', true).maybeSingle()); }
 export async function saveCoupon(userId, discountId) { return throwIfError(await supabase.from('account_coupons').upsert({ accountId: userId, discountId }, { onConflict: 'accountId,discountId' })); }
-export async function createOrder(payload, userId) { const products = throwIfError(await supabase.from('products').select('id,costPrice,discountPercentage').in('id', asArray(payload.items).map((item) => item.productId))); const byId = new Map(asArray(products).map((product) => [String(product.id), product])); const items = asArray(payload.items).map((item) => ({ ...item, selectedVariants: item.selectedVariants || {}, costPrice: Number(byId.get(String(item.productId))?.costPrice || 0), discountPercentage: Number(byId.get(String(item.productId))?.discountPercentage || 0) })); const latest = throwIfError(await supabase.from('orders').select('accountOrderNumber').eq('accountId', userId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle()); const data = throwIfError(await supabase.from('orders').insert({ ...payload, items, accountId: userId, accountOrderNumber: Number(latest?.accountOrderNumber || 0) + 1, status: 'new', createdAt: new Date().toISOString() }).select('id').single()); return data.id; }
+export async function createOrder(payload, userId) {
+  const products = throwIfError(await supabase.from('products').select('id,costPrice,discountPercentage').in('id', asArray(payload.items).map((item) => item.productId)));
+  const byId = new Map(asArray(products).map((product) => [String(product.id), product]));
+  const items = asArray(payload.items).map((item) => ({
+    ...item,
+    selectedVariants: item.selectedVariants || {},
+    costPrice: Number(byId.get(String(item.productId))?.costPrice || 0),
+    discountPercentage: Number(byId.get(String(item.productId))?.discountPercentage || 0),
+  }));
+  const latest = throwIfError(await supabase.from('orders').select('accountOrderNumber').eq('accountId', userId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle());
+  const accountOrderNumber = Number(latest?.accountOrderNumber || 0) + 1;
+  const data = throwIfError(await supabase.from('orders').insert({
+    ...payload,
+    items,
+    accountId: userId,
+    accountOrderNumber,
+    status: 'new',
+    createdAt: new Date().toISOString(),
+  }).select('id,accountOrderNumber').single());
+  return data.accountOrderNumber ?? accountOrderNumber;
+}
 export async function getAccountOrders(userId) { const data = throwIfError(await supabase.from('orders').select('*').eq('accountId', userId).order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
 
 export async function adminProducts() { const data = throwIfError(await supabase.from('products').select('*').order('id', { ascending: false })); return asArray(data).map((row) => ({ ...productView(row), costPrice: Number(row.costPrice || 0), profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)) })); }
