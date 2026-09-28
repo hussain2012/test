@@ -167,7 +167,7 @@ const publicProductData = (row) => ({
   id: row.id,
   name: row.name,
   description: row.description,
-    productCode: row.productCode || '',
+  productCode: String(row?.product_code ?? row?.productCode ?? '').trim().toUpperCase(),
   price: Number(row.price || 0),
   discountPercentage: Number(row.discountPercentage || 0),
   discountedPrice: getDiscountedPrice(row),
@@ -196,6 +196,7 @@ const requireSupabase = (res) => {
 
 const normalizeProductRow = (row) => ({
   ...row,
+  productCode: String(row?.product_code ?? row?.productCode ?? '').trim().toUpperCase(),
   productImages: Array.isArray(row?.productImages) ? row.productImages : parseImageList(row?.productImages),
 });
 
@@ -370,7 +371,7 @@ app.get('/api/admin/products', async (req, res) => {
 app.post('/api/admin/products', productUpload, async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   if (!requireSupabase(res)) return;
-  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, featured, isNew } = req.body;
+  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, productCode, featured, isNew } = req.body;
   if (!name || !description || !price) return res.status(400).json({ error: 'يرجى إكمال بيانات المنتج' });
 
   const uploadedImages = (req.files?.productImages ?? []).map(uploadedImageUrl);
@@ -383,6 +384,7 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
     price: Number(price),
     costPrice: Number(costPrice || 0),
     discountPercentage: Number(discountPercentage || 0),
+    ...(productCode !== undefined ? { product_code: String(productCode || '').trim().toUpperCase() || null } : {}),
     imageUrl: primaryImage,
     productImages: images ?? [],
     category: category || 'عام',
@@ -408,6 +410,9 @@ app.put('/api/admin/products/:id', productUpload, async (req, res) => {
     price: Number(req.body.price ?? existingProduct.price),
     costPrice: Number(req.body.costPrice ?? existingProduct.costPrice ?? 0),
     discountPercentage: Number(req.body.discountPercentage ?? existingProduct.discountPercentage ?? 0),
+    ...((req.body.productCode !== undefined || req.body.product_code !== undefined)
+      ? { product_code: String(req.body.productCode ?? req.body.product_code ?? '').trim().toUpperCase() || null }
+      : {}),
     category: req.body.category ?? existingProduct.category,
     inStock: req.body.inStock === false || req.body.inStock === 'false' ? false : (req.body.inStock === true || req.body.inStock === 'true' ? true : existingProduct.inStock),
     imageUrl: req.body.imageUrl ?? existingProduct.imageUrl,

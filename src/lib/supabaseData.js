@@ -11,13 +11,14 @@ const asVariants = (value) => asJsonArray(value).map((variant) => ({
 const productView = (row) => {
   const price = Number(row?.price || 0);
   const discountPercentage = Number(row?.discountPercentage || 0);
+  const productCode = row?.product_code ?? row?.productCode;
   return {
     ...row,
     price,
     discountPercentage,
     discountedPrice: Number((price * (1 - discountPercentage / 100)).toFixed(2)),
     imageUrl: row?.imageUrl || '',
-    productCode: String(row?.productCode || '').trim().toUpperCase(),
+    productCode: String(productCode || '').trim().toUpperCase(),
     productImages: [...new Set([row?.imageUrl, ...asJsonArray(row?.productImages ?? [])].filter(Boolean))],
     variants: asVariants(row?.variants),
     category: row?.category || 'عام',
@@ -93,6 +94,11 @@ export async function getAccountOrders(userId) { const data = throwIfError(await
 
 export async function adminProducts() { const data = throwIfError(await supabase.from('products').select('*').order('id', { ascending: false })); return asArray(data).map((row) => ({ ...productView(row), costPrice: Number(row.costPrice || 0), profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)) })); }
 const safeUploadName = (file) => String(file?.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
+const productCodeColumn = (form) => {
+  if (!Object.prototype.hasOwnProperty.call(form ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(form ?? {}, 'product_code')) return {};
+  const value = String(form?.productCode ?? form?.product_code ?? '').trim().toUpperCase();
+  return { product_code: value || null };
+};
 async function uploadFiles(primaryImageFile, additionalImageFiles = []) { const urls = []; for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) { const path = `products/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); urls.push(supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl); } return urls; }
 export async function uploadCategoryImage(file) { const path = `categories/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl; }
 export async function moveProductsToCategory(currentCategory, nextCategory) { if (currentCategory === nextCategory) return; return throwIfError(await supabase.from('products').update({ category: nextCategory }).eq('category', currentCategory)); }
@@ -102,7 +108,7 @@ export async function createProduct(form, primaryFile, additionalFiles) {
   const images = [...asArray(productForm.productImages), ...uploaded];
   const data = throwIfError(await supabase.from('products').insert({
     name: productForm.name,
-    productCode: String(productForm.productCode || '').trim().toUpperCase() || null,
+    ...productCodeColumn(productForm),
     description: productForm.description,
     price: Number(productForm.price),
     costPrice: Number(productForm.costPrice || 0),
@@ -125,7 +131,7 @@ export async function updateProduct(id, form, primaryFile, additionalFiles) {
   const images = [...asArray(productForm.productImages), ...uploaded];
   const data = throwIfError(await supabase.from('products').update({
     name: productForm.name,
-    productCode: String(productForm.productCode || '').trim().toUpperCase() || null,
+    ...productCodeColumn(productForm),
     description: productForm.description,
     price: Number(productForm.price),
     costPrice: Number(productForm.costPrice || 0),

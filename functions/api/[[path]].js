@@ -11,6 +11,11 @@ const empty = (status = 204) => new Response(null, {
 const errorResponse = (message, status = 500) => json({ error: message }, status);
 const bool = (value) => value === true || value === 'true' || value === 1 || value === '1';
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const productCodeColumn = (body) => {
+  if (!Object.prototype.hasOwnProperty.call(body ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(body ?? {}, 'product_code')) return {};
+  const value = String(body?.productCode ?? body?.product_code ?? '').trim().toUpperCase();
+  return { product_code: value || null };
+};
 const parseJson = (value, fallback = []) => {
   if (Array.isArray(value)) return value;
   try { const parsed = JSON.parse(value || ''); return Array.isArray(parsed) ? parsed : fallback; } catch { return fallback; }
@@ -61,8 +66,9 @@ const normalizeProduct = (row) => {
   const images = Array.isArray(storedImages) ? storedImages : parseJson(storedImages) ?? [];
   const price = number(row?.price);
   const discount = number(row?.discountPercentage);
+  const productCode = row?.product_code ?? row?.productCode;
   return {
-    id: row?.id, name: row?.name, description: row?.description, price,
+    id: row?.id, name: row?.name, description: row?.description, productCode: String(productCode || '').trim().toUpperCase(), price,
     discountPercentage: discount,
     discountedPrice: Number((price * (1 - discount / 100)).toFixed(2)),
     imageUrl: row?.imageUrl || '', productImages: [...new Set([row?.imageUrl, ...(images ?? [])].filter(Boolean))],
@@ -143,6 +149,7 @@ export async function onRequest(context) {
       const images = [...(parseJson(body.existingProductImages) ?? []), ...(files?.productImages ? [files.productImages] : [])];
       const { data, error } = await supabase.from('products').insert({
         name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice), discountPercentage: number(body.discountPercentage),
+        ...productCodeColumn(body),
         imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: body.category || 'عام', stockQuantity: Math.max(0, number(body.stockQuantity, 10)),
         inStock: !['false', '0'].includes(String(body.inStock)), featured: bool(body.featured), isNew: bool(body.isNew),
       }).select().single();
@@ -165,6 +172,7 @@ export async function onRequest(context) {
       const images = [...(parseJson(body.existingProductImages) ?? []), ...(files?.productImages ? [files.productImages] : [])];
       const { data, error } = await supabase.from('products').update({
         name: body.name ?? existing?.name, description: body.description ?? existing?.description, price: number(body.price, existing?.price), costPrice: number(body.costPrice, existing?.costPrice),
+        ...productCodeColumn(body),
         discountPercentage: number(body.discountPercentage, existing?.discountPercentage), imageUrl: files?.primaryImage || body.imageUrl || images[0] || existing?.imageUrl || '', productImages: images ?? [],
         category: body.category ?? existing?.category, stockQuantity: Math.max(0, number(body.stockQuantity, existing?.stockQuantity)), inStock: body.inStock === undefined ? existing?.inStock : !['false', '0'].includes(String(body.inStock)),
         featured: body.featured === undefined ? existing?.featured : bool(body.featured), isNew: body.isNew === undefined ? existing?.isNew : bool(body.isNew),
