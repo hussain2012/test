@@ -25,6 +25,8 @@ const getProductDiscountedPrice = (product) => {
 const productDiscountLabel = (product) => product?.discountType === 'amount'
   ? `-${money(productDiscountValue(product))}`
   : `-${Math.round(productDiscountValue(product))}%`;
+const productAvailabilityMode = (product) => product?.availabilityMode
+  || (Number(product?.stockQuantity ?? 0) <= 0 ? 'unavailable' : (product?.inStock ? 'ready' : 'preorder'));
 const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
@@ -605,7 +607,8 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
           {product.isNew && <span className="product-badge new-badge">جديد</span>}
           {hasDiscount && <span dir="auto" className="product-badge offer-badge">{productDiscountLabel(product)}</span>}
         </div>
-        {!product.inStock && <span className="sold">طلب مسبق</span>}
+        {productAvailabilityMode(product) === 'preorder' && <span className="sold">طلب مسبق</span>}
+        {productAvailabilityMode(product) === 'unavailable' && <span className="sold">غير متوفر</span>}
       </Link>
       <div className="product-info">
         <span>{product.category}</span>
@@ -615,7 +618,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
           <div className="price-wrap">
             {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(unitPrice)}</strong></> : <strong>{money(product.price)}</strong>}
           </div>
-          <AddToCartButton product={product} quantity={1} className="mini-button" disabled={maintenanceMode} label="أضف للسلة" disabledLabel="المتجر في وضع الصيانة" />
+          <AddToCartButton product={product} quantity={1} className="mini-button" disabled={maintenanceMode || productAvailabilityMode(product) === 'unavailable'} label="أضف للسلة" disabledLabel={maintenanceMode ? 'المتجر في وضع الصيانة' : 'غير متوفر'} />
         </div>
       </div>
     </article>
@@ -742,8 +745,8 @@ function ProductDetailPage() {
             <div className="price-stack">
               {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(finalPrice)}</strong></> : <strong>{money(product.price)}</strong>}
             </div>
-            {(settings.maintenanceMode || !product.inStock) && <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : 'unavailable'}`}>
-              {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : 'طلب مسبق'}
+            {(settings.maintenanceMode || productAvailabilityMode(product) !== 'ready') && <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : (productAvailabilityMode(product) === 'unavailable' ? 'unavailable' : 'available')}`}>
+              {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (productAvailabilityMode(product) === 'unavailable' ? 'غير متوفر' : 'طلب مسبق')}
             </div>}
             <p className="detail-description">{product.description}</p>
             {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
@@ -752,7 +755,7 @@ function ProductDetailPage() {
               <span>{quantity}</span>
               <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
             </div>
-            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={settings.maintenanceMode || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : 'اختر الخيارات أولاً'} />
+            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
           </div>
         </div>
         {similarProducts.length > 0 && <section className="similar-products">
@@ -1162,12 +1165,14 @@ function Overview() {
 }
 
 function ProductsAdmin() {
-  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountType: 'percentage', discountValue: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, inStock: true, isNew: false };
+  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountType: 'percentage', discountValue: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, availabilityMode: 'ready', inStock: true, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
   const [additionalImageFiles, setAdditionalImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState({ primary: '', additional: [] });
+  const primaryImageInputRef = useRef(null);
+  const additionalImageInputRef = useRef(null);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -1199,7 +1204,37 @@ function ProductsAdmin() {
     setForm(emptyForm);
     setPrimaryImageFile(null);
     setAdditionalImageFiles([]);
+    if (primaryImageInputRef.current) primaryImageInputRef.current.value = '';
+    if (additionalImageInputRef.current) additionalImageInputRef.current.value = '';
     setEditingId(null);
+  };
+
+  const removeSavedImage = (image) => {
+    setForm((current) => ({
+      ...current,
+      imageUrl: current.imageUrl === image ? '' : current.imageUrl,
+      productImages: current.productImages.filter((savedImage) => savedImage !== image),
+    }));
+  };
+
+  const removePrimaryImage = () => {
+    if (primaryImageFile) {
+      setPrimaryImageFile(null);
+      if (primaryImageInputRef.current) primaryImageInputRef.current.value = '';
+      return;
+    }
+    const savedPrimaryImage = form.imageUrl || form.productImages[0] || '';
+    if (savedPrimaryImage) removeSavedImage(savedPrimaryImage);
+  };
+
+  const removeAdditionalImageFile = (index) => {
+    const remainingFiles = additionalImageFiles.filter((_, fileIndex) => fileIndex !== index);
+    setAdditionalImageFiles(remainingFiles);
+    if (additionalImageInputRef.current && typeof DataTransfer !== 'undefined') {
+      const transfer = new DataTransfer();
+      remainingFiles.forEach((file) => transfer.items.add(file));
+      additionalImageInputRef.current.files = transfer.files;
+    }
   };
 
   const updateVariant = (index, field, value) => {
@@ -1228,6 +1263,7 @@ function ProductsAdmin() {
       name: String(variant.name || '').trim(),
       values: String(variant.valuesText || '').split(/[,،]/).map((value) => value.trim()).filter(Boolean),
     })).filter((variant) => variant.name && variant.values.length);
+    const availabilityMode = Number(form.stockQuantity) <= 0 && form.availabilityMode === 'ready' ? 'unavailable' : form.availabilityMode;
 
     try {
       const payload = {
@@ -1235,7 +1271,8 @@ function ProductsAdmin() {
         id: editingId,
         variants,
         productImages: Array.isArray(form.productImages) ? form.productImages : [],
-        inStock: Boolean(form.inStock) && Number(form.stockQuantity) > 0,
+        availabilityMode,
+        inStock: availabilityMode === 'ready' && Number(form.stockQuantity) > 0,
         discountType: form.discountType === 'amount' ? 'amount' : 'percentage',
         discountValue: Number(form.discountValue ?? form.discountPercentage ?? 0),
         discountPercentage: form.discountType === 'amount' ? 0 : Number(form.discountValue ?? form.discountPercentage ?? 0),
@@ -1292,11 +1329,14 @@ function ProductsAdmin() {
         valuesText: Array.isArray(variant.values) ? variant.values.join(', ') : '',
       })),
       stockQuantity: product.stockQuantity ?? 0,
-      inStock: Boolean(product.inStock) && Number(product.stockQuantity ?? 0) > 0,
+      availabilityMode: productAvailabilityMode(product),
+      inStock: productAvailabilityMode(product) === 'ready',
       isNew: Boolean(product.isNew),
     });
     setPrimaryImageFile(null);
     setAdditionalImageFiles([]);
+    if (primaryImageInputRef.current) primaryImageInputRef.current.value = '';
+    if (additionalImageInputRef.current) additionalImageInputRef.current.value = '';
   };
 
   return (
@@ -1330,10 +1370,15 @@ function ProductsAdmin() {
             <label>سعر الشراء<input type="number" min="0" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></label>
             <label>نوع الخصم<select value={form.discountType} onChange={(event) => setForm({ ...form, discountType: event.target.value })}><option value="percentage">نسبة مئوية</option><option value="amount">مبلغ ثابت</option></select></label>
             <label>{form.discountType === 'amount' ? 'مبلغ الخصم بالدينار' : 'نسبة الخصم %'}<input placeholder="0 بدون خصم" type="number" min="0" max={form.discountType === 'amount' ? form.price || undefined : 100} step={form.discountType === 'amount' ? 1 : 0.01} value={form.discountValue} onChange={(event) => setForm({ ...form, discountValue: event.target.value, discountPercentage: form.discountType === 'amount' ? 0 : event.target.value })} /></label>
-            <label>الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value, ...(event.target.value === '0' ? { inStock: false } : {}) })} /></label>
+            <label>الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm((current) => {
+              const stockQuantity = event.target.value;
+              const availabilityMode = Number(stockQuantity) <= 0 ? 'unavailable' : (current.availabilityMode === 'unavailable' ? 'ready' : current.availabilityMode);
+              return { ...current, stockQuantity, availabilityMode, inStock: availabilityMode === 'ready' };
+            })} /></label>
             <div className="product-editor-checks">
-              <label className="check-label"><input type="radio" name="product-stock-mode" checked={Boolean(form.inStock) && Number(form.stockQuantity) > 0} disabled={Number(form.stockQuantity) === 0} onChange={() => setForm({ ...form, inStock: true })} />جاهز</label>
-              <label className="check-label"><input type="radio" name="product-stock-mode" checked={!form.inStock || Number(form.stockQuantity) === 0} onChange={() => setForm({ ...form, inStock: false })} />طلب مسبق</label>
+              <label className="check-label"><input type="radio" name="product-stock-mode" checked={form.availabilityMode === 'ready'} disabled={Number(form.stockQuantity) <= 0} onChange={() => setForm({ ...form, availabilityMode: 'ready', inStock: true })} />جاهز</label>
+              <label className="check-label"><input type="radio" name="product-stock-mode" checked={form.availabilityMode === 'preorder'} onChange={() => setForm({ ...form, availabilityMode: 'preorder', inStock: false })} />طلب مسبق</label>
+              <label className="check-label"><input type="radio" name="product-stock-mode" checked={form.availabilityMode === 'unavailable'} onChange={() => setForm({ ...form, availabilityMode: 'unavailable', inStock: false })} />غير متوفر</label>
               <label className="check-label"><input type="checkbox" checked={form.isNew} onChange={(event) => setForm({ ...form, isNew: event.target.checked })} />منتج جديد</label>
             </div>
           </div>
@@ -1342,12 +1387,12 @@ function ProductsAdmin() {
         <section className="product-editor-section" aria-labelledby="product-images-title">
           <div className="product-editor-section-heading"><h3 id="product-images-title">صور المنتج</h3><p>اختر صورة رئيسية وصورًا إضافية للمعرض.</p></div>
           <div className="product-editor-fields">
-            <label className="product-file-field">الصورة الرئيسية<input type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
-            <label className="product-file-field">صور إضافية<input type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
+            <label className="product-file-field">الصورة الرئيسية<input ref={primaryImageInputRef} type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
+            <label className="product-file-field">صور إضافية<input ref={additionalImageInputRef} type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
             <div className="product-image-previews" aria-live="polite">
-              {(imagePreviews.primary || form.imageUrl) ? <figure className="product-image-preview"><img src={imagePreviews.primary || form.imageUrl} alt="معاينة الصورة الرئيسية" /><figcaption>الصورة الرئيسية</figcaption></figure> : <p className="product-image-preview-empty">لم يتم اختيار صورة رئيسية</p>}
-              {form.productImages.filter((image) => image && image !== form.imageUrl).map((image, index) => <figure className="product-image-preview" key={`saved-image-${index}`}><img src={image} alt={`صورة المنتج ${index + 2}`} /><figcaption>صورة محفوظة</figcaption></figure>)}
-              {imagePreviews.additional.map((image, index) => <figure className="product-image-preview" key={`new-image-${index}`}><img src={image} alt={`معاينة الصورة الإضافية ${index + 1}`} /><figcaption>صورة إضافية</figcaption></figure>)}
+              {(imagePreviews.primary || form.imageUrl || form.productImages[0]) ? <figure className="product-image-preview"><img src={imagePreviews.primary || form.imageUrl || form.productImages[0]} alt="معاينة الصورة الرئيسية" /><button type="button" className="product-image-remove" aria-label="حذف الصورة الرئيسية" title="حذف الصورة الرئيسية" onClick={removePrimaryImage}>×</button><figcaption>الصورة الرئيسية</figcaption></figure> : <p className="product-image-preview-empty">لم يتم اختيار صورة رئيسية</p>}
+              {form.productImages.filter((image) => image && (image !== (form.imageUrl || form.productImages[0]) || imagePreviews.primary)).map((image, index) => <figure className="product-image-preview" key={`saved-image-${image}`}><img src={image} alt={`صورة المنتج ${index + 2}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة المحفوظة ${index + 1}`} title="حذف الصورة" onClick={() => removeSavedImage(image)}>×</button><figcaption>صورة محفوظة</figcaption></figure>)}
+              {imagePreviews.additional.map((image, index) => <figure className="product-image-preview" key={`new-image-${index}`}><img src={image} alt={`معاينة الصورة الإضافية ${index + 1}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة الإضافية ${index + 1}`} title="حذف الصورة" onClick={() => removeAdditionalImageFile(index)}>×</button><figcaption>صورة إضافية</figcaption></figure>)}
             </div>
           </div>
         </section>
@@ -1371,8 +1416,8 @@ function ProductsAdmin() {
                 </div>
                 <div className="product-inventory-meta">
                   <strong>{money(product.price)}</strong>
-                  <span>{product.inStock ? `${product.stockQuantity} قطعة` : 'طلب مسبق'}</span>
-                  <span className={product.inStock ? 'status-ok' : 'status-warn'}>{product.inStock ? 'متوفر' : 'غير متوفر'}</span>
+                  <span>{productAvailabilityMode(product) === 'ready' ? `${product.stockQuantity} قطعة` : (productAvailabilityMode(product) === 'preorder' ? 'طلب مسبق' : 'غير متوفر')}</span>
+                  <span className={productAvailabilityMode(product) === 'ready' ? 'status-ok' : 'status-warn'}>{productAvailabilityMode(product) === 'ready' ? 'جاهز' : (productAvailabilityMode(product) === 'preorder' ? 'طلب مسبق' : 'غير متوفر')}</span>
                 </div>
               </div>
               <div className="inline-actions">

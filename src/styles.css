@@ -1293,8 +1293,9 @@ button { cursor: pointer; }
   min-height: 44px;
 }
 
-.product-editor-checks .check-label { color: var(--text); font-size: 11px; }
+.product-editor-checks .check-label { gap: 6px; color: var(--text); font-size: 11px; white-space: nowrap; }
 .product-editor-checks input[type='checkbox'] { accent-color: var(--primary); }
+.product-editor-checks input[type='radio'] { flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: var(--primary); }
 
 .product-file-field input[type='file'] {
   width: 100%;
@@ -1329,6 +1330,7 @@ button { cursor: pointer; }
 }
 
 .product-image-preview {
+  position: relative;
   width: 88px;
   margin: 0;
   text-align: center;
@@ -1343,6 +1345,26 @@ button { cursor: pointer; }
   background: var(--paper-soft);
   object-fit: cover;
 }
+
+.product-image-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(137, 48, 42, 0.92);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.product-image-remove:hover { background: #762a25; }
 
 .product-image-preview figcaption,
 .product-image-preview-empty {
@@ -2035,16 +2057,17 @@ button { cursor: pointer; }
   .order-card-head { flex-direction: column; }
   .order-card-head select { width: 100%; }
   .stats strong { font-size: 28px; }
-  .login-page { display: block; min-height: 100svh; padding: 18px 12px 24px; }
-  .login-page .brand { position: static; display: block; width: fit-content; margin: 0 auto 18px; font-size: 26px; }
-  .login-card { width: 100%; max-width: 430px; margin: 0 auto; padding: 18px 16px; box-shadow: 0 12px 28px rgba(18, 59, 53, 0.08); gap: 10px; }
-  .auth-mode-switch { gap: 6px; }
-  .auth-mode-switch button { padding: 9px 6px; font-size: 12px; }
-  .login-card h1 { font-size: 26px; }
+  .login-page { display: block; min-height: 100svh; padding: 14px 10px 20px; }
+  .login-page .brand { position: static; display: block; width: fit-content; margin: 0 auto 14px; font-size: 26px; }
+  .login-card { width: 100%; max-width: 430px; margin: 0 auto; padding: 16px 16px; border-radius: 8px; box-shadow: 0 12px 28px rgba(18, 59, 53, 0.08); gap: 8px; }
+  .auth-mode-switch { gap: 6px; border-radius: 8px; }
+  .auth-mode-switch button { min-height: 40px; padding: 8px 6px; border-radius: 6px; font-size: 12px; }
+  .login-card h1 { font-size: 25px; }
   .account-counter { font-size: 11px; }
   .login-card > p:not(.eyebrow) { line-height: 1.7; margin-bottom: 8px; }
-  .login-card .field-label { gap: 7px; }
-  .login-card .primary.full { min-height: 48px; }
+  .login-card .field-label { gap: 6px; }
+  .login-card .field-label input { min-height: 44px; }
+  .login-card .primary.full { min-height: 46px; }
   .account-page { padding: 34px 14px 60px; }
   .account-page-head h1 { font-size: 30px; }
   .account-menu { margin-top: 24px; }

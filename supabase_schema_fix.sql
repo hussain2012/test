@@ -35,6 +35,7 @@ create table if not exists public.products (
   "imageUrl" text not null default '',
   category text not null default 'عام',
   "inStock" boolean not null default true,
+  "availabilityMode" text not null default 'ready',
   "costPrice" numeric(12,2) not null default 0,
   "discountPercentage" numeric(5,2) not null default 0,
   "discountType" text not null default 'percentage',
@@ -73,6 +74,7 @@ alter table public.products add column if not exists price numeric(12,2) not nul
 alter table public.products add column if not exists "imageUrl" text not null default '';
 alter table public.products add column if not exists category text not null default 'عام';
 alter table public.products add column if not exists "inStock" boolean not null default true;
+alter table public.products add column if not exists "availabilityMode" text not null default 'ready';
 alter table public.products add column if not exists "costPrice" numeric(12,2) not null default 0;
 alter table public.products add column if not exists "discountPercentage" numeric(5,2) not null default 0;
 alter table public.products add column if not exists "discountType" text not null default 'percentage';
@@ -81,6 +83,7 @@ update public.products set "discountValue" = "discountPercentage" where "discoun
 alter table public.products add column if not exists "productImages" jsonb not null default '[]'::jsonb;
 alter table public.products add column if not exists variants jsonb not null default '[]'::jsonb;
 alter table public.products add column if not exists "stockQuantity" integer not null default 10;
+update public.products set "availabilityMode" = case when coalesce("stockQuantity", 0) <= 0 then 'unavailable' when coalesce("inStock", true) then 'ready' else 'preorder' end where "availabilityMode" = 'ready' and (coalesce("stockQuantity", 0) <= 0 or not coalesce("inStock", true));
 alter table public.products add column if not exists featured boolean not null default false;
 alter table public.products add column if not exists "isNew" boolean not null default false;
 

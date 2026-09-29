@@ -10,6 +10,11 @@ const asVariants = (value) => asJsonArray(value).map((variant) => ({
 })).filter((variant) => variant.name && variant.values.length);
 const productView = (row) => {
   const price = Number(row?.price || 0);
+  const stockQuantity = Number(row?.stockQuantity ?? 0);
+  const storedAvailabilityMode = row?.availabilityMode;
+  const availabilityMode = ['ready', 'preorder', 'unavailable'].includes(storedAvailabilityMode)
+    ? (storedAvailabilityMode === 'ready' && stockQuantity <= 0 ? 'unavailable' : storedAvailabilityMode)
+    : (stockQuantity <= 0 ? 'unavailable' : (Boolean(row?.inStock) ? 'ready' : 'preorder'));
   const discountType = row?.discountType === 'amount' ? 'amount' : 'percentage';
   const discountValue = Number(row?.discountValue ?? row?.discountPercentage ?? 0);
   const discountPercentage = discountType === 'percentage' ? discountValue : 0;
@@ -26,11 +31,13 @@ const productView = (row) => {
     productImages: [...new Set([row?.imageUrl, ...asJsonArray(row?.productImages ?? [])].filter(Boolean))],
     variants: asVariants(row?.variants),
     category: row?.category || 'عام',
-    stockQuantity: Number(row?.stockQuantity ?? 0),
-    inStock: Boolean(row?.inStock),
+    stockQuantity,
+    availabilityMode,
+    inStock: availabilityMode === 'ready',
+    preOrder: availabilityMode === 'preorder',
+    isUnavailable: availabilityMode === 'unavailable',
     featured: Boolean(row?.featured),
     isNew: Boolean(row?.isNew),
-    preOrder: !Boolean(row?.inStock),
   };
 };
 const orderView = (row) => ({ ...row, items: asJsonArray(row?.items), isRead: Boolean(row?.isRead), accountOrderNumber: row?.accountOrderNumber || null });
@@ -74,8 +81,14 @@ export async function saveCart(userId, items) { return throwIfError(await supaba
 export async function validateDiscount(code) { return throwIfError(await supabase.from('discounts').select('*').eq('code', String(code).toUpperCase()).eq('active', true).maybeSingle()); }
 export async function saveCoupon(userId, discountId) { return throwIfError(await supabase.from('account_coupons').upsert({ accountId: userId, discountId }, { onConflict: 'accountId,discountId' })); }
 export async function createOrder(payload, userId) {
-  const products = throwIfError(await supabase.from('products').select('id,costPrice,discountPercentage,discountType,discountValue').in('id', asArray(payload.items).map((item) => item.productId)));
+  const products = throwIfError(await supabase.from('products').select('id,name,costPrice,discountPercentage,discountType,discountValue,availabilityMode,inStock,stockQuantity').in('id', asArray(payload.items).map((item) => item.productId)));
   const byId = new Map(asArray(products).map((product) => [String(product.id), product]));
+  const unavailableProduct = asArray(payload.items).map((item) => byId.get(String(item.productId))).find((product) => {
+    if (!product) return true;
+    const mode = product.availabilityMode || (Number(product.stockQuantity ?? 0) <= 0 ? 'unavailable' : (product.inStock ? 'ready' : 'preorder'));
+    return mode === 'unavailable' || (mode === 'ready' && Number(product.stockQuantity ?? 0) <= 0);
+  });
+  if (unavailableProduct) throw new Error(`${unavailableProduct.name || 'أحد المنتجات'} غير متوفر حاليًا.`);
   const items = asArray(payload.items).map((item) => ({
     ...item,
     selectedVariants: item.selectedVariants || {},
@@ -121,12 +134,15 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     discountType: productForm.discountType === 'amount' ? 'amount' : 'percentage',
     discountValue: Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
     discountPercentage: productForm.discountType === 'amount' ? 0 : Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
+    availabilityMode: ['ready', 'preorder', 'unavailable'].includes(productForm.availabilityMode)
+      ? (productForm.availabilityMode === 'ready' && Number(productForm.stockQuantity ?? 0) <= 0 ? 'unavailable' : productForm.availabilityMode)
+      : (Number(productForm.stockQuantity ?? 0) <= 0 ? 'unavailable' : (productForm.inStock ? 'ready' : 'preorder')),
     category: productForm.category || 'عام',
     imageUrl: (primaryImageFile ? uploaded[0] : '') || productForm.imageUrl || images[0] || '',
     productImages: images ?? [],
     variants: asVariants(productForm.variants),
     stockQuantity: Math.max(0, Number(productForm.stockQuantity ?? 10)),
-    inStock: Boolean(productForm.inStock),
+    inStock: productForm.availabilityMode === 'ready' && Number(productForm.stockQuantity ?? 0) > 0,
     featured: Boolean(productForm.featured),
     isNew: Boolean(productForm.isNew),
   }).select().single());
@@ -162,6 +178,10 @@ export async function updateProduct(idOrForm, form, primaryFile, additionalFiles
   // 4. تجهيز البيانات
   const rawPayload = {
     ...actualForm,
+    availabilityMode: ['ready', 'preorder', 'unavailable'].includes(actualForm?.availabilityMode)
+      ? (actualForm.availabilityMode === 'ready' && Number(actualForm.stockQuantity ?? 0) <= 0 ? 'unavailable' : actualForm.availabilityMode)
+      : (Number(actualForm?.stockQuantity ?? 0) <= 0 ? 'unavailable' : (actualForm?.inStock ? 'ready' : 'preorder')),
+    inStock: actualForm?.availabilityMode === 'ready' && Number(actualForm?.stockQuantity ?? 0) > 0,
     discountType: actualForm?.discountType === 'amount' ? 'amount' : 'percentage',
     discountValue: Number(actualForm?.discountValue ?? actualForm?.discountPercentage ?? 0),
     discountPercentage: actualForm?.discountType === 'amount' ? 0 : Number(actualForm?.discountValue ?? actualForm?.discountPercentage ?? 0),

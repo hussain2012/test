@@ -54,6 +54,7 @@ create table if not exists public.products (
   "imageUrl" text,
   category text,
   "inStock" boolean not null default true,
+  "availabilityMode" text not null default 'ready',
   "costPrice" numeric(12,2) default 0,
   "discountPercentage" numeric(5,2) default 0,
   "discountType" text not null default 'percentage',
@@ -67,7 +68,9 @@ create table if not exists public.products (
 
 alter table public.products add column if not exists "discountType" text not null default 'percentage';
 alter table public.products add column if not exists "discountValue" numeric(12,2) not null default 0;
+alter table public.products add column if not exists "availabilityMode" text not null default 'ready';
 update public.products set "discountValue" = "discountPercentage" where "discountType" = 'percentage' and "discountValue" = 0 and "discountPercentage" > 0;
+update public.products set "availabilityMode" = case when coalesce("stockQuantity", 0) <= 0 then 'unavailable' when coalesce("inStock", true) then 'ready' else 'preorder' end where "availabilityMode" = 'ready' and (coalesce("stockQuantity", 0) <= 0 or not coalesce("inStock", true));
 
 do $$
 begin
