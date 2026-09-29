@@ -10,13 +10,17 @@ const asVariants = (value) => asJsonArray(value).map((variant) => ({
 })).filter((variant) => variant.name && variant.values.length);
 const productView = (row) => {
   const price = Number(row?.price || 0);
-  const discountPercentage = Number(row?.discountPercentage || 0);
+  const discountType = row?.discountType === 'amount' ? 'amount' : 'percentage';
+  const discountValue = Number(row?.discountValue ?? row?.discountPercentage ?? 0);
+  const discountPercentage = discountType === 'percentage' ? discountValue : 0;
   const productCode = row?.product_code ?? row?.productCode;
   return {
     ...row,
     price,
+    discountType,
+    discountValue,
     discountPercentage,
-    discountedPrice: Number((price * (1 - discountPercentage / 100)).toFixed(2)),
+    discountedPrice: Number((discountType === 'amount' ? Math.max(0, price - discountValue) : price * (1 - Math.min(100, discountValue) / 100)).toFixed(2)),
     imageUrl: row?.imageUrl || '',
     productCode: String(productCode || '').trim().toUpperCase(),
     productImages: [...new Set([row?.imageUrl, ...asJsonArray(row?.productImages ?? [])].filter(Boolean))],
@@ -70,13 +74,15 @@ export async function saveCart(userId, items) { return throwIfError(await supaba
 export async function validateDiscount(code) { return throwIfError(await supabase.from('discounts').select('*').eq('code', String(code).toUpperCase()).eq('active', true).maybeSingle()); }
 export async function saveCoupon(userId, discountId) { return throwIfError(await supabase.from('account_coupons').upsert({ accountId: userId, discountId }, { onConflict: 'accountId,discountId' })); }
 export async function createOrder(payload, userId) {
-  const products = throwIfError(await supabase.from('products').select('id,costPrice,discountPercentage').in('id', asArray(payload.items).map((item) => item.productId)));
+  const products = throwIfError(await supabase.from('products').select('id,costPrice,discountPercentage,discountType,discountValue').in('id', asArray(payload.items).map((item) => item.productId)));
   const byId = new Map(asArray(products).map((product) => [String(product.id), product]));
   const items = asArray(payload.items).map((item) => ({
     ...item,
     selectedVariants: item.selectedVariants || {},
     costPrice: Number(byId.get(String(item.productId))?.costPrice || 0),
     discountPercentage: Number(byId.get(String(item.productId))?.discountPercentage || 0),
+    discountType: byId.get(String(item.productId))?.discountType || 'percentage',
+    discountValue: Number(byId.get(String(item.productId))?.discountValue ?? byId.get(String(item.productId))?.discountPercentage ?? 0),
   }));
   const latest = throwIfError(await supabase.from('orders').select('accountOrderNumber').eq('accountId', userId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle());
   const accountOrderNumber = Number(latest?.accountOrderNumber || 0) + 1;
@@ -112,9 +118,11 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     description: productForm.description,
     price: Number(productForm.price),
     costPrice: Number(productForm.costPrice || 0),
-    discountPercentage: Number(productForm.discountPercentage || 0),
+    discountType: productForm.discountType === 'amount' ? 'amount' : 'percentage',
+    discountValue: Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
+    discountPercentage: productForm.discountType === 'amount' ? 0 : Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
     category: productForm.category || 'عام',
-    imageUrl: uploaded[0] || productForm.imageUrl || images[0] || '',
+    imageUrl: (primaryImageFile ? uploaded[0] : '') || productForm.imageUrl || images[0] || '',
     productImages: images ?? [],
     variants: asVariants(productForm.variants),
     stockQuantity: Math.max(0, Number(productForm.stockQuantity ?? 10)),
@@ -154,7 +162,10 @@ export async function updateProduct(idOrForm, form, primaryFile, additionalFiles
   // 4. تجهيز البيانات
   const rawPayload = {
     ...actualForm,
-    imageUrl: uploaded[0] || actualForm?.imageUrl || productImages[0] || '',
+    discountType: actualForm?.discountType === 'amount' ? 'amount' : 'percentage',
+    discountValue: Number(actualForm?.discountValue ?? actualForm?.discountPercentage ?? 0),
+    discountPercentage: actualForm?.discountType === 'amount' ? 0 : Number(actualForm?.discountValue ?? actualForm?.discountPercentage ?? 0),
+    imageUrl: (primaryFile ? uploaded[0] : '') || actualForm?.imageUrl || productImages[0] || '',
     productImages,
   };
 

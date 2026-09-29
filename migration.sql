@@ -56,12 +56,18 @@ create table if not exists public.products (
   "inStock" boolean not null default true,
   "costPrice" numeric(12,2) default 0,
   "discountPercentage" numeric(5,2) default 0,
+  "discountType" text not null default 'percentage',
+  "discountValue" numeric(12,2) not null default 0,
   "productImages" jsonb default '[]'::jsonb,
   variants jsonb default '[]'::jsonb,
   "stockQuantity" integer default 10,
   featured boolean not null default false,
   "isNew" boolean not null default false
 );
+
+alter table public.products add column if not exists "discountType" text not null default 'percentage';
+alter table public.products add column if not exists "discountValue" numeric(12,2) not null default 0;
+update public.products set "discountValue" = "discountPercentage" where "discountType" = 'percentage' and "discountValue" = 0 and "discountPercentage" > 0;
 
 do $$
 begin

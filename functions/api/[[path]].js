@@ -65,12 +65,14 @@ const normalizeProduct = (row) => {
   const storedImages = row?.productImages ?? [];
   const images = Array.isArray(storedImages) ? storedImages : parseJson(storedImages) ?? [];
   const price = number(row?.price);
-  const discount = number(row?.discountPercentage);
+  const discountType = row?.discountType === 'amount' ? 'amount' : 'percentage';
+  const discountValue = number(row?.discountValue, number(row?.discountPercentage));
+  const discount = discountType === 'percentage' ? discountValue : 0;
   const productCode = row?.product_code ?? row?.productCode;
   return {
     id: row?.id, name: row?.name, description: row?.description, productCode: String(productCode || '').trim().toUpperCase(), price,
-    discountPercentage: discount,
-    discountedPrice: Number((price * (1 - discount / 100)).toFixed(2)),
+    discountType, discountValue, discountPercentage: discount,
+    discountedPrice: Number((discountType === 'amount' ? Math.max(0, price - discountValue) : price * (1 - Math.min(100, discountValue) / 100)).toFixed(2)),
     imageUrl: row?.imageUrl || '', productImages: [...new Set([row?.imageUrl, ...(images ?? [])].filter(Boolean))],
     category: row?.category || 'عام', stockQuantity: number(row?.stockQuantity),
     preOrder: !Boolean(row?.inStock), inStock: Boolean(row?.inStock),
@@ -148,7 +150,8 @@ export async function onRequest(context) {
       const body = Object.fromEntries([...form.entries()].filter(([key, value]) => typeof value === 'string'));
       const images = [...(parseJson(body.existingProductImages) ?? []), ...(files?.productImages ? [files.productImages] : [])];
       const { data, error } = await supabase.from('products').insert({
-        name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice), discountPercentage: number(body.discountPercentage),
+        name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice),
+        discountType: body.discountType === 'amount' ? 'amount' : 'percentage', discountValue: number(body.discountValue, number(body.discountPercentage)), discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage)),
         ...productCodeColumn(body),
         imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: body.category || 'عام', stockQuantity: Math.max(0, number(body.stockQuantity, 10)),
         inStock: !['false', '0'].includes(String(body.inStock)), featured: bool(body.featured), isNew: bool(body.isNew),
@@ -173,7 +176,10 @@ export async function onRequest(context) {
       const { data, error } = await supabase.from('products').update({
         name: body.name ?? existing?.name, description: body.description ?? existing?.description, price: number(body.price, existing?.price), costPrice: number(body.costPrice, existing?.costPrice),
         ...productCodeColumn(body),
-        discountPercentage: number(body.discountPercentage, existing?.discountPercentage), imageUrl: files?.primaryImage || body.imageUrl || images[0] || existing?.imageUrl || '', productImages: images ?? [],
+        discountType: body.discountType === 'amount' ? 'amount' : (body.discountType || existing?.discountType || 'percentage'),
+        discountValue: number(body.discountValue, number(body.discountPercentage, number(existing?.discountValue, number(existing?.discountPercentage)))),
+        discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage, number(existing?.discountPercentage))),
+        imageUrl: files?.primaryImage || body.imageUrl || images[0] || existing?.imageUrl || '', productImages: images ?? [],
         category: body.category ?? existing?.category, stockQuantity: Math.max(0, number(body.stockQuantity, existing?.stockQuantity)), inStock: body.inStock === undefined ? existing?.inStock : !['false', '0'].includes(String(body.inStock)),
         featured: body.featured === undefined ? existing?.featured : bool(body.featured), isNew: body.isNew === undefined ? existing?.isNew : bool(body.isNew),
       }).eq('id', parts[2]).select().single();
@@ -263,10 +269,10 @@ export async function onRequest(context) {
       const body = await parseBody(request);
       if (!body.customerName || !body.province || !body.address || !body.nearestLandmark || !body.phoneNumber || !body.items?.length) return errorResponse('يرجى إكمال الحقول المطلوبة', 400);
       const ids = body.items.map((item) => item.productId);
-      const { data: products, error: productsError } = await supabase.from('products').select('id, costPrice, discountPercentage').in('id', ids);
+      const { data: products, error: productsError } = await supabase.from('products').select('id, costPrice, discountPercentage, discountType, discountValue').in('id', ids);
       if (productsError) throw productsError;
       const productMap = new Map((products || []).map((product) => [String(product.id), product]));
-      const items = body.items.map((item) => ({ ...item, price: number(item.price), quantity: number(item.quantity), costPrice: number(productMap.get(String(item.productId))?.costPrice), discountPercentage: number(productMap.get(String(item.productId))?.discountPercentage) }));
+      const items = body.items.map((item) => ({ ...item, price: number(item.price), quantity: number(item.quantity), costPrice: number(productMap.get(String(item.productId))?.costPrice), discountPercentage: number(productMap.get(String(item.productId))?.discountPercentage), discountType: productMap.get(String(item.productId))?.discountType || 'percentage', discountValue: number(productMap.get(String(item.productId))?.discountValue, number(productMap.get(String(item.productId))?.discountPercentage)) }));
       const { data: latest } = await supabase.from('orders').select('accountOrderNumber').eq('accountId', session.accountId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
       const { data, error } = await supabase.from('orders').insert({ items, customerName: body.customerName, province: body.province, address: body.address, nearestLandmark: body.nearestLandmark, phoneNumber: body.phoneNumber, subtotal: number(body.subtotal), discountCode: body.discountCode || '', discountAmount: number(body.discountAmount), deliveryFee: number(body.deliveryFee), finalTotal: number(body.finalTotal), accountId: session.accountId, accountOrderNumber: number(latest?.accountOrderNumber) + 1, status: 'processing', createdAt: new Date().toISOString() }).select('id').single();
       if (error) throw error;

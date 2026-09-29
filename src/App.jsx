@@ -15,6 +15,16 @@ const mediaUrl = (value) => {
 };
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
+const productDiscountValue = (product) => Number(product?.discountValue ?? product?.discountPercentage ?? 0);
+const hasProductDiscount = (product) => productDiscountValue(product) > 0;
+const getProductDiscountedPrice = (product) => {
+  const price = Number(product?.price || 0);
+  const value = Math.max(0, productDiscountValue(product));
+  return Number((product?.discountType === 'amount' ? Math.max(0, price - value) : price * (1 - Math.min(value, 100) / 100)).toFixed(2));
+};
+const productDiscountLabel = (product) => product?.discountType === 'amount'
+  ? `-${money(productDiscountValue(product))}`
+  : `-${Math.round(productDiscountValue(product))}%`;
 const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
@@ -490,7 +500,7 @@ function Store() {
   }));
   const featuredProducts = Array.isArray(settings.featuredProductIds)
     ? settings.featuredProductIds.map((productId) => safeProducts.find((product) => String(product.id) === String(productId))).filter(Boolean)
-    : safeProducts.filter((product) => product.featured || Number(product.discountPercentage || 0) > 0).slice(0, 6);
+    : safeProducts.filter(hasProductDiscount).slice(0, 6);
   const visibleProducts = safeProducts.filter((product) => {
     const matchesCategory = category === 'الكل' || product.category === category;
     const query = search.trim().toLowerCase();
@@ -499,9 +509,8 @@ function Store() {
   });
   const totalPages = Math.max(1, Math.ceil(visibleProducts.length / productsPerPage));
   const sortedProducts = [...visibleProducts].sort((left, right) => (
-    Number(right.featured) - Number(left.featured)
-    || Number(right.isNew) - Number(left.isNew)
-    || (Number(right.discountPercentage || 0) > 0 ? 1 : 0) - (Number(left.discountPercentage || 0) > 0 ? 1 : 0)
+    Number(right.isNew) - Number(left.isNew)
+    || Number(hasProductDiscount(right)) - Number(hasProductDiscount(left))
     || Number(right.id) - Number(left.id)
   ));
   const pagedProducts = sortedProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
@@ -585,7 +594,7 @@ function StoreFooter({ settings }) {
 }
 
 function ProductCard({ product, maintenanceMode = false, compact = false }) {
-  const hasDiscount = Number(product.discountPercentage || 0) > 0;
+  const hasDiscount = hasProductDiscount(product);
   const unitPrice = Number(product.discountedPrice ?? product.price ?? 0);
 
   return (
@@ -593,11 +602,10 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
       <Link to={`/product/${product.id}`} className="product-image">
         <ProductImage src={product.imageUrl} alt={product.name} />
         <div className="product-badges">
-          {product.featured && <span className="product-badge featured-badge">مميز</span>}
           {product.isNew && <span className="product-badge new-badge">جديد</span>}
-          {hasDiscount && <span dir="ltr" className="product-badge offer-badge">-{Math.round(Number(product.discountPercentage))}%</span>}
+          {hasDiscount && <span dir="auto" className="product-badge offer-badge">{productDiscountLabel(product)}</span>}
         </div>
-        {!product.inStock && <span className="sold">{maintenanceMode ? 'المتجر في وضع الصيانة' : 'طلب مسبق'}</span>}
+        {!product.inStock && <span className="sold">طلب مسبق</span>}
       </Link>
       <div className="product-info">
         <span>{product.category}</span>
@@ -607,7 +615,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
           <div className="price-wrap">
             {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(unitPrice)}</strong></> : <strong>{money(product.price)}</strong>}
           </div>
-          <AddToCartButton product={product} quantity={1} className="mini-button" disabled={!product.inStock || maintenanceMode} label="أضف للسلة" disabledLabel={maintenanceMode ? 'المتجر في وضع الصيانة' : 'غير متوفر'} />
+          <AddToCartButton product={product} quantity={1} className="mini-button" disabled={maintenanceMode} label="أضف للسلة" disabledLabel="المتجر في وضع الصيانة" />
         </div>
       </div>
     </article>
@@ -657,7 +665,7 @@ function ProductDetailPage() {
     return <><StoreNav settings={settings} /><div className="empty"><h2>{error || 'المنتج غير موجود'}</h2><Link to="/" className="primary">العودة إلى المتجر</Link></div></>;
   }
 
-  const hasDiscount = Number(product.discountPercentage || 0) > 0;
+  const hasDiscount = hasProductDiscount(product);
   const finalPrice = Number(product.discountedPrice ?? product.price ?? 0);
   const productImages = Array.isArray(product?.productImages) ? product.productImages : [];
   const thumbnailImages = (productImages.length ? productImages : [product?.imageUrl]).filter(Boolean);
@@ -729,14 +737,14 @@ function ProductDetailPage() {
           </div>
           <div className="detail-content">
             {productActionMessage && <span className="product-action-message" role="status">{productActionMessage}</span>}
-            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span dir="ltr" className="detail-discount">-{Math.round(Number(product.discountPercentage))}%</span>}</div>
+            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span dir="auto" className="detail-discount">{productDiscountLabel(product)}</span>}</div>
             <h1>{product.name}</h1>
             <div className="price-stack">
               {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(finalPrice)}</strong></> : <strong>{money(product.price)}</strong>}
             </div>
-            <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : (product.inStock ? 'available' : 'unavailable')}`}>
-              {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (product.inStock ? `متوفر في المخزون: ${product.stockQuantity} قطعة` : 'طلب مسبق')}
-            </div>
+            {(settings.maintenanceMode || !product.inStock) && <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : 'unavailable'}`}>
+              {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : 'طلب مسبق'}
+            </div>}
             <p className="detail-description">{product.description}</p>
             {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
             <div className="quantity-row">
@@ -744,7 +752,7 @@ function ProductDetailPage() {
               <span>{quantity}</span>
               <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
             </div>
-            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={!product.inStock || settings.maintenanceMode || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
+            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={settings.maintenanceMode || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : 'اختر الخيارات أولاً'} />
           </div>
         </div>
         {similarProducts.length > 0 && <section className="similar-products">
@@ -978,19 +986,6 @@ function Login() {
   const location = useLocation();
   const returnTo = typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith('/') ? location.state.returnTo : '/';
 
-  const signInWithGoogle = async () => {
-    setError('');
-    try {
-      const { error: authError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: authRedirectUrl() },
-      });
-      if (authError) setError(authErrorMessage(authError, 'تعذر تسجيل الدخول بجوجل. حاول مرة أخرى.'));
-    } catch {
-      setError('تعذر تسجيل الدخول بجوجل حالياً. حاول مرة أخرى.');
-    }
-  };
-
   const sendMagicLink = async () => {
     const email = identifier.trim().toLowerCase();
     if (!email || !email.includes('@')) {
@@ -1079,10 +1074,6 @@ function Login() {
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إرسال رابط الدخول'}</button>
         {mode === 'login' && error && <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول جديد إلى البريد</button>}
-        {mode === 'login' && <div className="google-login-section">
-          <span>أو</span>
-          <button type="button" className="google-button" onClick={signInWithGoogle}>تسجيل الدخول باستخدام Google</button>
-        </div>}
         <Link to="/" className="back">العودة للمتجر</Link>
       </form>
     </main>
@@ -1171,11 +1162,12 @@ function Overview() {
 }
 
 function ProductsAdmin() {
-  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, inStock: true, featured: false, isNew: false };
+  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountType: 'percentage', discountValue: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, inStock: true, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
   const [additionalImageFiles, setAdditionalImageFiles] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState({ primary: '', additional: [] });
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -1195,6 +1187,13 @@ function ProductsAdmin() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    const primary = primaryImageFile ? URL.createObjectURL(primaryImageFile) : '';
+    const additional = additionalImageFiles.map((file) => URL.createObjectURL(file));
+    setImagePreviews({ primary, additional });
+    return () => [primary, ...additional].filter(Boolean).forEach((url) => URL.revokeObjectURL(url));
+  }, [primaryImageFile, additionalImageFiles]);
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -1235,11 +1234,16 @@ function ProductsAdmin() {
         ...form,
         id: editingId,
         variants,
-        productImages: Array.isArray(form.productImages) ? form.productImages : []
+        productImages: Array.isArray(form.productImages) ? form.productImages : [],
+        inStock: Boolean(form.inStock) && Number(form.stockQuantity) > 0,
+        discountType: form.discountType === 'amount' ? 'amount' : 'percentage',
+        discountValue: Number(form.discountValue ?? form.discountPercentage ?? 0),
+        discountPercentage: form.discountType === 'amount' ? 0 : Number(form.discountValue ?? form.discountPercentage ?? 0),
+        featured: false,
       };
 
       if (editingId) {
-        await updateProduct(payload, primaryImageFile, additionalImageFiles);
+        await updateProduct(payload, undefined, primaryImageFile, additionalImageFiles);
       } else {
         await createProduct(payload, primaryImageFile, additionalImageFiles);
       }
@@ -1277,6 +1281,8 @@ function ProductsAdmin() {
       description: product.description || '',
       price: product.price,
       costPrice: product.costPrice ?? 0,
+      discountType: product.discountType || 'percentage',
+      discountValue: product.discountValue ?? product.discountPercentage ?? 0,
       discountPercentage: product.discountPercentage ?? 0,
       category: product.category,
       imageUrl: product.imageUrl || '',
@@ -1286,8 +1292,7 @@ function ProductsAdmin() {
         valuesText: Array.isArray(variant.values) ? variant.values.join(', ') : '',
       })),
       stockQuantity: product.stockQuantity ?? 0,
-      inStock: product.inStock,
-      featured: Boolean(product.featured),
+      inStock: Boolean(product.inStock) && Number(product.stockQuantity ?? 0) > 0,
       isNew: Boolean(product.isNew),
     });
     setPrimaryImageFile(null);
@@ -1323,11 +1328,12 @@ function ProductsAdmin() {
           <div className="product-editor-fields">
             <label>سعر البيع<input type="number" min="0" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label>
             <label>سعر الشراء<input type="number" min="0" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></label>
-            <label>نسبة الخصم %<input placeholder="0 بدون خصم" type="number" min="0" max="100" value={form.discountPercentage} onChange={(event) => setForm({ ...form, discountPercentage: event.target.value })} /></label>
-            <label>الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value })} /></label>
+            <label>نوع الخصم<select value={form.discountType} onChange={(event) => setForm({ ...form, discountType: event.target.value })}><option value="percentage">نسبة مئوية</option><option value="amount">مبلغ ثابت</option></select></label>
+            <label>{form.discountType === 'amount' ? 'مبلغ الخصم بالدينار' : 'نسبة الخصم %'}<input placeholder="0 بدون خصم" type="number" min="0" max={form.discountType === 'amount' ? form.price || undefined : 100} step={form.discountType === 'amount' ? 1 : 0.01} value={form.discountValue} onChange={(event) => setForm({ ...form, discountValue: event.target.value, discountPercentage: form.discountType === 'amount' ? 0 : event.target.value })} /></label>
+            <label>الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm({ ...form, stockQuantity: event.target.value, ...(event.target.value === '0' ? { inStock: false } : {}) })} /></label>
             <div className="product-editor-checks">
-              <label className="check-label"><input type="checkbox" checked={form.inStock} onChange={(event) => setForm({ ...form, inStock: event.target.checked })} />متوفر في المخزون</label>
-              <label className="check-label"><input type="checkbox" checked={form.featured} onChange={(event) => setForm({ ...form, featured: event.target.checked })} />منتج مميّز ويظهر أولاً</label>
+              <label className="check-label"><input type="radio" name="product-stock-mode" checked={Boolean(form.inStock) && Number(form.stockQuantity) > 0} disabled={Number(form.stockQuantity) === 0} onChange={() => setForm({ ...form, inStock: true })} />جاهز</label>
+              <label className="check-label"><input type="radio" name="product-stock-mode" checked={!form.inStock || Number(form.stockQuantity) === 0} onChange={() => setForm({ ...form, inStock: false })} />طلب مسبق</label>
               <label className="check-label"><input type="checkbox" checked={form.isNew} onChange={(event) => setForm({ ...form, isNew: event.target.checked })} />منتج جديد</label>
             </div>
           </div>
@@ -1338,6 +1344,11 @@ function ProductsAdmin() {
           <div className="product-editor-fields">
             <label className="product-file-field">الصورة الرئيسية<input type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
             <label className="product-file-field">صور إضافية<input type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
+            <div className="product-image-previews" aria-live="polite">
+              {(imagePreviews.primary || form.imageUrl) ? <figure className="product-image-preview"><img src={imagePreviews.primary || form.imageUrl} alt="معاينة الصورة الرئيسية" /><figcaption>الصورة الرئيسية</figcaption></figure> : <p className="product-image-preview-empty">لم يتم اختيار صورة رئيسية</p>}
+              {form.productImages.filter((image) => image && image !== form.imageUrl).map((image, index) => <figure className="product-image-preview" key={`saved-image-${index}`}><img src={image} alt={`صورة المنتج ${index + 2}`} /><figcaption>صورة محفوظة</figcaption></figure>)}
+              {imagePreviews.additional.map((image, index) => <figure className="product-image-preview" key={`new-image-${index}`}><img src={image} alt={`معاينة الصورة الإضافية ${index + 1}`} /><figcaption>صورة إضافية</figcaption></figure>)}
+            </div>
           </div>
         </section>
 
@@ -1384,8 +1395,14 @@ function ProductDiscountAdmin() {
 
   useEffect(() => { load(); }, []);
 
-  const updateDiscount = (productId, value) => {
-    setItems((current) => (Array.isArray(current) ? current : []).map((product) => product.id === productId ? { ...product, discountPercentage: Number(value || 0) } : product));
+  const updateDiscount = (productId, field, value) => {
+    setItems((current) => (Array.isArray(current) ? current : []).map((product) => {
+      if (product.id !== productId) return product;
+      const nextProduct = { ...product, [field]: field === 'discountType' ? value : Number(value || 0) };
+      nextProduct.discountPercentage = nextProduct.discountType === 'amount' ? 0 : productDiscountValue(nextProduct);
+      nextProduct.discountedPrice = getProductDiscountedPrice(nextProduct);
+      return nextProduct;
+    }));
   };
 
   const saveProduct = async (product) => {
@@ -1400,13 +1417,14 @@ function ProductDiscountAdmin() {
         <span>{items.length} منتج</span>
       </div>
       {(Array.isArray(items) ? items : []).map((product) => {
-        const finalPrice = Number(product.discountPercentage || 0) > 0 ? Number(product.price) * (1 - Number(product.discountPercentage || 0) / 100) : Number(product.price || 0);
+        const finalPrice = getProductDiscountedPrice(product);
         return (
           <div className="table-row discount-row" key={product.id}>
             <strong>{product.name}</strong>
             <span>{money(product.price)}</span>
             <span>{money(finalPrice)}</span>
-            <input type="number" min="0" max="100" value={product.discountPercentage || 0} onChange={(event) => updateDiscount(product.id, event.target.value)} />
+            <select aria-label={`نوع الخصم لمنتج ${product.name}`} value={product.discountType || 'percentage'} onChange={(event) => updateDiscount(product.id, 'discountType', event.target.value)}><option value="percentage">نسبة</option><option value="amount">مبلغ ثابت</option></select>
+            <input aria-label={`قيمة الخصم لمنتج ${product.name}`} type="number" min="0" max={product.discountType === 'amount' ? product.price : 100} step={product.discountType === 'amount' ? 1 : 0.01} value={product.discountValue ?? product.discountPercentage ?? 0} onChange={(event) => updateDiscount(product.id, 'discountValue', event.target.value)} />
             <button type="button" onClick={() => saveProduct(product)}>حفظ</button>
           </div>
         );
