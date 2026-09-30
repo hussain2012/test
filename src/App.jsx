@@ -346,7 +346,7 @@ function BottomNav() {
     ...(profile?.role === 'admin' ? [{ label: 'لوحة الإدارة', to: '/admin', icon: 'grid', active: location.pathname.startsWith('/admin') }] : []),
     { label: 'سلة التسوق', to: '/checkout', icon: 'cart', active: location.pathname === '/checkout', count },
     { label: 'طلباتي السابقة', to: user ? '/my-orders' : '/login', icon: 'receipt', active: location.pathname === '/my-orders' },
-    { label: 'الحساب', to: user ? '/account' : '/login', icon: 'account', active: location.pathname.startsWith('/account') },
+    { label: 'الحساب', to: user ? '/account' : '/login', icon: 'account', active: location.pathname.startsWith('/account') || location.pathname === '/login' },
   ];
 
   const icons = {
@@ -1038,6 +1038,7 @@ function MyOrders() {
 
 function Login() {
   const [mode, setMode] = useState('login');
+  const [fullName, setFullName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -1083,18 +1084,33 @@ function Login() {
       return;
     }
     const value = identifier.trim();
-    const phone = /^07\d{9}$/.test(value) ? `+964${value.slice(1)}` : value;
-    const isPhone = /^\+9647\d{9}$/.test(phone);
-    if (mode === 'register' && !isPhone) {
-      await sendMagicLink();
+    if (mode === 'register' && !fullName.trim()) {
+      setError('أدخل الاسم الكامل');
       return;
     }
+    if (mode === 'register' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      setError('أدخل بريداً إلكترونياً صحيحاً');
+      return;
+    }
+    if (mode === 'register' && password.length < 6) {
+      setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+      return;
+    }
+    const phone = /^07\d{9}$/.test(value) ? `+964${value.slice(1)}` : value;
+    const isPhone = /^\+9647\d{9}$/.test(phone);
     const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
     let result;
     try {
       result = mode === 'login'
         ? await supabase.auth.signInWithPassword(credentials)
-        : await supabase.auth.signUp(credentials);
+        : await supabase.auth.signUp({
+          email: value.toLowerCase(),
+          password,
+          options: {
+            data: { full_name: fullName.trim(), displayName: fullName.trim() },
+            emailRedirectTo: authRedirectUrl(),
+          },
+        });
     } catch {
       setError('تعذر الاتصال بخدمة تسجيل الدخول. حاول مرة أخرى.');
       return;
@@ -1103,11 +1119,11 @@ function Login() {
       setError(authErrorMessage(result.error, 'تعذر إتمام العملية. حاول مرة أخرى.'));
       return;
     }
-    if (mode === 'login' || (mode === 'register' && isPhone)) {
+    if (mode === 'login') {
       supabase.auth.updateUser({ data: { password_set: true } }).catch(() => {});
     }
     if (mode === 'register') {
-      setMessage('تم إنشاء الحساب. يمكنك تسجيل الدخول الآن.');
+      setMessage('تم إنشاء الحساب. تحقق من بريدك الإلكتروني لتأكيده.');
       setMode('login');
       setPassword('');
       return;
@@ -1116,28 +1132,34 @@ function Login() {
   };
 
   const { user, profile, loading } = useAuth();
-  const isPhoneRegistration = /^(07\d{9}|\+9647\d{9})$/.test(identifier.trim());
   if (!loading && user) {
     return <Navigate to={profile?.role === 'admin' ? '/admin' : returnTo} replace />;
   }
 
   return (
-    <main className="login-page">
-      <Link to="/" className="brand">نسق</Link>
+    <main className={`login-page ${mode === 'register' ? 'register-page' : ''}`}>
+      {mode === 'login' && <Link to="/" className="brand">نسق</Link>}
       <form className="login-card" onSubmit={submit}>
-        <div className="auth-mode-switch" role="tablist" aria-label="تبديل نوع الحساب">
-          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button>
-          <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button>
-        </div>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
-        <Field label="البريد الإلكتروني أو رقم الهاتف" name="identifier" type="text" inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
-        {(mode === 'login' || isPhoneRegistration) && <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal />}
+        {mode === 'register' && <Field label="الاسم الكامل" name="fullName" value={fullName} onChange={(event) => setFullName(event.target.value)} />}
+        <Field label={mode === 'login' ? 'البريد الإلكتروني أو رقم الهاتف' : 'البريد الإلكتروني'} name="identifier" type={mode === 'login' ? 'text' : 'email'} inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+        <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal={mode === 'login'} />
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
-        <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إرسال رابط الدخول'}</button>
+        <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</button>
         {mode === 'login' && error && <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول جديد إلى البريد</button>}
-        <Link to="/" className="back">العودة للمتجر</Link>
+        {mode === 'register' ? (
+          <>
+            <p className="auth-switch-copy">لديك حساب؟ <button type="button" onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button></p>
+            <Link to="/" className="auth-guest-link">أو تابع كزائر</Link>
+          </>
+        ) : (
+          <>
+            <p className="auth-switch-copy">ليس لديك حساب؟ <button type="button" onClick={() => { setMode('register'); setError(''); setMessage(''); }}>إنشاء حساب</button></p>
+            <Link to="/" className="back">العودة للمتجر</Link>
+          </>
+        )}
       </form>
     </main>
   );

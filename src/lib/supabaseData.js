@@ -119,34 +119,10 @@ export async function saveCart(userId, items) { return throwIfError(await supaba
 export async function validateDiscount(code) { return throwIfError(await supabase.from('discounts').select('*').eq('code', String(code).toUpperCase()).eq('active', true).maybeSingle()); }
 export async function saveCoupon(userId, discountId) { return throwIfError(await supabase.from('account_coupons').upsert({ accountId: userId, discountId }, { onConflict: 'accountId,discountId' })); }
 export async function createOrder(payload, userId) {
-  const productIds = asArray(payload.items).map((item) => item.productId);
-  const products = throwIfError(await queryProducts({ includeAvailabilityMode: false }).in('id', productIds));
-  const byId = new Map(asArray(products).map((product) => [String(product.id), product]));
-  const unavailableProduct = asArray(payload.items).map((item) => byId.get(String(item.productId))).find((product) => {
-    if (!product) return true;
-    const mode = product.availabilityMode || (Number(product.stockQuantity ?? 0) <= 0 ? 'unavailable' : (product.inStock ? 'ready' : 'preorder'));
-    return mode === 'unavailable' || (mode === 'ready' && Number(product.stockQuantity ?? 0) <= 0);
-  });
-  if (unavailableProduct) throw new Error(`${unavailableProduct.name || 'أحد المنتجات'} غير متوفر حاليًا.`);
-  const items = asArray(payload.items).map((item) => ({
-    ...item,
-    selectedVariants: item.selectedVariants || {},
-    costPrice: Number(byId.get(String(item.productId))?.costPrice || 0),
-    discountPercentage: Number(byId.get(String(item.productId))?.discountPercentage || 0),
-    discountType: byId.get(String(item.productId))?.discountType || 'percentage',
-    discountValue: Number(byId.get(String(item.productId))?.discountValue ?? byId.get(String(item.productId))?.discountPercentage ?? 0),
+  return throwIfError(await supabase.rpc('create_order_with_stock', {
+    p_account_id: userId,
+    p_payload: payload,
   }));
-  const latest = throwIfError(await supabase.from('orders').select('accountOrderNumber').eq('accountId', userId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle());
-  const accountOrderNumber = Number(latest?.accountOrderNumber || 0) + 1;
-  const data = throwIfError(await supabase.from('orders').insert({
-    ...payload,
-    items,
-    accountId: userId,
-    accountOrderNumber,
-    status: 'new',
-    createdAt: new Date().toISOString(),
-  }).select('id,accountOrderNumber').single());
-  return data.accountOrderNumber ?? accountOrderNumber;
 }
 export async function getAccountOrders(userId) { const data = throwIfError(await supabase.from('orders').select('*').eq('accountId', userId).order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
 

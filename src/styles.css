@@ -1086,6 +1086,37 @@ button { cursor: pointer; }
 .login-card .primary.full { width: 100%; min-height: 48px; margin-top: 2px; }
 .back { display: block; text-align: center; margin-top: 2px; color: var(--accent); font-weight: 700; }
 .login-card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.auth-switch-copy { text-align: center; }
+.auth-switch-copy button { border: 0; background: transparent; color: var(--primary); padding: 0; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+
+.login-page.register-page {
+  display: block;
+  min-height: 100svh;
+  padding: 72px 32px 180px;
+  background: #faf9f4;
+  color: #1c1915;
+}
+
+.register-page .login-card {
+  width: min(100%, 704px);
+  margin: 0 auto;
+  padding: 0;
+  gap: 28px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.register-page .login-card h1 { margin: 0 0 18px; color: #1c1915; font-size: 40px; text-align: right; }
+.register-page .field-label { gap: 14px; color: #211e18; font-size: 22px; text-align: right; }
+.register-page .field-label input { min-height: 86px; padding: 18px 22px; border: 2px solid #e1dccd; border-radius: 28px; background: #fff; color: #211e18; font-size: 18px; }
+.register-page .input-with-action input { padding-left: 86px; }
+.register-page .reveal-password { font-size: 14px; }
+.register-page .primary.full { min-height: 102px; margin-top: 2px; border-radius: 999px; background: #1c1915; color: #f4e5b9; font-size: 25px; }
+.register-page .primary.full:hover { background: #302b24; }
+.register-page .auth-switch-copy { margin: 10px 0 0; color: #686154; font-size: 21px; }
+.register-page .auth-switch-copy button { color: #1c1915; }
+.auth-guest-link { display: block; margin: -16px 0 0; color: #686154; font-size: 19px; text-align: center; text-decoration: underline; text-underline-offset: 4px; }
 
 .password-setup-backdrop {
   position: fixed;
