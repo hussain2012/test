@@ -503,19 +503,25 @@ function Store() {
   const featuredProducts = Array.isArray(settings.featuredProductIds)
     ? settings.featuredProductIds.map((productId) => safeProducts.find((product) => String(product.id) === String(productId))).filter(Boolean)
     : safeProducts.filter(hasProductDiscount).slice(0, 6);
-  const visibleProducts = safeProducts.filter((product) => {
-    const matchesCategory = category === 'الكل' || product.category === category;
-    const query = search.trim().toLowerCase();
-    const matchesQuery = !query || product.name.toLowerCase().includes(query) || String(product.productCode || '').toLowerCase().includes(query);
-    return matchesCategory && matchesQuery;
-  });
+  const visibleProducts = Array.isArray(safeProducts)
+    ? safeProducts.filter((product) => {
+        const matchesCategory = category === 'الكل' || product.category === category;
+        const query = search.trim().toLowerCase();
+        const matchesQuery = !query || product.name.toLowerCase().includes(query) || String(product.productCode || '').toLowerCase().includes(query);
+        return matchesCategory && matchesQuery;
+      })
+    : [];
   const totalPages = Math.max(1, Math.ceil(visibleProducts.length / productsPerPage));
-  const sortedProducts = [...visibleProducts].sort((left, right) => (
-    Number(right.isNew) - Number(left.isNew)
-    || Number(hasProductDiscount(right)) - Number(hasProductDiscount(left))
-    || Number(right.id) - Number(left.id)
-  ));
-  const pagedProducts = sortedProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage);
+  const sortedProducts = Array.isArray(visibleProducts)
+    ? [...visibleProducts].sort((left, right) => (
+        Number(right.isNew) - Number(left.isNew)
+        || Number(hasProductDiscount(right)) - Number(hasProductDiscount(left))
+        || Number(right.id) - Number(left.id)
+      ))
+    : [];
+  const pagedProducts = Array.isArray(sortedProducts)
+    ? sortedProducts.slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage)
+    : [];
 
   useEffect(() => {
     setCurrentPage(1);

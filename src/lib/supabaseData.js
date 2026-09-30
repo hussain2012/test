@@ -4,6 +4,8 @@ const asArray = (value) => Array.isArray(value) ? value : [];
 const asJsonArray = (value) => Array.isArray(value) ? value : (() => {
   try { const parsed = JSON.parse(value || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
 })();
+const ensureProductQuery = (query) => (query && typeof query.order === 'function' ? query : supabase.from('products').select('*'));
+const asProductRows = (value) => asArray(value).filter((row) => row && typeof row === 'object');
 const asVariants = (value) => asJsonArray(value).map((variant) => ({
   name: String(variant?.name || '').trim(),
   values: asArray(variant?.values).map((item) => String(item).trim()).filter(Boolean),
@@ -50,12 +52,12 @@ const queryProducts = async ({ includeAvailabilityMode = true } = {}) => {
   try {
     const { error } = await supabase.from('products').select('availabilityMode').limit(1);
     if (error && isMissingColumnError(error)) {
-      return supabase.from('products').select('*');
+      return ensureProductQuery(supabase.from('products').select('*'));
     }
     if (error) throw error;
-    return includeAvailabilityMode ? supabase.from('products').select('*') : supabase.from('products').select('*');
+    return ensureProductQuery(includeAvailabilityMode ? supabase.from('products').select('*') : supabase.from('products').select('*'));
   } catch (error) {
-    if (isMissingColumnError(error)) return supabase.from('products').select('*');
+    if (isMissingColumnError(error)) return ensureProductQuery(supabase.from('products').select('*'));
     throw error;
   }
 };
@@ -102,8 +104,16 @@ export async function getSiteSettings() {
   return normalizeSettings(data);
 }
 export async function recordView(type) { return throwIfError(await supabase.from('page_views').insert({ type: type === 'product' ? 'product' : 'home' }).select().single()); }
-export async function listProducts() { const query = await queryProducts(); const data = throwIfError(await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false })); return asArray(data).map(productView); }
-export async function getProduct(id) { const query = await queryProducts(); const data = throwIfError(await query.eq('id', id).maybeSingle()); return data ? productView(data) : null; }
+export async function listProducts() {
+  const query = ensureProductQuery(await queryProducts());
+  const data = throwIfError(await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false }));
+  return asProductRows(data).map(productView);
+}
+export async function getProduct(id) {
+  const query = ensureProductQuery(await queryProducts());
+  const data = throwIfError(await query.eq('id', id).maybeSingle());
+  return data && typeof data === 'object' ? productView(data) : null;
+}
 export async function getCart(userId) { const data = throwIfError(await supabase.from('account_carts').select('items').eq('accountId', userId).maybeSingle()); return asArray(data?.items); }
 export async function saveCart(userId, items) { return throwIfError(await supabase.from('account_carts').upsert({ accountId: userId, items: asArray(items), updatedAt: new Date().toISOString() }, { onConflict: 'accountId' })); }
 export async function validateDiscount(code) { return throwIfError(await supabase.from('discounts').select('*').eq('code', String(code).toUpperCase()).eq('active', true).maybeSingle()); }
@@ -140,7 +150,15 @@ export async function createOrder(payload, userId) {
 }
 export async function getAccountOrders(userId) { const data = throwIfError(await supabase.from('orders').select('*').eq('accountId', userId).order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
 
-export async function adminProducts() { const query = await queryProducts(); const data = throwIfError(await query.order('id', { ascending: false })); return asArray(data).map((row) => ({ ...productView(row), costPrice: Number(row.costPrice || 0), profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)) })); }
+export async function adminProducts() {
+  const query = ensureProductQuery(await queryProducts());
+  const data = throwIfError(await query.order('id', { ascending: false }));
+  return asProductRows(data).map((row) => ({
+    ...productView(row),
+    costPrice: Number(row.costPrice || 0),
+    profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)),
+  }));
+}
 const safeUploadName = (file) => String(file?.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
 const productCodeColumn = (form) => {
   if (!Object.prototype.hasOwnProperty.call(form ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(form ?? {}, 'product_code')) return {};
