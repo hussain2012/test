@@ -27,9 +27,31 @@ const productDiscountLabel = (product) => product?.discountType === 'amount'
   : `-${Math.round(productDiscountValue(product))}%`;
 const productAvailabilityMode = (product) => product?.availabilityMode
   || (Number(product?.stockQuantity ?? 0) <= 0 ? 'unavailable' : (product?.inStock ? 'ready' : 'preorder'));
+const variantChoiceLabel = (choice) => String(typeof choice === 'object' ? choice?.label ?? choice?.value ?? '' : choice ?? '').trim();
+const variantChoicePrice = (choice) => Number(typeof choice === 'object' ? choice?.price || 0 : 0);
+const selectedChoices = (variant, selection) => {
+  const values = Array.isArray(selection) ? selection : (selection ? [selection] : []);
+  return values.map((value) => (variant.values || []).find((choice) => variantChoiceLabel(choice) === value)).filter(Boolean);
+};
+const getProductOptionPrice = (product, selectedVariants) => {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const replacementVariant = variants.find((variant) => variant.priceMode === 'replace' && selectedVariants[variant.name]);
+  const replacementChoice = replacementVariant && selectedChoices(replacementVariant, selectedVariants[replacementVariant.name])[0];
+  const basePrice = replacementChoice ? variantChoicePrice(replacementChoice) : Number(product?.price || 0);
+  const discountValue = Math.max(0, productDiscountValue(product));
+  const discountedBase = product?.discountType === 'amount'
+    ? Math.max(0, basePrice - discountValue)
+    : basePrice * (1 - Math.min(discountValue, 100) / 100);
+  const extras = variants
+    .filter((variant) => variant.priceMode !== 'replace')
+    .flatMap((variant) => selectedChoices(variant, selectedVariants[variant.name]))
+    .reduce((total, choice) => total + variantChoicePrice(choice), 0);
+  return Number((discountedBase + extras).toFixed(2));
+};
 const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
+const cartItemKey = (item) => `${item.id}-${variantKey(item.selectedVariants)}`;
 const getStoreCategories = (configuredCategories, products) => {
   const productNames = [...new Set(products.map((product) => String(product.category || 'عام').trim()).filter(Boolean))];
   const source = Array.isArray(configuredCategories) ? configuredCategories : productNames.map((name) => ({ name }));
@@ -203,18 +225,22 @@ function CartProvider({ children }) {
   }, [session]);
 
   const addItem = (product, quantity = 1) => {
-    const sellingPrice = Number(product.discountedPrice ?? product.price ?? 0);
+    const sellingPrice = Number(product.selectedPrice ?? product.discountedPrice ?? product.price ?? 0);
+    const productKey = variantKey(product.selectedVariants);
     setCart((current) => {
-      const existing = current.find((item) => item.id === product.id);
+      const existing = current.find((item) => item.id === product.id && variantKey(item.selectedVariants) === productKey);
       if (existing) {
-        return (Array.isArray(current) ? current : []).map((item) => item.id === product.id ? { ...item, quantity: item.quantity + quantity, price: sellingPrice } : item);
+        return (Array.isArray(current) ? current : []).map((item) => item.id === product.id && variantKey(item.selectedVariants) === productKey ? { ...item, quantity: item.quantity + quantity, price: sellingPrice } : item);
       }
       return [...current, { ...product, id: Number(product.id), quantity, price: sellingPrice }];
     });
   };
 
-  const updateItem = (id, quantity) => {
-    setCart((current) => quantity < 1 ? (Array.isArray(current) ? current : []).filter((item) => item.id !== id) : (Array.isArray(current) ? current : []).map((item) => item.id === id ? { ...item, quantity } : item));
+  const updateItem = (id, quantity, selectedVariants = {}) => {
+    const productKey = variantKey(selectedVariants);
+    setCart((current) => quantity < 1
+      ? (Array.isArray(current) ? current : []).filter((item) => item.id !== id || variantKey(item.selectedVariants) !== productKey)
+      : (Array.isArray(current) ? current : []).map((item) => item.id === id && variantKey(item.selectedVariants) === productKey ? { ...item, quantity } : item));
   };
 
   const clearCart = () => setCart([]);
@@ -356,6 +382,8 @@ function BottomNav() {
     receipt: <><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" /><path d="M9 8h6M9 12h6" /></>,
     account: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
   };
+
+  if (location.pathname.startsWith('/product/')) return null;
 
   return (
     <nav className="bottom-nav" aria-label="التنقل الرئيسي">
@@ -695,7 +723,10 @@ function ProductDetailPage() {
         if (!data) throw new Error('تعذر تحميل المنتج');
         setProduct(data);
         setSelectedImage(data?.productImages?.[0] ?? data?.imageUrl ?? '');
-        setSelectedVariants({});
+        setSelectedVariants(Object.fromEntries((data.variants || []).map((variant) => {
+          const firstChoice = variantChoiceLabel(variant.values[0]);
+          return [variant.name, variant.selectionMode === 'multiple' ? (firstChoice ? [firstChoice] : []) : firstChoice];
+        })));
         setLoading(false);
         listProducts()
           .then((products) => setSimilarProducts(products.filter((item) => item.id !== data.id && item.category === data.category).slice(0, 4)))
@@ -714,11 +745,26 @@ function ProductDetailPage() {
   }
 
   const hasDiscount = hasProductDiscount(product);
-  const finalPrice = Number(product.discountedPrice ?? product.price ?? 0);
+  const finalPrice = getProductOptionPrice(product, selectedVariants);
   const productImages = Array.isArray(product?.productImages) ? product.productImages : [];
   const thumbnailImages = (productImages.length ? productImages : [product?.imageUrl]).filter(Boolean);
-  const variantsComplete = (product.variants || []).every((variant) => selectedVariants[variant.name]);
+  const variantsComplete = (product.variants || []).every((variant) => {
+    if (!variant.required) return true;
+    return variant.selectionMode === 'multiple'
+      ? (Array.isArray(selectedVariants[variant.name]) && selectedVariants[variant.name].length > 0)
+      : Boolean(selectedVariants[variant.name]);
+  });
   const isProductFavorite = isProductSaved || (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
+
+  const chooseVariantOption = (variant, label) => {
+    setSelectedVariants((current) => {
+      if (variant.selectionMode !== 'multiple') return { ...current, [variant.name]: label };
+      const selected = Array.isArray(current[variant.name]) ? current[variant.name] : [];
+      if (selected.includes(label)) return { ...current, [variant.name]: selected.filter((item) => item !== label) };
+      if (selected.length >= variant.maxSelections) return current;
+      return { ...current, [variant.name]: [...selected, label] };
+    });
+  };
 
   const toggleProductFavorite = async () => {
     if (!user) {
@@ -805,14 +851,45 @@ function ProductDetailPage() {
               <strong>{money(finalPrice)}</strong>
             </div>
             <p className="detail-description">{product.description}</p>
-            {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
+            {Array.isArray(product.variants) && product.variants.map((variant) => {
+              const selected = Array.isArray(selectedVariants[variant.name]) ? selectedVariants[variant.name] : [selectedVariants[variant.name]].filter(Boolean);
+              const isReplacement = variant.priceMode === 'replace';
+              return (
+                <section className={`detail-option-card ${isReplacement ? 'detail-weight-card' : ''}`} key={variant.name}>
+                  <header className="detail-option-heading">
+                    <div><h2>{variant.name}</h2><p>{variant.selectionMode === 'multiple' ? `اختر لحد ${variant.maxSelections}` : 'اختر واحد'}</p></div>
+                    <span className={`detail-option-status ${selected.length ? 'selected' : ''}`} aria-label={selected.length ? 'تم الاختيار' : 'لم يتم الاختيار'}>{selected.length ? '✓' : ''}</span>
+                  </header>
+                  <div className={isReplacement ? 'detail-weight-options' : 'detail-option-list'}>
+                    {variant.values.map((choice) => {
+                      const label = variantChoiceLabel(choice);
+                      const choicePrice = variantChoicePrice(choice);
+                      const isSelected = selected.includes(label);
+                      const isDisabled = variant.selectionMode === 'multiple' && !isSelected && selected.length >= variant.maxSelections;
+                      return isReplacement ? (
+                        <button type="button" key={label} className={`detail-weight-choice ${isSelected ? 'selected' : ''}`} aria-pressed={isSelected} onClick={() => chooseVariantOption(variant, label)}>
+                          <strong>{label}</strong><span>{money(choicePrice)}</span>
+                        </button>
+                      ) : (
+                        <label className={`detail-option-row ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`} key={label}>
+                          <input type={variant.selectionMode === 'multiple' ? 'checkbox' : 'radio'} name={`option-${product.id}-${variant.name}`} checked={isSelected} disabled={isDisabled} onChange={() => chooseVariantOption(variant, label)} />
+                          <span className="detail-option-label">{label}</span>
+                          {choicePrice > 0 && <strong dir="auto">{variant.priceMode === 'replace' ? money(choicePrice) : `+${money(choicePrice)}`}</strong>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
             <div className="detail-purchase-row">
               <div className="quantity-row">
                 <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
                 <span>{quantity}</span>
                 <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
               </div>
-              <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
+              <div className="detail-purchase-summary"><small>{product.name}</small><strong>{money(finalPrice)}</strong></div>
+              <AddToCartButton product={{ ...product, selectedVariants, selectedPrice: finalPrice }} quantity={quantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || !variantsComplete} className="primary block" label="أضف إلى السلة" disabledLabel={settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
             </div>
           </div>
         </div>
@@ -969,15 +1046,15 @@ function Checkout() {
             <aside className="receipt">
               <h2>تفاصيل الطلب</h2>
               {(Array.isArray(cart) ? cart : []).map((item) => (
-                <div className="receipt-item" key={item.id}>
+                <div className="receipt-item" key={cartItemKey(item)}>
                   <ProductImage src={item.imageUrl} alt={item.name} />
                   <div>
                     <strong>{item.name}</strong>
                     <small>{money(item.price)} × {item.quantity}</small>
                     <div className="qty">
-                      <button type="button" onClick={() => updateItem(item.id, item.quantity - 1)}>−</button>
+                      <button type="button" onClick={() => updateItem(item.id, item.quantity - 1, item.selectedVariants)}>−</button>
                       <span>{item.quantity}</span>
-                      <button type="button" onClick={() => updateItem(item.id, item.quantity + 1)}>+</button>
+                      <button type="button" onClick={() => updateItem(item.id, item.quantity + 1, item.selectedVariants)}>+</button>
                     </div>
                   </div>
                 </div>
@@ -1327,7 +1404,7 @@ function ProductsAdmin() {
   };
 
   const addVariant = () => {
-    setForm((current) => ({ ...current, variants: [...current.variants, { name: '', valuesText: '' }] }));
+    setForm((current) => ({ ...current, variants: [...current.variants, { name: '', valuesText: '', selectionMode: 'single', priceMode: 'add', required: true, maxSelections: 1 }] }));
   };
 
   const removeVariant = (index) => {
@@ -1343,7 +1420,14 @@ function ProductsAdmin() {
     const wasEditing = editingId !== null;
     const variants = form.variants.map((variant) => ({
       name: String(variant.name || '').trim(),
-      values: String(variant.valuesText || '').split(/[,،]/).map((value) => value.trim()).filter(Boolean),
+      selectionMode: variant.selectionMode === 'multiple' ? 'multiple' : 'single',
+      priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
+      required: variant.required !== false,
+      maxSelections: Math.max(1, Number(variant.maxSelections) || 1),
+      values: String(variant.valuesText || '').split(/\r?\n/).flatMap((line) => line.includes('|') ? [line] : line.split(/[,،]/)).map((line) => {
+        const [label, price] = line.split('|');
+        return { label: String(label || '').trim(), price: Number(String(price || '').trim()) || 0 };
+      }).filter((choice) => choice.label),
     })).filter((variant) => variant.name && variant.values.length);
     const availabilityMode = Number(form.stockQuantity) <= 0 && form.availabilityMode === 'ready' ? 'unavailable' : form.availabilityMode;
 
@@ -1408,7 +1492,15 @@ function ProductsAdmin() {
       productImages: Array.isArray(product?.productImages) ? product.productImages : [],
       variants: (Array.isArray(product.variants) ? product.variants : []).map((variant) => ({
         name: String(variant.name || ''),
-        valuesText: Array.isArray(variant.values) ? variant.values.join(', ') : '',
+        selectionMode: variant.selectionMode === 'multiple' ? 'multiple' : 'single',
+        priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
+        required: variant.required !== false,
+        maxSelections: Math.max(1, Number(variant.maxSelections) || 1),
+        valuesText: Array.isArray(variant.values) ? variant.values.map((choice) => {
+          const label = variantChoiceLabel(choice);
+          const price = variantChoicePrice(choice);
+          return price ? `${label} | ${price}` : label;
+        }).join('\n') : '',
       })),
       stockQuantity: product.stockQuantity ?? 0,
       availabilityMode: productAvailabilityMode(product),
@@ -1434,10 +1526,14 @@ function ProductsAdmin() {
             <label>التصنيف<input placeholder="مثال: حقائب" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
             <label className="product-editor-wide">الوصف<textarea placeholder="اكتب وصفًا مختصرًا وواضحًا للمنتج" required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="product-variants product-editor-wide">
-              <div className="product-variants-heading"><div><strong>متغيرات المنتج</strong><small>أضف مثلًا اللون أو المقاس، ثم اكتب الخيارات مفصولة بفاصلة.</small></div><button type="button" className="add-variant-button" onClick={addVariant}>+ إضافة متغير</button></div>
+              <div className="product-variants-heading"><div><strong>خيارات المنتج</strong><small>أضف الوزن أو طريقة الاختيار أو الإضافات. اكتب السعر بعد | إذا كان للخيار سعر.</small></div><button type="button" className="add-variant-button" onClick={addVariant}>+ إضافة مجموعة</button></div>
               {form.variants.map((variant, index) => <div className="product-variant-row" key={`variant-${index}`}>
                 <label>اسم المتغير<input placeholder="مثال: اللون" value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
-                <label>الخيارات<input placeholder="مثال: أبيض، أسود" value={variant.valuesText} onChange={(event) => updateVariant(index, 'valuesText', event.target.value)} /></label>
+                <label>نوع الاختيار<select value={variant.selectionMode} onChange={(event) => updateVariant(index, 'selectionMode', event.target.value)}><option value="single">اختيار واحد</option><option value="multiple">اختيارات متعددة</option></select></label>
+                <label>طريقة السعر<select value={variant.priceMode} onChange={(event) => updateVariant(index, 'priceMode', event.target.value)}><option value="add">إضافة على السعر</option><option value="replace">السعر الكامل للخيار</option></select></label>
+                {variant.selectionMode === 'multiple' && <label>الحد الأعلى<input type="number" min="1" value={variant.maxSelections} onChange={(event) => updateVariant(index, 'maxSelections', event.target.value)} /></label>}
+                <label className="check-label"><input type="checkbox" checked={variant.required} onChange={(event) => updateVariant(index, 'required', event.target.checked)} />مجموعة مطلوبة</label>
+                <label className="product-variant-values">الخيارات<textarea placeholder={'حبوب كاملة\nطحين إسبريسو\nهيل مطحون | 1500'} value={variant.valuesText} onChange={(event) => updateVariant(index, 'valuesText', event.target.value)} /></label>
                 <button type="button" className="remove-variant-button" aria-label={`حذف المتغير ${variant.name || index + 1}`} onClick={() => removeVariant(index)}>حذف</button>
               </div>)}
               {!form.variants.length && <p className="product-variants-empty">لا توجد متغيرات. أضف متغيرًا إذا كان المنتج متاحًا بأكثر من خيار.</p>}

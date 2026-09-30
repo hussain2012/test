@@ -8,7 +8,13 @@ const ensureProductQuery = (query) => (query && typeof query.order === 'function
 const asProductRows = (value) => asArray(value).filter((row) => row && typeof row === 'object');
 const asVariants = (value) => asJsonArray(value).map((variant) => ({
   name: String(variant?.name || '').trim(),
-  values: asArray(variant?.values).map((item) => String(item).trim()).filter(Boolean),
+  selectionMode: variant?.selectionMode === 'multiple' ? 'multiple' : 'single',
+  priceMode: variant?.priceMode === 'replace' ? 'replace' : 'add',
+  required: variant?.required !== false,
+  maxSelections: Math.max(1, Number(variant?.maxSelections) || 1),
+  values: asArray(variant?.values).map((item) => typeof item === 'object' && item !== null
+    ? { label: String(item.label ?? item.value ?? '').trim(), price: Number(item.price || 0) }
+    : { label: String(item).trim(), price: 0 }).filter((item) => item.label),
 })).filter((variant) => variant.name && variant.values.length);
 const productView = (row) => {
   const price = Number(row?.price || 0);
