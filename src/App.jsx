@@ -80,6 +80,7 @@ function AuthProvider({ children }) {
       const requestId = ++profileRequestId;
       if (!user) {
         setProfile(null);
+        if (requestId === profileRequestId) setLoading(false);
         return;
       }
       try {
@@ -118,6 +119,8 @@ function AuthProvider({ children }) {
         if (requestId === profileRequestId) setProfile(currentProfile || null);
       } catch {
         if (requestId === profileRequestId) setProfile(null);
+      } finally {
+        if (requestId === profileRequestId) setLoading(false);
       }
     };
 
@@ -125,20 +128,25 @@ function AuthProvider({ children }) {
       .then(async ({ data: { session: currentSession }, error }) => {
         if (error) throw error;
         setSession(currentSession);
+        if (currentSession?.user) setLoading(true);
         await loadProfile(currentSession?.user || null);
       })
       .catch(() => {
+        profileRequestId += 1;
         setSession(null);
         setProfile(null);
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
-      setLoading(false);
       window.dispatchEvent(new Event('account-session-changed'));
-      if (!nextSession || event === 'SIGNED_OUT') setProfile(null);
-      if (nextSession?.user) loadProfile(nextSession.user);
+      if (!nextSession || event === 'SIGNED_OUT') {
+        loadProfile(null);
+        return;
+      }
+      setLoading(true);
+      loadProfile(nextSession.user);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -1040,6 +1048,8 @@ function Login() {
   const returnTo = typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith('/') ? location.state.returnTo : '/';
 
   const sendMagicLink = async () => {
+    setError('');
+    setMessage('');
     const email = identifier.trim().toLowerCase();
     if (!email || !email.includes('@')) {
       setError('أدخل بريداً إلكترونياً صحيحاً لإرسال رابط الدخول');

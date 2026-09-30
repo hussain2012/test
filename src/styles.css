@@ -900,7 +900,7 @@ button { cursor: pointer; }
 }
 
 .input-with-action { position: relative; display: block; min-width: 0; }
-.input-with-action input { padding-left: 78px; }
+.input-with-action input { width: 100%; min-width: 0; padding-left: 78px; }
 .reveal-password {
   position: absolute;
   left: 8px;
