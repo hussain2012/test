@@ -746,22 +746,35 @@ function ProductDetailPage() {
           </div>
           <div className="detail-content">
             {productActionMessage && <span className="product-action-message" role="status">{productActionMessage}</span>}
-            <div className="detail-kicker"><span className="category-badge">{product.category}</span>{product.productCode && <span className="product-code">كود: {product.productCode}</span>}{hasDiscount && <span dir="auto" className="detail-discount">{productDiscountLabel(product)}</span>}</div>
-            <h1>{product.name}</h1>
-            <div className="price-stack">
-              {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(finalPrice)}</strong></> : <strong>{money(product.price)}</strong>}
+            <div className="detail-topbar">
+              <div className="detail-kicker">
+                <span className="category-badge">{product.category}</span>
+                {hasDiscount && <span dir="auto" className="detail-discount">{productDiscountLabel(product)}</span>}
+              </div>
+              {(settings.maintenanceMode || productAvailabilityMode(product) !== 'ready') && (
+                <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : (productAvailabilityMode(product) === 'unavailable' ? 'unavailable' : 'available')}`}>
+                  {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (productAvailabilityMode(product) === 'unavailable' ? 'غير متوفر' : 'طلب مسبق')}
+                </div>
+              )}
             </div>
-            {(settings.maintenanceMode || productAvailabilityMode(product) !== 'ready') && <div className={`status-pill ${settings.maintenanceMode ? 'maintenance' : (productAvailabilityMode(product) === 'unavailable' ? 'unavailable' : 'available')}`}>
-              {settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (productAvailabilityMode(product) === 'unavailable' ? 'غير متوفر' : 'طلب مسبق')}
-            </div>}
+            <h1>{product.name}</h1>
+            <div className="detail-meta-row">
+              {product.productCode && <span className="product-code detail-product-code">كود المنتج: {product.productCode}</span>}
+              {hasDiscount && <span className="old-price detail-old-price">السعر السابق: {money(product.price)}</span>}
+            </div>
+            <div className="price-stack">
+              <strong>{money(finalPrice)}</strong>
+            </div>
             <p className="detail-description">{product.description}</p>
             {Array.isArray(product.variants) && product.variants.length > 0 && <div className="detail-variants">{product.variants.map((variant) => <label className="field-label" key={variant.name}>{variant.name}<select value={selectedVariants[variant.name] || ''} onChange={(event) => setSelectedVariants((current) => ({ ...current, [variant.name]: event.target.value }))} required>{variant.values.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>)}</div>}
-            <div className="quantity-row">
-              <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
-              <span>{quantity}</span>
-              <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
+            <div className="detail-purchase-row">
+              <div className="quantity-row">
+                <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
+                <span>{quantity}</span>
+                <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
+              </div>
+              <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
             </div>
-            <AddToCartButton product={{ ...product, selectedVariants }} quantity={quantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || !variantsComplete} className="primary block" label="أضف للسلة" disabledLabel={settings.maintenanceMode ? 'المتجر في وضع الصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
           </div>
         </div>
         {similarProducts.length > 0 && <section className="similar-products">
