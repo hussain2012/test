@@ -167,7 +167,7 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     discountValue: Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
     discountPercentage: productForm.discountType === 'amount' ? 0 : Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
     category: productForm.category || 'عام',
-    imageUrl: (primaryImageFile ? uploaded[0] : '') || productForm.imageUrl || images[0] || '',
+    imageUrl: (primaryFile ? uploaded[0] : '') || productForm.imageUrl || images[0] || '',
     productImages: images ?? [],
     variants: asVariants(productForm.variants),
     stockQuantity: Math.max(0, Number(productForm.stockQuantity ?? 10)),
