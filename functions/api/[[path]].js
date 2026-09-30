@@ -41,6 +41,37 @@ const defaultSettings = {
 const createSupabase = (env) => createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+const isMissingColumnError = (error) => {
+  const message = error?.message || '';
+  return error?.code === '42703' || /Could not find the '.*' column|column .* does not exist/i.test(message);
+};
+const productQuery = async (supabase, { allowLegacyFallback = true } = {}) => {
+  try {
+    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
+    if (error && isMissingColumnError(error)) {
+      if (!allowLegacyFallback) throw error;
+      return supabase.from('products').select('*');
+    }
+    if (error) throw error;
+    return supabase.from('products').select('*');
+  } catch (error) {
+    if (allowLegacyFallback && isMissingColumnError(error)) {
+      return supabase.from('products').select('*');
+    }
+    throw error;
+  }
+};
+const productPayloadWithAvailability = async (supabase, payload) => {
+  try {
+    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
+    if (error && isMissingColumnError(error)) return payload;
+    if (error) throw error;
+    return { ...payload, availabilityMode: payload.availabilityMode };
+  } catch (error) {
+    if (isMissingColumnError(error)) return payload;
+    throw error;
+  }
+};
 
 const getSession = async (request, supabase) => {
   const authorization = request.headers.get('Authorization') || '';
@@ -133,18 +164,21 @@ export async function onRequest(context) {
     }
 
     if (route === 'products' && method === 'GET') {
-      const { data, error } = await supabase.from('products').select('*').order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false });
+      const query = await productQuery(supabase);
+      const { data, error } = await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false });
       if (error) throw error;
       return json((data || []).filter(Boolean).map(normalizeProduct).filter(Boolean));
     }
     if (parts[0] === 'products' && parts.length === 2 && method === 'GET') {
-      const { data, error } = await supabase.from('products').select('*').eq('id', parts[1]).maybeSingle();
+      const query = await productQuery(supabase);
+      const { data, error } = await query.eq('id', parts[1]).maybeSingle();
       if (error) throw error;
       return data ? json(normalizeProduct(data)) : errorResponse('المنتج غير موجود', 404);
     }
     if (route === 'admin/products' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
-      const { data, error } = await supabase.from('products').select('*').order('id', { ascending: false });
+      const query = await productQuery(supabase);
+      const { data, error } = await query.order('id', { ascending: false });
       if (error) throw error;
       return json((data || []).filter(Boolean).map((row) => ({ ...normalizeProduct(row), costPrice: number(row.costPrice), profit: Number((number(row.price) - number(row.costPrice)).toFixed(2)) })).filter(Boolean));
     }
@@ -158,13 +192,14 @@ export async function onRequest(context) {
       const availabilityMode = ['ready', 'preorder', 'unavailable'].includes(body.availabilityMode)
         ? (body.availabilityMode === 'ready' && stockQuantity <= 0 ? 'unavailable' : body.availabilityMode)
         : (stockQuantity <= 0 ? 'unavailable' : (!['false', '0'].includes(String(body.inStock)) ? 'ready' : 'preorder'));
-      const { data, error } = await supabase.from('products').insert({
+      const insertPayload = {
         name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice),
         discountType: body.discountType === 'amount' ? 'amount' : 'percentage', discountValue: number(body.discountValue, number(body.discountPercentage)), discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage)),
         ...productCodeColumn(body),
         imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: body.category || 'عام', stockQuantity,
-        availabilityMode, inStock: availabilityMode === 'ready', featured: bool(body.featured), isNew: bool(body.isNew),
-      }).select().single();
+        inStock: availabilityMode === 'ready', featured: bool(body.featured), isNew: bool(body.isNew),
+      };
+      const { data, error } = await supabase.from('products').insert(await productPayloadWithAvailability(supabase, { ...insertPayload, availabilityMode })).select().single();
       if (error) throw error;
       return json(normalizeProduct(data), 201);
     }
@@ -187,16 +222,17 @@ export async function onRequest(context) {
       const availabilityMode = ['ready', 'preorder', 'unavailable'].includes(body.availabilityMode)
         ? (body.availabilityMode === 'ready' && stockQuantity <= 0 ? 'unavailable' : body.availabilityMode)
         : (stockQuantity <= 0 && existingAvailabilityMode === 'ready' ? 'unavailable' : existingAvailabilityMode);
-      const { data, error } = await supabase.from('products').update({
+      const updatePayload = {
         name: body.name ?? existing?.name, description: body.description ?? existing?.description, price: number(body.price, existing?.price), costPrice: number(body.costPrice, existing?.costPrice),
         ...productCodeColumn(body),
         discountType: body.discountType === 'amount' ? 'amount' : (body.discountType || existing?.discountType || 'percentage'),
         discountValue: number(body.discountValue, number(body.discountPercentage, number(existing?.discountValue, number(existing?.discountPercentage)))),
         discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage, number(existing?.discountPercentage))),
         imageUrl: files?.primaryImage || body.imageUrl || images[0] || existing?.imageUrl || '', productImages: images ?? [],
-        category: body.category ?? existing?.category, stockQuantity, availabilityMode, inStock: availabilityMode === 'ready',
+        category: body.category ?? existing?.category, stockQuantity, inStock: availabilityMode === 'ready',
         featured: body.featured === undefined ? existing?.featured : bool(body.featured), isNew: body.isNew === undefined ? existing?.isNew : bool(body.isNew),
-      }).eq('id', parts[2]).select().single();
+      };
+      const { data, error } = await supabase.from('products').update(await productPayloadWithAvailability(supabase, { ...updatePayload, availabilityMode })).eq('id', parts[2]).select().single();
       if (error) throw error;
       if (!data) return errorResponse('تعذر استرجاع المنتج بعد التحديث', 404);
       return json(normalizeProduct(data));
