@@ -1391,11 +1391,13 @@ function ProductsAdmin() {
             <label>{form.discountType === 'amount' ? 'مبلغ الخصم بالدينار' : 'نسبة الخصم %'}<input placeholder="0 بدون خصم" type="number" min="0" max={form.discountType === 'amount' ? form.price || undefined : 100} step={form.discountType === 'amount' ? 1 : 0.01} value={form.discountValue} onChange={(event) => setForm({ ...form, discountValue: event.target.value, discountPercentage: form.discountType === 'amount' ? 0 : event.target.value })} /></label>
             <label>الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm((current) => {
               const stockQuantity = event.target.value;
-              const availabilityMode = Number(stockQuantity) <= 0 ? 'unavailable' : (current.availabilityMode === 'unavailable' ? 'ready' : current.availabilityMode);
-              return { ...current, stockQuantity, availabilityMode, inStock: availabilityMode === 'ready' };
+              const nextAvailabilityMode = Number(stockQuantity) <= 0
+                ? (current.availabilityMode === 'preorder' ? 'preorder' : 'unavailable')
+                : (current.availabilityMode === 'unavailable' ? 'ready' : current.availabilityMode);
+              return { ...current, stockQuantity, availabilityMode: nextAvailabilityMode, inStock: nextAvailabilityMode === 'ready' };
             })} /></label>
             <div className="product-editor-checks">
-              <label className="check-label"><input type="radio" name="product-stock-mode" checked={form.availabilityMode === 'ready'} disabled={Number(form.stockQuantity) <= 0} onChange={() => setForm({ ...form, availabilityMode: 'ready', inStock: true })} />جاهز</label>
+              <label className="check-label"><input type="radio" name="product-stock-mode" checked={form.availabilityMode === 'ready'} onChange={() => setForm({ ...form, availabilityMode: 'ready', inStock: true })} />جاهز</label>
               <label className="check-label"><input type="radio" name="product-stock-mode" checked={form.availabilityMode === 'preorder'} onChange={() => setForm({ ...form, availabilityMode: 'preorder', inStock: false })} />طلب مسبق</label>
               <label className="check-label"><input type="radio" name="product-stock-mode" checked={form.availabilityMode === 'unavailable'} onChange={() => setForm({ ...form, availabilityMode: 'unavailable', inStock: false })} />غير متوفر</label>
               <label className="check-label"><input type="checkbox" checked={form.isNew} onChange={(event) => setForm({ ...form, isNew: event.target.checked })} />منتج جديد</label>
