@@ -83,8 +83,39 @@ function AuthProvider({ children }) {
         return;
       }
       try {
-        const { data } = await supabase.from('profiles').select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').eq('id', user.id).maybeSingle();
-        if (requestId === profileRequestId) setProfile(data || null);
+        const identifier = String(user.email || user.phone || '').trim().toLowerCase();
+        const { data: currentProfile } = await supabase.from('profiles').select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').eq('id', user.id).maybeSingle();
+
+        if (!currentProfile && identifier) {
+          const { data: invite } = await supabase.from('admin_invites').select('identifier').eq('identifier', identifier).maybeSingle();
+          if (invite) {
+            const { data: createdProfile } = await supabase.from('profiles').upsert({
+              id: user.id,
+              identifier,
+              role: 'admin',
+              isOwner: false,
+              displayName: user.user_metadata?.displayName || '',
+              pictureUrl: user.user_metadata?.pictureUrl || '',
+            }, { onConflict: 'id' }).select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').maybeSingle();
+            if (requestId === profileRequestId) setProfile(createdProfile || { id: user.id, identifier, role: 'admin' });
+            return;
+          }
+        }
+
+        if (currentProfile && currentProfile.role !== 'admin' && identifier) {
+          const { data: invite } = await supabase.from('admin_invites').select('identifier').eq('identifier', identifier).maybeSingle();
+          if (invite) {
+            const { data: promotedProfile } = await supabase.from('profiles')
+              .update({ role: 'admin' })
+              .eq('id', user.id)
+              .select('id, identifier, role, "isOwner", "displayName", "pictureUrl"')
+              .maybeSingle();
+            if (requestId === profileRequestId) setProfile(promotedProfile || { ...currentProfile, role: 'admin' });
+            return;
+          }
+        }
+
+        if (requestId === profileRequestId) setProfile(currentProfile || null);
       } catch {
         if (requestId === profileRequestId) setProfile(null);
       }
