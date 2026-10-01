@@ -85,6 +85,19 @@ const authErrorMessage = (error, fallback) => {
   if (message.includes('already registered') || message.includes('user already')) return 'هذا البريد مسجل مسبقاً.';
   return fallback;
 };
+const supabaseErrorMessage = (error, fallback) => {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+  if (code === 'PGRST116' || message.includes('cannot coerce the result to a single json object')) {
+    return 'لم يرجع Supabase سجل الإعدادات بعد الحفظ. قد تمنع صلاحية RLS التعديل، أو قد يكون سجل الإعدادات غير موجود.';
+  }
+  if (code === '42501' || message.includes('row-level security') || message.includes('permission denied')) {
+    return 'ما عندك صلاحية لتنفيذ العملية. تحقق من دور الحساب وسياسات RLS في Supabase.';
+  }
+  if (code === '23505') return 'هذه البيانات موجودة مسبقاً.';
+  if (code === '23503') return 'تعذر الحفظ لوجود بيانات مرتبطة بهذا السجل.';
+  return fallback;
+};
 
 const AuthContext = createContext(null);
 
@@ -115,7 +128,7 @@ function AuthProvider({ children }) {
       } catch (error) {
         if (requestId === profileRequestId) {
           setProfile(null);
-          setProfileError([error?.message || 'تعذر قراءة ملف الحساب من Supabase', error?.code && `(${error.code})`].filter(Boolean).join(' '));
+          setProfileError([supabaseErrorMessage(error, 'تعذر قراءة ملف الحساب من Supabase'), error?.code && `(رمز الخطأ: ${error.code})`].filter(Boolean).join(' '));
         }
       } finally {
         if (requestId === profileRequestId) setLoading(false);
@@ -133,7 +146,7 @@ function AuthProvider({ children }) {
         profileRequestId += 1;
         setSession(null);
         setProfile(null);
-        setProfileError([error?.message || 'تعذر استعادة جلسة Supabase', error?.code && `(${error.code})`].filter(Boolean).join(' '));
+        setProfileError([supabaseErrorMessage(error, 'تعذر استعادة جلسة Supabase'), error?.code && `(رمز الخطأ: ${error.code})`].filter(Boolean).join(' '));
         setLoading(false);
       });
 
@@ -457,7 +470,6 @@ function AccountPage() {
           <Link to="/account/favorites" className={`account-menu-row ${activePanel === 'favorites' ? 'active' : ''}`}><span className="account-menu-icon">⌖</span><strong>خيارات الطلب المفضلة</strong><span className="account-menu-arrow">‹</span></Link>
           <Link to="/account/products" className={`account-menu-row ${activePanel === 'products' ? 'active' : ''}`}><span className="account-menu-icon">♥</span><strong>المنتجات المفضلة</strong><span className="account-menu-arrow">‹</span></Link>
           <Link to="/account/policy" className={`account-menu-row ${activePanel === 'policy' ? 'active' : ''}`}><span className="account-menu-icon">▣</span><strong>{settings.policyTitle}</strong><span className="account-menu-arrow">‹</span></Link>
-          <h2>الحساب</h2>
           <button type="button" className="account-menu-row account-logout-row" onClick={() => signOut(setError)}><span className="account-menu-icon">↪</span><strong>تسجيل الخروج</strong><span className="account-menu-arrow">‹</span></button>
         </section>
         <div className="account-sections">
@@ -1784,6 +1796,8 @@ function DiscountsAdmin() {
 }
 
 function AdminsAdmin() {
+  const { profile } = useAuth();
+  const canRemoveAdmins = profile?.isOwner === true;
   const [data, setData] = useState({ admins: [], invites: [] });
   const [loadError, setLoadError] = useState('');
   const [identifier, setIdentifier] = useState('');
@@ -1797,7 +1811,7 @@ function AdminsAdmin() {
       invites: Array.isArray(result?.invites) ? result.invites : [],
     }))
     .then((result) => { setLoadError(''); setData(result); })
-    .catch((reason) => { setLoadError(reason.message || 'تعذر تحميل المشرفين من Supabase'); setData({ admins: [], invites: [] }); });
+    .catch((reason) => { setLoadError(supabaseErrorMessage(reason, 'تعذر تحميل المشرفين من Supabase')); setData({ admins: [], invites: [] }); });
   useEffect(() => { load(); }, []);
 
   const addAdmin = async (event) => {
@@ -1816,8 +1830,13 @@ function AdminsAdmin() {
   };
 
   const handleRemoveAdmin = async (value) => {
-    await removeAdmin(value);
-    load();
+    if (!canRemoveAdmins) return;
+    try {
+      await removeAdmin(value);
+      load();
+    } catch (reason) {
+      setError(supabaseErrorMessage(reason, 'تعذر إزالة المشرف'));
+    }
   };
 
   return (
@@ -1825,7 +1844,7 @@ function AdminsAdmin() {
       <div className="admin-table">
         <div className="table-title manager-title"><h2>المشرفون</h2><button type="button" className="manager-add-button" onClick={() => { setShowAddForm((value) => !value); setMessage(''); setError(''); }}>+</button></div>
         {loadError && <p className="error" role="alert">خطأ Supabase: {loadError}</p>}
-        {(Array.isArray(data.admins) ? data.admins : []).map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong>{admin.isOwner ? <span className="owner-label">مالك</span> : <><span>مشرف</span><button type="button" className="danger" onClick={() => handleRemoveAdmin(admin.identifier)}>إزالة</button></>}</div>)}
+        {(Array.isArray(data.admins) ? data.admins : []).map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong>{admin.isOwner ? <span className="owner-label">مالك</span> : <><span>مشرف</span>{canRemoveAdmins && <button type="button" className="danger" onClick={() => handleRemoveAdmin(admin.identifier)}>إزالة</button>}</>}</div>)}
         {!data.admins.length && <p className="empty">لا يوجد مشرفون</p>}
       </div>
 
@@ -1836,7 +1855,7 @@ function AdminsAdmin() {
         {error && <p className="error">{error}</p>}
       </form>}
 
-      {!!(Array.isArray(data.invites) && data.invites.length) && <div className="admin-table"><div className="table-title"><h2>الدعوات المعلقة</h2></div>{(Array.isArray(data.invites) ? data.invites : []).map((invite) => <div className="table-row manager-row" key={invite.identifier}><strong>{invite.identifier}</strong><span>بانتظار التسجيل</span><button type="button" className="danger" onClick={() => handleRemoveAdmin(invite.identifier)}>إلغاء</button></div>)}</div>}
+      {!!(Array.isArray(data.invites) && data.invites.length) && <div className="admin-table"><div className="table-title"><h2>الدعوات المعلقة</h2></div>{(Array.isArray(data.invites) ? data.invites : []).map((invite) => <div className="table-row manager-row" key={invite.identifier}><strong>{invite.identifier}</strong><span>بانتظار التسجيل</span>{canRemoveAdmins && <button type="button" className="danger" onClick={() => handleRemoveAdmin(invite.identifier)}>إلغاء</button>}</div>)}</div>}
     </div>
   );
 }
@@ -1875,7 +1894,7 @@ function SiteSettingsAdmin() {
       setSettings(savedSettings);
       if (!automatic) setStatusMessage('تم حفظ إعدادات المتجر');
     } catch (reason) {
-      setStatusError(reason.message || 'تعذر حفظ إعدادات المتجر');
+      setStatusError(supabaseErrorMessage(reason, 'تعذر حفظ إعدادات المتجر'));
       return;
     }
   };
