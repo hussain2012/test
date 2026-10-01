@@ -11,10 +11,13 @@ const empty = (status = 204) => new Response(null, {
 const errorResponse = (message, status = 500) => json({ error: message }, status);
 const bool = (value) => value === true || value === 'true' || value === 1 || value === '1';
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-const productCodeColumn = (body) => {
-  if (!Object.prototype.hasOwnProperty.call(body ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(body ?? {}, 'product_code')) return {};
+const generateProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
+const productCodeColumn = (body, generateIfMissing = false) => {
+  if (!Object.prototype.hasOwnProperty.call(body ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(body ?? {}, 'product_code')) {
+    return generateIfMissing ? { product_code: generateProductCode() } : {};
+  }
   const value = String(body?.productCode ?? body?.product_code ?? '').trim().toUpperCase();
-  return { product_code: value || null };
+  return { product_code: value || (generateIfMissing ? generateProductCode() : null) };
 };
 const parseJson = (value, fallback = []) => {
   if (Array.isArray(value)) return value;
@@ -194,7 +197,7 @@ export async function onRequest(context) {
       const insertPayload = {
         name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice),
         discountType: body.discountType === 'amount' ? 'amount' : 'percentage', discountValue: number(body.discountValue, number(body.discountPercentage)), discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage)),
-        ...productCodeColumn(body),
+        ...productCodeColumn(body, true),
         imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: String(body.category || '').trim(), stockQuantity,
         inStock: availabilityMode === 'ready', featured: bool(body.featured), isNew: bool(body.isNew),
       };

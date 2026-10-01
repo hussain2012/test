@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = 3000;
+const generateProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
 const supabaseUrl = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const supabaseKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const supabaseServer = supabaseUrl && supabaseKey
@@ -370,7 +371,7 @@ app.get('/api/admin/products', async (req, res) => {
 app.post('/api/admin/products', productUpload, async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   if (!requireSupabase(res)) return;
-  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, productCode, featured, isNew } = req.body;
+  const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, featured, isNew } = req.body;
   if (!name || !description || !price) return res.status(400).json({ error: 'يرجى إكمال بيانات المنتج' });
 
   const uploadedImages = (req.files?.productImages ?? []).map(uploadedImageUrl);
@@ -383,7 +384,7 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
     price: Number(price),
     costPrice: Number(costPrice || 0),
     discountPercentage: Number(discountPercentage || 0),
-    ...(productCode !== undefined ? { product_code: String(productCode || '').trim().toUpperCase() || null } : {}),
+    product_code: generateProductCode(),
     imageUrl: primaryImage,
     productImages: images ?? [],
     category: String(category || '').trim(),

@@ -29,6 +29,11 @@ const productAvailabilityMode = (product) => product?.availabilityMode
   || (Number(product?.stockQuantity ?? 0) <= 0 ? 'unavailable' : (product?.inStock ? 'ready' : 'preorder'));
 const variantChoiceLabel = (choice) => String(typeof choice === 'object' ? choice?.label ?? choice?.value ?? '' : choice ?? '').trim();
 const variantChoicePrice = (choice) => Number(typeof choice === 'object' ? choice?.price || 0 : 0);
+const productVariantPresets = [
+  { name: 'اللون', values: ['أسود', 'أبيض', 'بني'] },
+  { name: 'الوزن', values: ['250 غرام', '500 غرام', '1 كيلوغرام'] },
+  { name: 'الحجم', values: ['صغير', 'وسط', 'كبير'] },
+];
 const selectedChoices = (variant, selection) => {
   const values = Array.isArray(selection) ? selection : (selection ? [selection] : []);
   return values.map((value) => (variant.values || []).find((choice) => variantChoiceLabel(choice) === value)).filter(Boolean);
@@ -1302,7 +1307,7 @@ function Overview() {
 }
 
 function ProductsAdmin() {
-  const emptyForm = { name: '', productCode: '', description: '', price: '', costPrice: '', discountType: 'percentage', discountValue: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, availabilityMode: 'ready', inStock: true, isNew: false };
+  const emptyForm = { name: '', description: '', price: '', costPrice: '', discountType: 'percentage', discountValue: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, availabilityMode: 'ready', inStock: true, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
@@ -1381,8 +1386,36 @@ function ProductsAdmin() {
     }));
   };
 
-  const addVariant = () => {
-    setForm((current) => ({ ...current, variants: [...current.variants, { name: '', valuesText: '', selectionMode: 'single', priceMode: 'add', required: true, maxSelections: 1 }] }));
+  const addVariant = (preset) => {
+    const options = (preset?.values || []).map((label) => ({ label, price: '', hasPrice: false }));
+    setForm((current) => ({ ...current, variants: [...current.variants, { name: preset?.name || '', options, selectionMode: 'single', priceMode: 'add', required: true, maxSelections: 1 }] }));
+  };
+
+  const updateVariantOption = (variantIndex, optionIndex, field, value) => {
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant, index) => index === variantIndex
+        ? { ...variant, options: (variant.options || []).map((option, itemIndex) => itemIndex === optionIndex ? { ...option, [field]: value } : option) }
+        : variant),
+    }));
+  };
+
+  const addVariantOption = (variantIndex) => {
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant, index) => index === variantIndex
+        ? { ...variant, options: [...(variant.options || []), { label: '', price: '', hasPrice: false }] }
+        : variant),
+    }));
+  };
+
+  const removeVariantOption = (variantIndex, optionIndex) => {
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant, index) => index === variantIndex
+        ? { ...variant, options: (variant.options || []).filter((_, itemIndex) => itemIndex !== optionIndex) }
+        : variant),
+    }));
   };
 
   const removeVariant = (index) => {
@@ -1402,10 +1435,10 @@ function ProductsAdmin() {
       priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
       required: variant.required !== false,
       maxSelections: Math.max(1, Number(variant.maxSelections) || 1),
-      values: String(variant.valuesText || '').split(/\r?\n/).flatMap((line) => line.includes('|') ? [line] : line.split(/[,،]/)).map((line) => {
-        const [label, price] = line.split('|');
-        return { label: String(label || '').trim(), price: Number(String(price || '').trim()) || 0 };
-      }).filter((choice) => choice.label),
+      values: (Array.isArray(variant.options) ? variant.options : []).map((option) => ({
+        label: String(option.label || '').trim(),
+        price: option.hasPrice ? Number(option.price) || 0 : 0,
+      })).filter((choice) => choice.label),
     })).filter((variant) => variant.name && variant.values.length);
     const availabilityMode = Number(form.stockQuantity) <= 0 && form.availabilityMode === 'ready' ? 'unavailable' : form.availabilityMode;
 
@@ -1474,11 +1507,10 @@ function ProductsAdmin() {
         priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
         required: variant.required !== false,
         maxSelections: Math.max(1, Number(variant.maxSelections) || 1),
-        valuesText: Array.isArray(variant.values) ? variant.values.map((choice) => {
-          const label = variantChoiceLabel(choice);
+        options: Array.isArray(variant.values) ? variant.values.map((choice) => {
           const price = variantChoicePrice(choice);
-          return price ? `${label} | ${price}` : label;
-        }).join('\n') : '',
+          return { label: variantChoiceLabel(choice), price: price ? String(price) : '', hasPrice: price > 0 };
+        }) : [],
       })),
       stockQuantity: product.stockQuantity ?? 0,
       availabilityMode: productAvailabilityMode(product),
@@ -1497,41 +1529,55 @@ function ProductsAdmin() {
         <header className="product-editor-heading"><div><p className="eyebrow">كتالوج المتجر</p><h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2></div>{editingId && <button type="button" className="secondary-button" onClick={resetForm}>إلغاء التعديل</button>}</header>
 
         <section className="product-editor-section" aria-labelledby="product-info-title">
-          <div className="product-editor-section-heading"><h3 id="product-info-title">معلومات المنتج</h3><p>الاسم والتصنيف والتفاصيل التي ستظهر للزبائن.</p></div>
+          <div className="product-editor-section-heading"><h3 id="product-info-title">معلومات المنتج</h3></div>
           <div className="product-editor-fields">
-            <label>اسم المنتج<input placeholder="مثال: حقيبة يومية" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-            <label>كود المنتج<input placeholder="مثال: PRD-001" value={form.productCode} onChange={(event) => setForm({ ...form, productCode: event.target.value })} /></label>
-            <label>التصنيف<input placeholder="مثال: حقائب" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
-            <label className="product-editor-wide">الوصف<textarea placeholder="اكتب وصفًا مختصرًا وواضحًا للمنتج" required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+            <label>اسم المنتج<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+            <label>التصنيف<input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
+            <label className="product-editor-wide">الوصف<textarea required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="product-variants product-editor-wide">
-              <div className="product-variants-heading"><div><strong>خيارات المنتج</strong><small>أضف الاسم والخيارات، مثل الألوان أو الأحجام.</small></div><button type="button" className="add-variant-button" onClick={addVariant}>+ إضافة خيار</button></div>
+              <div className="product-variants-heading"><strong>خيارات المنتج</strong><button type="button" className="add-variant-button" onClick={() => addVariant()}>+ مجموعة فارغة</button></div>
+              <div className="product-variant-presets">
+                <span>أمثلة جاهزة:</span>
+                {productVariantPresets.map((preset) => <button type="button" key={preset.name} onClick={() => addVariant(preset)}>{preset.name}</button>)}
+              </div>
               {form.variants.map((variant, index) => <div className="product-variant-row" key={`variant-${index}`}>
-                <label>اسم الخيار<input placeholder="مثال: اللون" value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
-                <label className="product-variant-values">الخيارات<textarea placeholder={'أحمر\nأسود\nأزرق'} value={variant.valuesText} onChange={(event) => updateVariant(index, 'valuesText', event.target.value)} /></label>
-                <details className="product-variant-advanced">
-                  <summary>إعدادات متقدمة</summary>
-                  <div className="product-variant-advanced-fields">
-                    <label>نوع الاختيار<select value={variant.selectionMode} onChange={(event) => updateVariant(index, 'selectionMode', event.target.value)}><option value="single">اختيار واحد</option><option value="multiple">اختيارات متعددة</option></select></label>
-                    <label>طريقة السعر<select value={variant.priceMode} onChange={(event) => updateVariant(index, 'priceMode', event.target.value)}><option value="add">إضافة على السعر</option><option value="replace">السعر الكامل للخيار</option></select></label>
-                    {variant.selectionMode === 'multiple' && <label>الحد الأعلى<input type="number" min="1" value={variant.maxSelections} onChange={(event) => updateVariant(index, 'maxSelections', event.target.value)} /></label>}
-                    <label className="check-label"><input type="checkbox" checked={variant.required} onChange={(event) => updateVariant(index, 'required', event.target.checked)} />مجموعة مطلوبة</label>
-                    <p className="product-variant-price-hint">لإضافة سعر لخيار، اكتب بعده | ثم السعر، مثال: أزرق | 1500.</p>
+                <label>اسم المجموعة<input value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
+                <div className="product-variant-selection">
+                  <span>نوع الاختيار</span>
+                  <div role="group" aria-label="نوع الاختيار" className="variant-mode-control">
+                    <button type="button" className={variant.selectionMode === 'single' ? 'active' : ''} aria-pressed={variant.selectionMode === 'single'} onClick={() => updateVariant(index, 'selectionMode', 'single')}>واحد</button>
+                    <button type="button" className={variant.selectionMode === 'multiple' ? 'active' : ''} aria-pressed={variant.selectionMode === 'multiple'} onClick={() => updateVariant(index, 'selectionMode', 'multiple')}>متعدد</button>
                   </div>
+                  <label className="check-label"><input type="checkbox" checked={variant.required} onChange={(event) => updateVariant(index, 'required', event.target.checked)} />مطلوب</label>
+                </div>
+                {variant.selectionMode === 'multiple' && <label className="variant-max-selections">أقصى عدد<input type="number" min="1" value={variant.maxSelections} onChange={(event) => updateVariant(index, 'maxSelections', event.target.value)} /></label>}
+                <div className="product-option-list">
+                  {(variant.options || []).map((option, optionIndex) => <div className={`product-option-row ${option.hasPrice ? 'has-price' : ''}`} key={`option-${index}-${optionIndex}`}>
+                    <input aria-label={`قيمة الخيار ${optionIndex + 1}`} value={option.label} onChange={(event) => updateVariantOption(index, optionIndex, 'label', event.target.value)} />
+                    <label className="check-label"><input type="checkbox" checked={Boolean(option.hasPrice)} onChange={(event) => updateVariantOption(index, optionIndex, 'hasPrice', event.target.checked)} />له سعر</label>
+                    {option.hasPrice && <input type="number" min="0" aria-label={`سعر الخيار ${optionIndex + 1}`} value={option.price} onChange={(event) => updateVariantOption(index, optionIndex, 'price', event.target.value)} />}
+                    <button type="button" className="danger option-remove" aria-label={`حذف قيمة الخيار ${optionIndex + 1}`} onClick={() => removeVariantOption(index, optionIndex)}>حذف</button>
+                  </div>)}
+                  <button type="button" className="add-option-button" onClick={() => addVariantOption(index)}>+ إضافة قيمة</button>
+                </div>
+                <details className="product-variant-advanced">
+                  <summary>طريقة احتساب السعر</summary>
+                  <label>السعر<select value={variant.priceMode} onChange={(event) => updateVariant(index, 'priceMode', event.target.value)}><option value="add">إضافة على سعر المنتج</option><option value="replace">السعر الكامل للخيار</option></select></label>
                 </details>
-                <button type="button" className="remove-variant-button" aria-label={`حذف المتغير ${variant.name || index + 1}`} onClick={() => removeVariant(index)}>حذف</button>
+                <button type="button" className="remove-variant-button" aria-label={`حذف المجموعة ${variant.name || index + 1}`} onClick={() => removeVariant(index)}>حذف المجموعة</button>
               </div>)}
-              {!form.variants.length && <p className="product-variants-empty">ماكو خيارات مضافة لهذا المنتج.</p>}
+              {!form.variants.length && <p className="product-variants-empty">اختَر مثالاً جاهزاً أو أضف مجموعة فارغة.</p>}
             </div>
           </div>
         </section>
 
         <section className="product-editor-section" aria-labelledby="product-price-title">
-          <div className="product-editor-section-heading"><h3 id="product-price-title">السعر والمخزون</h3><p>حدد الأسعار والكمية وحالة توفر المنتج.</p></div>
+          <div className="product-editor-section-heading"><h3 id="product-price-title">السعر والمخزون</h3></div>
           <div className="product-editor-fields">
             <label>سعر البيع<input type="number" min="0" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label>
             <label>سعر الشراء<input type="number" min="0" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /></label>
             <label>نوع الخصم<select value={form.discountType} onChange={(event) => setForm({ ...form, discountType: event.target.value })}><option value="percentage">نسبة مئوية</option><option value="amount">مبلغ ثابت</option></select></label>
-            <label>{form.discountType === 'amount' ? 'مبلغ الخصم بالدينار' : 'نسبة الخصم %'}<input placeholder="0 بدون خصم" type="number" min="0" max={form.discountType === 'amount' ? form.price || undefined : 100} step={form.discountType === 'amount' ? 1 : 0.01} value={form.discountValue} onChange={(event) => setForm({ ...form, discountValue: event.target.value, discountPercentage: form.discountType === 'amount' ? 0 : event.target.value })} /></label>
+            <label>{form.discountType === 'amount' ? 'مبلغ الخصم بالدينار' : 'نسبة الخصم %'}<input type="number" min="0" max={form.discountType === 'amount' ? form.price || undefined : 100} step={form.discountType === 'amount' ? 1 : 0.01} value={form.discountValue} onChange={(event) => setForm({ ...form, discountValue: event.target.value, discountPercentage: form.discountType === 'amount' ? 0 : event.target.value })} /></label>
             <label>الكمية في المخزون<input type="number" min="0" value={form.stockQuantity} onChange={(event) => setForm((current) => {
               const stockQuantity = event.target.value;
               const nextAvailabilityMode = Number(stockQuantity) <= 0
@@ -1549,7 +1595,7 @@ function ProductsAdmin() {
         </section>
 
         <section className="product-editor-section" aria-labelledby="product-images-title">
-          <div className="product-editor-section-heading"><h3 id="product-images-title">صور المنتج</h3><p>اختر صورة رئيسية وصورًا إضافية للمعرض.</p></div>
+          <div className="product-editor-section-heading"><h3 id="product-images-title">صور المنتج</h3></div>
           <div className="product-editor-fields">
             <label className="product-file-field">الصورة الرئيسية<input ref={primaryImageInputRef} type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
             <label className="product-file-field">صور إضافية<input ref={additionalImageInputRef} type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>

@@ -20,6 +20,7 @@ end;
 $$;
 
 alter table public.products add column if not exists product_code text;
+alter table public.products alter column product_code set default ('PRD-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10)));
 alter table public.products add column if not exists variants jsonb not null default '[]'::jsonb;
 
 drop index if exists public.products_product_code_unique;

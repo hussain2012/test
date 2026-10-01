@@ -141,10 +141,13 @@ export async function adminProducts() {
   }));
 }
 const safeUploadName = (file) => String(file?.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
-const productCodeColumn = (form) => {
-  if (!Object.prototype.hasOwnProperty.call(form ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(form ?? {}, 'product_code')) return {};
+const generatedProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
+const productCodeColumn = (form, generateIfMissing = false) => {
+  if (!Object.prototype.hasOwnProperty.call(form ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(form ?? {}, 'product_code')) {
+    return generateIfMissing ? { product_code: generatedProductCode() } : {};
+  }
   const value = String(form?.productCode ?? form?.product_code ?? '').trim().toUpperCase();
-  return { product_code: value || null };
+  return { product_code: value || (generateIfMissing ? generatedProductCode() : null) };
 };
 async function uploadFiles(primaryImageFile, additionalImageFiles = []) { const urls = []; for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) { const path = `products/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); urls.push(supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl); } return urls; }
 export async function uploadCategoryImage(file) { const path = `categories/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl; }
@@ -158,7 +161,7 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     : (Number(productForm.stockQuantity ?? 0) <= 0 ? 'unavailable' : (productForm.inStock ? 'ready' : 'preorder'));
   const payload = {
     name: productForm.name,
-    ...productCodeColumn(productForm),
+    ...productCodeColumn(productForm, true),
     description: productForm.description,
     price: Number(productForm.price),
     costPrice: Number(productForm.costPrice || 0),
@@ -207,6 +210,7 @@ export async function updateProduct(idOrForm, form, primaryFile, additionalFiles
   // 4. تجهيز البيانات
   const rawPayload = {
     ...actualForm,
+    ...productCodeColumn(actualForm, true),
     availabilityMode: ['ready', 'preorder', 'unavailable'].includes(actualForm?.availabilityMode)
       ? (actualForm.availabilityMode === 'ready' && Number(actualForm.stockQuantity ?? 0) <= 0 ? 'unavailable' : actualForm.availabilityMode)
       : (Number(actualForm?.stockQuantity ?? 0) <= 0 ? 'unavailable' : (actualForm?.inStock ? 'ready' : 'preorder')),
@@ -225,6 +229,7 @@ export async function updateProduct(idOrForm, form, primaryFile, additionalFiles
 
   // حذف الـ id من الحمولة حتى لا يتعارض مع استعلام Supabase
   delete payload.id;
+  delete payload.productCode;
 
   // 5. تنفيذ التحديث في Supabase
   const { data, error } = await supabase
