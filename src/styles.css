@@ -1778,7 +1778,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .settings-category-preview, .settings-category-preview img, .settings-category-preview .image-empty { width: 56px; height: 56px; min-height: 56px; object-fit: cover; }
 .settings-category-image { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
 .settings-category-image input { width: 100%; max-width: 190px; font-size: 10px; }
-.settings-category-actions { display: flex; align-items: center; gap: 7px; }
+.settings-category-actions { display: flex; align-items: center; align-self: end; gap: 7px; }
 .settings-category-actions .secondary-button, .settings-category-actions .danger { min-height: 36px; padding: 6px 10px; font-size: 11px; white-space: nowrap; }
 .settings-category-actions .danger:disabled { opacity: 0.45; cursor: not-allowed; }
 
