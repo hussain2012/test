@@ -1504,17 +1504,23 @@ function ProductsAdmin() {
             <label>التصنيف<input placeholder="مثال: حقائب" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
             <label className="product-editor-wide">الوصف<textarea placeholder="اكتب وصفًا مختصرًا وواضحًا للمنتج" required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="product-variants product-editor-wide">
-              <div className="product-variants-heading"><div><strong>خيارات المنتج</strong><small>أضف الوزن أو طريقة الاختيار أو الإضافات. اكتب السعر بعد | إذا كان للخيار سعر.</small></div><button type="button" className="add-variant-button" onClick={addVariant}>+ إضافة مجموعة</button></div>
+              <div className="product-variants-heading"><div><strong>خيارات المنتج</strong><small>أضف الاسم والخيارات، مثل الألوان أو الأحجام.</small></div><button type="button" className="add-variant-button" onClick={addVariant}>+ إضافة خيار</button></div>
               {form.variants.map((variant, index) => <div className="product-variant-row" key={`variant-${index}`}>
-                <label>اسم المتغير<input placeholder="مثال: اللون" value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
-                <label>نوع الاختيار<select value={variant.selectionMode} onChange={(event) => updateVariant(index, 'selectionMode', event.target.value)}><option value="single">اختيار واحد</option><option value="multiple">اختيارات متعددة</option></select></label>
-                <label>طريقة السعر<select value={variant.priceMode} onChange={(event) => updateVariant(index, 'priceMode', event.target.value)}><option value="add">إضافة على السعر</option><option value="replace">السعر الكامل للخيار</option></select></label>
-                {variant.selectionMode === 'multiple' && <label>الحد الأعلى<input type="number" min="1" value={variant.maxSelections} onChange={(event) => updateVariant(index, 'maxSelections', event.target.value)} /></label>}
-                <label className="check-label"><input type="checkbox" checked={variant.required} onChange={(event) => updateVariant(index, 'required', event.target.checked)} />مجموعة مطلوبة</label>
-                <label className="product-variant-values">الخيارات<textarea placeholder={'حبوب كاملة\nطحين إسبريسو\nهيل مطحون | 1500'} value={variant.valuesText} onChange={(event) => updateVariant(index, 'valuesText', event.target.value)} /></label>
+                <label>اسم الخيار<input placeholder="مثال: اللون" value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
+                <label className="product-variant-values">الخيارات<textarea placeholder={'أحمر\nأسود\nأزرق'} value={variant.valuesText} onChange={(event) => updateVariant(index, 'valuesText', event.target.value)} /></label>
+                <details className="product-variant-advanced">
+                  <summary>إعدادات متقدمة</summary>
+                  <div className="product-variant-advanced-fields">
+                    <label>نوع الاختيار<select value={variant.selectionMode} onChange={(event) => updateVariant(index, 'selectionMode', event.target.value)}><option value="single">اختيار واحد</option><option value="multiple">اختيارات متعددة</option></select></label>
+                    <label>طريقة السعر<select value={variant.priceMode} onChange={(event) => updateVariant(index, 'priceMode', event.target.value)}><option value="add">إضافة على السعر</option><option value="replace">السعر الكامل للخيار</option></select></label>
+                    {variant.selectionMode === 'multiple' && <label>الحد الأعلى<input type="number" min="1" value={variant.maxSelections} onChange={(event) => updateVariant(index, 'maxSelections', event.target.value)} /></label>}
+                    <label className="check-label"><input type="checkbox" checked={variant.required} onChange={(event) => updateVariant(index, 'required', event.target.checked)} />مجموعة مطلوبة</label>
+                    <p className="product-variant-price-hint">لإضافة سعر لخيار، اكتب بعده | ثم السعر، مثال: أزرق | 1500.</p>
+                  </div>
+                </details>
                 <button type="button" className="remove-variant-button" aria-label={`حذف المتغير ${variant.name || index + 1}`} onClick={() => removeVariant(index)}>حذف</button>
               </div>)}
-              {!form.variants.length && <p className="product-variants-empty">لا توجد متغيرات. أضف متغيرًا إذا كان المنتج متاحًا بأكثر من خيار.</p>}
+              {!form.variants.length && <p className="product-variants-empty">ماكو خيارات مضافة لهذا المنتج.</p>}
             </div>
           </div>
         </section>

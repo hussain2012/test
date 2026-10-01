@@ -1504,6 +1504,11 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .product-variant-row > label input { width: 100%; min-height: 40px; font-size: 12px; }
 .product-variant-row > .product-variant-values { grid-column: 1 / -1; }
 .product-variant-row .product-variant-values textarea { min-height: 100px; font-family: inherit; white-space: pre; }
+.product-variant-advanced { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 9px; }
+.product-variant-advanced summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
+.product-variant-advanced-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 10px; }
+.product-variant-advanced-fields > label { display: grid; gap: 5px; min-width: 0; color: var(--text); font-size: 11px; font-weight: 700; }
+.product-variant-price-hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 11px; font-weight: 400; }
 .product-variant-row .check-label { display: flex; align-items: center; gap: 8px; }
 .product-variant-row .check-label input { width: 16px; height: 16px; }
 .product-variant-row .remove-variant-button { grid-column: 1 / -1; justify-self: start; min-height: 38px; padding: 6px 9px; border: 1px solid rgba(200, 60, 53, 0.45); border-radius: 3px; background: var(--paper); color: var(--danger); font-size: 11px; }
@@ -2224,6 +2229,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .product-editor-wide { grid-column: auto; }
   .product-variant-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-variant-row .remove-variant-button { grid-column: 1 / -1; justify-self: start; }
+  .product-variant-advanced-fields { grid-template-columns: minmax(0, 1fr); }
   .product-editor-checks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
   .product-editor-actions { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
   .settings-form { padding: 0; }
