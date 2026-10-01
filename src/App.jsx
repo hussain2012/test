@@ -48,7 +48,6 @@ const getProductOptionPrice = (product, selectedVariants) => {
     .reduce((total, choice) => total + variantChoicePrice(choice), 0);
   return Number((discountedBase + extras).toFixed(2));
 };
-const SITE_SETTINGS_CACHE_KEY = 'site-settings-cache';
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
 const cartItemKey = (item) => `${item.id}-${variantKey(item.selectedVariants)}`;
@@ -74,7 +73,7 @@ const getStoreCategories = (configuredCategories, products) => {
 };
 const authRedirectUrl = () => typeof window !== 'undefined'
   ? window.location.origin
-  : 'https://test2-mar-efc5.vercel.app';
+  : import.meta.env.VITE_PUBLIC_APP_URL || '';
 const authErrorMessage = (error, fallback) => {
   const message = String(error?.message || '').toLowerCase();
   const code = String(error?.code || '').toLowerCase();
@@ -254,34 +253,13 @@ function CartProvider({ children }) {
 }
 
 function useSiteSettings() {
-  const [settings, setSettings] = useState(() => {
-    try {
-      const cached = JSON.parse(localStorage.getItem(SITE_SETTINGS_CACHE_KEY) || 'null');
-      return cached && typeof cached === 'object'
-        ? {
-          ...defaultSettings,
-          ...cached,
-          policyTitle: String(cached.policyTitle || '').trim() || defaultSettings.policyTitle,
-          policyText: String(cached.policyText || '').trim() || defaultSettings.policyText,
-          featuredSectionTitle: String(cached.featuredSectionTitle || '').trim() || defaultSettings.featuredSectionTitle,
-          featuredProductIds: Array.isArray(cached.featuredProductIds) ? cached.featuredProductIds.map(String) : null,
-        }
-        : defaultSettings;
-    } catch {
-      return defaultSettings;
-    }
-  });
+  const [settings, setSettings] = useState(defaultSettings);
 
   useEffect(() => {
     getSiteSettings()
       .then((data) => {
         const nextSettings = { ...defaultSettings, ...(data || {}) };
         setSettings(nextSettings);
-        try {
-          localStorage.setItem(SITE_SETTINGS_CACHE_KEY, JSON.stringify(nextSettings));
-        } catch {
-          // Continue with the in-memory settings when browser storage is unavailable.
-        }
       })
       .catch(() => {});
   }, []);
@@ -508,7 +486,7 @@ function AccountPage() {
         </section>
         <div className="account-sections">
           {activePanel === 'account' && <form className="account-panel" onSubmit={saveAccountName}><h2>بيانات الحساب</h2><Field label="اسمك" name="accountName" value={name} onChange={(event) => setName(event.target.value)} /><button type="submit" className="primary">حفظ الاسم</button></form>}
-          {activePanel === 'password' && <form className="account-panel" onSubmit={savePassword}><h2>{passwordSet ? 'تغيير كلمة المرور' : 'تنبيه: عيّن كلمة مرور'}</h2>{!passwordSet && <p className="account-warning">حسابك يعمل حالياً عبر رابط البريد. عيّن كلمة مرور حتى تسجل الدخول بها لاحقاً.</p>}<Field label="كلمة المرور الجديدة" name="accountPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} allowReveal /><Field label="تأكيد كلمة المرور" name="accountPasswordConfirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} allowReveal /><button type="submit" className="primary">{passwordSet ? 'تغيير كلمة المرور' : 'تعيين كلمة المرور'}</button></form>}
+          {activePanel === 'password' && <form className="account-panel" onSubmit={savePassword}><h2>{passwordSet ? 'تغيير كلمة المرور' : 'تنبيه: عيّن كلمة مرور'}</h2>{!passwordSet && <p className="account-warning">حسابك يعمل حالياً عبر رابط البريد. عيّن كلمة مرور حتى تسجل الدخول بها لاحقاً.</p>}<Field label="كلمة المرور الجديدة" name="accountPassword" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><Field label="تأكيد كلمة المرور" name="accountPasswordConfirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /><button type="submit" className="primary">{passwordSet ? 'تغيير كلمة المرور' : 'تعيين كلمة المرور'}</button></form>}
           {activePanel === 'policy' && <section className="account-panel account-policy"><h2>{settings.policyTitle}</h2><p>{settings.policyText}</p></section>}
           {activePanel === 'favorites' && <section className="account-panel account-favorites"><h2>خيارات الطلب المفضلة</h2>{favorites.map((item) => <div className="favorite-row" key={item.id}><button type="button" className="favorite-use" onClick={() => navigate(`/checkout?favorite=${item.id}`)}>{item.label}</button><button type="button" className="danger favorite-delete" onClick={() => deleteFavorite(item.id)}>حذف</button></div>)}{!favorites.length && <p className="account-muted">احفظ عنواناً ورقماً لتعبئتهما بسرعة عند الطلب.</p>}<form className="favorite-form" onSubmit={saveFavorite}><Field label="اسم الخيار" name="favoriteName" value={favoriteName} onChange={(event) => setFavoriteName(event.target.value)} placeholder="مثلاً: البيت" /><Field label="الاسم" name="customerName" value={favorite.customerName} onChange={updateFavoriteField} /><label className="field-label">المحافظة<select name="province" value={favorite.province} onChange={updateFavoriteField} required><option value="">اختر المحافظة</option>{provinces.map((province) => <option key={province} value={province}>{province}</option>)}</select></label><Field label="العنوان" name="address" value={favorite.address} onChange={updateFavoriteField} /><Field label="أقرب نقطة دالة" name="nearestLandmark" value={favorite.nearestLandmark} onChange={updateFavoriteField} /><Field label="رقم الهاتف" name="phoneNumber" type="tel" value={favorite.phoneNumber} onChange={updateFavoriteField} placeholder="07xxxxxxxxx" /><button type="submit" className="primary">حفظ الخيار</button></form></section>}
           {activePanel === 'products' && <section className="account-panel account-favorites"><h2>المنتجات المفضلة</h2>{savedProducts.map((item) => <div className="saved-product-row" key={item.id}><Link to={`/product/${item.id}`} className="saved-product-link"><ProductImage src={item.imageUrl} alt={item.name} /><span><strong>{item.name}</strong><small>{money(item.price)}</small></span></Link><button type="button" className="danger favorite-delete" onClick={() => deleteSavedProduct(item.id)}>حذف</button></div>)}{!savedProducts.length && <p className="account-muted">المنتجات التي تحفظها بالقلب ستظهر هنا.</p>}</section>}
@@ -523,13 +501,13 @@ function AccountPage() {
 function StoreNav({ settings }) {
   const { count } = useCart();
   const { user, profile } = useAuth();
-  const storeName = settings.storeName || 'نسق';
+  const storeName = settings.storeName || 'المتجر';
 
   return (
     <header className="nav">
       <Link to="/" className="brand store-wordmark">
         <span>{storeName}</span>
-        <small>{settings.tagline || 'اختيارات تصنع يومك'}</small>
+        {settings.tagline && <small>{settings.tagline}</small>}
       </Link>
       <nav>
         {!user && <Link to="/login">تسجيل الدخول</Link>}
@@ -997,7 +975,7 @@ function Checkout() {
         <main className="confirmation">
           <div className="check">✓</div>
           <p className="eyebrow">تم استلام طلبك</p>
-          <h1>شكراً لاختيارك نسق</h1>
+          <h1>شكراً لطلبك</h1>
           <p>طلبك رقم <strong>#{done}</strong> قيد المراجعة، وسنتواصل معك قريباً لتأكيده.</p>
           <Link to="/" className="primary">العودة إلى المتجر</Link>
         </main>
@@ -1268,7 +1246,7 @@ function Admin() {
   return (
     <div className="admin-shell">
       <aside className="admin-side">
-        <Link to="/" className="brand">نسق<small>لوحة التحكم</small></Link>
+        <Link to="/" className="brand">المتجر<small>لوحة التحكم</small></Link>
         <Link className={page === 'overview' ? 'active' : ''} to="/admin">نظرة عامة</Link>
         <Link className={page === 'products' ? 'active' : ''} to="/admin/products">المنتجات</Link>
         <Link className={page === 'orders' ? 'active' : ''} to="/admin/orders">الطلبات</Link>
@@ -2040,7 +2018,7 @@ function SiteSettingsAdmin() {
       <section className="settings-section" aria-labelledby="settings-appearance-title">
         <div className="settings-section-heading"><span>01</span><div><h3 id="settings-appearance-title">واجهة المتجر</h3></div></div>
         <div className="settings-fields">
-          <label>اسم المتجر<input placeholder="مثال: نسق" value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
+          <label>اسم المتجر<input placeholder="اسم المتجر" value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
           <label>الشعار النصي<input placeholder="عبارة قصيرة تحت اسم المتجر" value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} /></label>
           <label>عنوان الواجهة<input placeholder="عنوان الواجهة الرئيسية" value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} /></label>
           <label>وصف الواجهة<textarea placeholder="اكتب وصفًا مختصرًا للمتجر" value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} /></label>

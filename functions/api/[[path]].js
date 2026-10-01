@@ -21,19 +21,18 @@ const parseJson = (value, fallback = []) => {
   try { const parsed = JSON.parse(value || ''); return Array.isArray(parsed) ? parsed : fallback; } catch { return fallback; }
 };
 const defaultSettings = {
-  id: 1,
-  storeName: 'نسق',
-  tagline: 'اختيارات تصنع يومك',
+  storeName: '',
+  tagline: '',
   logoUrl: '',
-  heroTitle: 'أشياء صغيرة، فرق كبير',
-  heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.',
+  heroTitle: '',
+  heroDescription: '',
   heroImageUrl: '',
-  heroButtonText: 'اكتشف المجموعة',
+  heroButtonText: '',
   instagramUrl: '',
   tiktokUrl: '',
   facebookUrl: '',
   whatsappUrl: '',
-  aboutTitle: 'من نحن؟',
+  aboutTitle: '',
   aboutText: '',
   maintenanceMode: false,
 };
@@ -396,7 +395,7 @@ export async function onRequest(context) {
     if (route === 'admin/reset-store' && method === 'POST') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إعادة ضبطه', 403);
       await Promise.all([supabase.from('account_coupons').delete().neq('discountId', 0), supabase.from('account_carts').delete().neq('accountId', '00000000-0000-0000-0000-000000000000'), supabase.from('orders').delete().neq('id', 0), supabase.from('products').delete().neq('id', 0), supabase.from('discounts').delete().neq('id', 0), supabase.from('page_views').delete().neq('id', 0), supabase.from('admin_invites').delete().neq('identifier', ''), supabase.from('site_settings').delete().neq('id', 0)]);
-      await supabase.from('site_settings').insert(defaultSettings); await supabase.from('discounts').insert({ code: 'NASAQ10', type: 'percentage', value: 10, active: true }); return json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
+      await supabase.from('site_settings').insert(defaultSettings); return json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
     }
     return errorResponse('المسار غير موجود', 404);
   } catch (error) {

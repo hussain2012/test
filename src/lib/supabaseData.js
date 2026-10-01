@@ -87,11 +87,10 @@ const getFeaturedProductIds = (data) => {
 };
 
 export const defaultSettings = {
-  id: 1, storeName: 'نسق', tagline: 'اختيارات تصنع يومك', logoUrl: '', heroTitle: 'أشياء صغيرة، فرق كبير',
-  heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.', heroImageUrl: '', heroButtonText: 'اكتشف المجموعة',
-  featuredSectionTitle: 'مختارات نسق', featuredProductIds: null, storeCategories: null,
-  instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: 'من نحن؟', aboutText: '',
-  policyTitle: 'سياستنا', policyText: 'نراجع كل طلب ونتواصل معك لتأكيد التفاصيل قبل التجهيز.', maintenanceMode: false,
+  storeName: '', tagline: '', logoUrl: '', heroTitle: '', heroDescription: '', heroImageUrl: '', heroButtonText: '',
+  featuredSectionTitle: '', featuredProductIds: null, storeCategories: null,
+  instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: '', aboutText: '',
+  policyTitle: '', policyText: '', maintenanceMode: false,
 };
 
 const normalizeSettings = (data) => ({
@@ -258,7 +257,10 @@ export async function saveSiteSettings(settings) {
     payload.featuredProducts = payload.featuredProductIds ?? null;
     delete payload.featuredProductIds;
   }
-  const data = throwIfError(await supabase.from('site_settings').update(payload).eq('id', current.id).select().single());
+  const query = current.id
+    ? supabase.from('site_settings').update(payload).eq('id', current.id)
+    : supabase.from('site_settings').insert(payload);
+  const data = throwIfError(await query.select().single());
   return { ...defaultSettings, ...data, featuredProductIds: getFeaturedProductIds(data), storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null };
 }
-export async function resetStore() { await Promise.all([supabase.from('account_coupons').delete().neq('discountId', 0), supabase.from('account_carts').delete().neq('accountId', ''), supabase.from('orders').delete().neq('id', 0), supabase.from('products').delete().neq('id', 0), supabase.from('discounts').delete().neq('id', 0), supabase.from('page_views').delete().neq('id', 0), supabase.from('admin_invites').delete().neq('identifier', ''), supabase.from('site_settings').delete().neq('id', 0)]); throwIfError(await supabase.from('site_settings').insert(defaultSettings)); throwIfError(await supabase.from('discounts').insert({ code: 'NASAQ10', type: 'percentage', value: 10, active: true })); }
+export async function resetStore() { await Promise.all([supabase.from('account_coupons').delete().neq('discountId', 0), supabase.from('account_carts').delete().neq('accountId', ''), supabase.from('orders').delete().neq('id', 0), supabase.from('products').delete().neq('id', 0), supabase.from('discounts').delete().neq('id', 0), supabase.from('page_views').delete().neq('id', 0), supabase.from('admin_invites').delete().neq('identifier', ''), supabase.from('site_settings').delete().neq('id', 0)]); throwIfError(await supabase.from('site_settings').insert(defaultSettings)); }

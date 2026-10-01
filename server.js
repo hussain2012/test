@@ -51,22 +51,21 @@ const parseItems = (value) => {
 };
 
 const defaultSiteSettings = {
-  id: 1,
-  storeName: 'نسق',
-  tagline: 'اختيارات تصنع يومك',
+  storeName: '',
+  tagline: '',
   logoUrl: '',
-  heroTitle: 'أشياء صغيرة، فرق كبير',
-  heroDescription: 'منتجات منتقاة بعناية لتمنح تفاصيل يومك معنى أجمل.',
+  heroTitle: '',
+  heroDescription: '',
   heroImageUrl: '',
-  heroButtonText: 'اكتشف المجموعة',
+  heroButtonText: '',
   instagramUrl: '',
   tiktokUrl: '',
   facebookUrl: '',
   whatsappUrl: '',
-  aboutTitle: 'من نحن؟',
+  aboutTitle: '',
   aboutText: '',
-  policyTitle: 'سياستنا',
-  policyText: 'نراجع كل طلب ونتواصل معك لتأكيد التفاصيل قبل التجهيز.',
+  policyTitle: '',
+  policyText: '',
   maintenanceMode: false,
 };
 
@@ -661,11 +660,8 @@ app.post('/api/admin/reset-store', async (req, res) => {
   const resetError = resetOperations.find((result) => result.error)?.error;
   if (resetError) return res.status(500).json({ error: resetError.message });
 
-  const [{ error: settingsError }, { error: defaultDiscountError }] = await Promise.all([
-    supabaseServer.from('site_settings').insert(defaultSiteSettings),
-    supabaseServer.from('discounts').insert({ code: 'NASAQ10', type: 'percentage', value: 10, active: true }),
-  ]);
-  if (settingsError || defaultDiscountError) return res.status(500).json({ error: (settingsError || defaultDiscountError).message });
+  const { error: settingsError } = await supabaseServer.from('site_settings').insert(defaultSiteSettings);
+  if (settingsError) return res.status(500).json({ error: settingsError.message });
 
   res.json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
 });
