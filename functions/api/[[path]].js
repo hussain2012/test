@@ -109,7 +109,7 @@ const normalizeProduct = (row) => {
     discountType, discountValue, discountPercentage: discount,
     discountedPrice: Number((discountType === 'amount' ? Math.max(0, price - discountValue) : price * (1 - Math.min(100, discountValue) / 100)).toFixed(2)),
     imageUrl: row?.imageUrl || '', productImages: [...new Set([row?.imageUrl, ...(images ?? [])].filter(Boolean))],
-    category: row?.category || 'عام', stockQuantity, availabilityMode,
+    category: String(row?.category || '').trim(), stockQuantity, availabilityMode,
     preOrder: availabilityMode === 'preorder', inStock: availabilityMode === 'ready', isUnavailable: availabilityMode === 'unavailable',
     featured: Boolean(row?.featured), isNew: Boolean(row?.isNew),
   };
@@ -195,7 +195,7 @@ export async function onRequest(context) {
         name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice),
         discountType: body.discountType === 'amount' ? 'amount' : 'percentage', discountValue: number(body.discountValue, number(body.discountPercentage)), discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage)),
         ...productCodeColumn(body),
-        imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: body.category || 'عام', stockQuantity,
+        imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: String(body.category || '').trim(), stockQuantity,
         inStock: availabilityMode === 'ready', featured: bool(body.featured), isNew: bool(body.isNew),
       };
       const { data, error } = await supabase.from('products').insert(await productPayloadWithAvailability(supabase, { ...insertPayload, availabilityMode })).select().single();

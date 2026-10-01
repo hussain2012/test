@@ -52,7 +52,7 @@ const selectedVariantText = (variants) => Object.entries(variants || {}).map(([n
 const variantKey = (variants) => JSON.stringify(variants || {});
 const cartItemKey = (item) => `${item.id}-${variantKey(item.selectedVariants)}`;
 const getStoreCategories = (configuredCategories, products) => {
-  const productNames = [...new Set(products.map((product) => String(product.category || 'عام').trim()).filter(Boolean))];
+  const productNames = [...new Set(products.map((product) => String(product.category || '').trim()).filter(Boolean))];
   const source = Array.isArray(configuredCategories) ? configuredCategories : productNames.map((name) => ({ name }));
   const categories = [];
   const seenNames = new Set();
@@ -541,7 +541,7 @@ function Store() {
   const categories = ['الكل', ...categoryNames];
   const categoryCards = storeCategories.map((item) => ({
     ...item,
-    product: safeProducts.find((product) => (product.category || 'عام') === item.name),
+    product: safeProducts.find((product) => product.category === item.name),
   }));
   const featuredProducts = Array.isArray(settings.featuredProductIds)
     ? settings.featuredProductIds.map((productId) => safeProducts.find((product) => String(product.id) === String(productId))).filter(Boolean)
@@ -660,7 +660,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
         {productAvailabilityMode(product) === 'unavailable' && <span className="sold">غير متوفر</span>}
       </Link>
       <div className="product-info">
-        <span>{product.category}</span>
+        <span>{product.category || 'بدون فئة'}</span>
         {product.productCode && <small className="product-code">كود: {product.productCode}</small>}
         <Link to={`/product/${product.id}`} className="product-name"><h3>{product.name}</h3></Link>
         <div className="product-bottom">
@@ -790,10 +790,10 @@ function ProductDetailPage() {
             <div className="detail-main-image">
               <ProductImage src={selectedImage} alt={product.name} />
               <div className="product-detail-actions">
-                <button type="button" className="product-image-action back-product" onClick={goBack} aria-label="رجوع خطوة للوراء" title="رجوع خطوة للوراء"><span aria-hidden="true">›</span></button>
+                <button type="button" className="product-image-action back-product" onClick={goBack} aria-label="رجوع خطوة للوراء" title="رجوع خطوة للوراء"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
                 <div className="product-detail-action-group">
-                  <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><span aria-hidden="true">{isProductFavorite ? '♥' : '♡'}</span></button>
-                  <button type="button" className="product-image-action share-product" onClick={shareProduct} aria-label="مشاركة رابط المنتج" title="مشاركة رابط المنتج"><span aria-hidden="true">⇧</span></button>
+                  <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><svg viewBox="0 0 24 24" fill={isProductFavorite ? 'currentColor' : 'none'} aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1 7.8 7.8 7.8-7.8 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z" /></svg></button>
+                  <button type="button" className="product-image-action share-product" onClick={shareProduct} aria-label="مشاركة رابط المنتج" title="مشاركة رابط المنتج"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5" /></svg></button>
                 </div>
               </div>
             </div>
@@ -1958,16 +1958,18 @@ function SiteSettingsAdmin() {
 
   const deleteStoreCategory = async (category) => {
     const categoryProducts = products.filter((product) => product.category === category.name);
+    const remainingCategories = categoryItems.filter((item) => item.id !== category.id);
+    const targetCategory = remainingCategories.find((item) => item.name === 'عام')?.name || remainingCategories[0]?.name || '';
     const message = categoryProducts.length
-      ? `سيتم حذف فئة «${category.name}» ونقل ${categoryProducts.length} من منتجاتها إلى فئة «عام». هل تريد المتابعة؟`
+      ? `سيتم حذف فئة «${category.name}» ونقل ${categoryProducts.length} من منتجاتها إلى «${targetCategory || 'بدون فئة'}». هل تريد المتابعة؟`
       : `هل تريد حذف فئة «${category.name}»؟`;
     if (!window.confirm(message)) return;
 
     setStatusMessage('');
     setStatusError('');
     try {
-      if (categoryProducts.length) await moveProductsToCategory(category.name, 'عام');
-      setProducts((current) => current.map((product) => product.category === category.name ? { ...product, category: 'عام' } : product));
+      if (categoryProducts.length) await moveProductsToCategory(category.name, targetCategory);
+      setProducts((current) => current.map((product) => product.category === category.name ? { ...product, category: targetCategory } : product));
       setSettings((current) => ({ ...current, storeCategories: categoryItems.filter((item) => item.id !== category.id) }));
       setStatusMessage('تم حذف الفئة');
     } catch (reason) {
@@ -2039,7 +2041,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section" aria-labelledby="settings-categories-title">
-        <div className="settings-section-heading"><span>03</span><div><h3 id="settings-categories-title">فئات المتجر</h3><p>أضف الفئات وعدّل أسماءها وصورها. عند حذف فئة تنتقل منتجاتها إلى «عام».</p></div></div>
+        <div className="settings-section-heading"><span>03</span><div><h3 id="settings-categories-title">فئات المتجر</h3><p>عند حذف فئة، تنتقل منتجاتها إلى فئة باقية أو تصبح بلا فئة.</p></div></div>
         <div className="settings-category-manager">
           <div className="settings-category-add">
             <label>اسم الفئة الجديدة<input placeholder="مثال: حقائب" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} /></label>
@@ -2052,7 +2054,7 @@ function SiteSettingsAdmin() {
                 <div className="settings-category-preview"><ProductImage src={category.imageUrl || product?.imageUrl} alt={category.name} /></div>
                 <label className="settings-category-name">اسم الفئة<input value={categoryNameDrafts[category.id] ?? category.name} onChange={(event) => setCategoryNameDrafts((current) => ({ ...current, [category.id]: event.target.value }))} /></label>
                 <label className="settings-category-image">{uploadingCategoryId === category.id ? 'جاري رفع الصورة...' : 'تغيير الصورة'}<input type="file" accept="image/*" disabled={uploadingCategoryId === category.id} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; changeStoreCategoryImage(category, file); }} /></label>
-                <div className="settings-category-actions"><button type="button" className="secondary-button" onClick={() => saveStoreCategoryName(category)}>حفظ الاسم</button><button type="button" className="danger" disabled={category.name === 'عام'} onClick={() => deleteStoreCategory(category)}>حذف</button></div>
+                <div className="settings-category-actions"><button type="button" className="secondary-button" onClick={() => saveStoreCategoryName(category)}>حفظ الاسم</button><button type="button" className="danger" onClick={() => deleteStoreCategory(category)}>حذف</button></div>
               </div>;
             })}
             {!categoryItems.length && <p className="account-muted">لا توجد فئات بعد.</p>}

@@ -33,7 +33,7 @@ create table if not exists public.products (
   description text not null default '',
   price numeric(12,2) not null default 0,
   "imageUrl" text not null default '',
-  category text not null default 'عام',
+  category text not null default '',
   "inStock" boolean not null default true,
   "availabilityMode" text not null default 'ready',
   "costPrice" numeric(12,2) not null default 0,
@@ -72,7 +72,8 @@ alter table public.products add column if not exists product_code text;
 alter table public.products add column if not exists description text not null default '';
 alter table public.products add column if not exists price numeric(12,2) not null default 0;
 alter table public.products add column if not exists "imageUrl" text not null default '';
-alter table public.products add column if not exists category text not null default 'عام';
+alter table public.products add column if not exists category text not null default '';
+alter table public.products alter column category set default '';
 alter table public.products add column if not exists "inStock" boolean not null default true;
 alter table public.products add column if not exists "availabilityMode" text not null default 'ready';
 alter table public.products add column if not exists "costPrice" numeric(12,2) not null default 0;
