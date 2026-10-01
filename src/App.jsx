@@ -868,7 +868,7 @@ function ProductDetailPage() {
                       const isDisabled = variant.selectionMode === 'multiple' && !isSelected && selected.length >= variant.maxSelections;
                       return isReplacement ? (
                         <button type="button" key={label} className={`detail-weight-choice ${isSelected ? 'selected' : ''}`} aria-pressed={isSelected} onClick={() => chooseVariantOption(variant, label)}>
-                          <strong>{label}</strong><span>{money(choicePrice)}</span>
+                          <strong>{label}</strong>{choicePrice > 0 && <span>{money(choicePrice)}</span>}
                         </button>
                       ) : (
                         <label className={`detail-option-row ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`} key={label}>
@@ -1246,7 +1246,7 @@ function Login() {
 function Admin() {
   const location = useLocation();
   const requestedPage = location.pathname.split('/')[2] || 'overview';
-  const page = requestedPage === 'product-discounts' ? 'products' : requestedPage;
+  const page = requestedPage === 'product-discounts' ? 'products' : requestedPage === 'analytics' ? 'overview' : requestedPage;
   const navigate = useNavigate();
   const { user, profile, loading } = useAuth();
   const [logoutError, setLogoutError] = useState('');
@@ -1261,7 +1261,6 @@ function Admin() {
     products: 'المنتجات',
     orders: 'الطلبات',
     discounts: 'أكواد الخصم',
-    analytics: 'الإحصائيات',
     settings: 'إعدادات المتجر',
     admins: 'المشرفون',
   };
@@ -1274,7 +1273,6 @@ function Admin() {
         <Link className={page === 'products' ? 'active' : ''} to="/admin/products">المنتجات</Link>
         <Link className={page === 'orders' ? 'active' : ''} to="/admin/orders">الطلبات</Link>
         <Link className={page === 'discounts' ? 'active' : ''} to="/admin/discounts">أكواد الخصم</Link>
-        <Link className={page === 'analytics' ? 'active' : ''} to="/admin/analytics">الإحصائيات</Link>
         <Link className={page === 'settings' ? 'active' : ''} to="/admin/settings">إعدادات المتجر</Link>
         <Link className={page === 'admins' ? 'active' : ''} to="/admin/admins">المشرفون</Link>
         <button type="button" className="logout" onClick={async () => { if (await signOut(setLogoutError)) navigate('/'); }}>تسجيل الخروج</button>
@@ -1290,23 +1288,24 @@ function Admin() {
           <Link to="/" className="view-store">عرض المتجر ↗</Link>
         </div>
 
-        {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'analytics' ? <AnalyticsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : page === 'admins' ? <AdminsAdmin /> : <Overview />}
+        {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : page === 'admins' ? <AdminsAdmin /> : <Overview />}
       </section>
     </div>
   );
 }
 
 function Overview() {
-  const [stats, setStats] = useState({ totalViews: 0, currentRevenue: 0, growth: 0, totalProfit: 0, totalLosses: 0, homeViews: 0, productViews: 0, orderStats: {} });
+  const [stats, setStats] = useState({ totalViews: 0, currentRevenue: 0, growth: 0, totalProfit: 0, homeViews: 0, productViews: 0, orderStats: {} });
+  const [accountsTotal, setAccountsTotal] = useState(0);
 
   useEffect(() => {
     Promise.all([
       analytics(),
-      listOrders(),
-      unreadOrderCount(),
+      accountCount(),
     ])
-      .then(([analyticsData, orders, unreadCount]) => {
-        setStats({ ...analyticsData, orderCount: Array.isArray(orders) ? orders.length : 0, unreadCount });
+      .then(([analyticsData, accounts]) => {
+        setStats(analyticsData || {});
+        setAccountsTotal(typeof accounts === 'number' ? accounts : 0);
       })
       .catch(() => {});
   }, []);
@@ -1317,8 +1316,12 @@ function Overview() {
         <div><span>مبيعات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong></div>
         <div><span>الطلبات الكلية</span><strong>{stats.orderStats?.total || 0}</strong></div>
         <div><span>طلبات مكتملة</span><strong>{stats.orderStats?.delivered || 0}</strong></div>
-        <div><span>الزيارات</span><strong>{stats.totalViews || 0}</strong></div>
+        <div><span>إجمالي الزيارات</span><strong>{stats.totalViews || 0}</strong></div>
+        <div><span>زيارات الموقع</span><strong>{stats.homeViews || 0}</strong></div>
+        <div><span>زيارات المنتجات</span><strong>{stats.productViews || 0}</strong></div>
+        <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong></div>
         <div className="highlight"><span>صافي الأرباح</span><strong>{money(stats.totalProfit)}</strong></div>
+        <div><span>الحسابات المسجلة</span><strong>{accountsTotal}</strong></div>
       </div>
     </div>
   );
@@ -1815,34 +1818,6 @@ function DiscountsAdmin() {
         ))}
       </div>
     </>
-  );
-}
-
-function AnalyticsAdmin() {
-  const [stats, setStats] = useState({ totalViews: 0, homeViews: 0, productViews: 0, currentRevenue: 0, lastRevenue: 0, growth: 0, totalProfit: 0, totalLosses: 0, orderStats: {} });
-  const [accountsTotal, setAccountsTotal] = useState(0);
-
-  useEffect(() => {
-    Promise.all([
-      analytics(),
-      accountCount(),
-    ])
-      .then(([analyticsData, accounts]) => {
-        setStats(analyticsData || {});
-        setAccountsTotal(typeof accounts === 'number' ? accounts : 0);
-      })
-      .catch(() => {});
-  }, []);
-
-  return (
-    <div className="stats analytics-grid">
-      <div><span>إجمالي زيارات الموقع</span><strong>{stats.homeViews || 0}</strong></div>
-      <div><span>زيارات المنتجات</span><strong>{stats.productViews || 0}</strong></div>
-      <div><span>إيرادات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong></div>
-      <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong></div>
-      <div><span>الأرباح</span><strong>{money(stats.totalProfit)}</strong></div>
-      <div><span>الحسابات المسجلة</span><strong>{accountsTotal}</strong></div>
-    </div>
   );
 }
 
