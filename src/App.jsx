@@ -1162,21 +1162,19 @@ function Login() {
       return;
     }
     const value = identifier.trim();
-    if (mode === 'register' && !fullName.trim()) {
-      setError('أدخل الاسم الكامل');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      setError('أدخل بريداً إلكترونياً صحيحاً');
       return;
     }
-    if (mode === 'register' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      setError('أدخل بريداً إلكترونياً صحيحاً');
+    if (mode === 'register' && !fullName.trim()) {
+      setError('أدخل الاسم الكامل');
       return;
     }
     if (mode === 'register' && password.length < 6) {
       setError('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
       return;
     }
-    const phone = /^07\d{9}$/.test(value) ? `+964${value.slice(1)}` : value;
-    const isPhone = /^\+9647\d{9}$/.test(phone);
-    const credentials = isPhone ? { phone, password } : { email: value.toLowerCase(), password };
+    const credentials = { email: value.toLowerCase(), password };
     let result;
     try {
       result = mode === 'login'
@@ -1221,7 +1219,7 @@ function Login() {
       <form className="login-card" onSubmit={submit}>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
         {mode === 'register' && <Field label="الاسم الكامل" name="fullName" value={fullName} onChange={(event) => setFullName(event.target.value)} />}
-        <Field label={mode === 'login' ? 'البريد الإلكتروني أو رقم الهاتف' : 'البريد الإلكتروني'} name="identifier" type={mode === 'login' ? 'text' : 'email'} inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+        <Field label="البريد الإلكتروني" name="identifier" type="email" inputMode="email" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         <Field label="كلمة المرور" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => setCapsLock(event.getModifierState('CapsLock'))} allowReveal={mode === 'login'} />
         {capsLock && <p className="caps-lock-message">الأحرف الكبيرة مفعلة</p>}
         {error && <p className="error">{error}</p>}
