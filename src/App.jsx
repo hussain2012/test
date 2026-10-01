@@ -845,10 +845,10 @@ function ProductDetailPage() {
             <h1>{product.name}</h1>
             <div className="detail-meta-row">
               {product.productCode && <span className="product-code detail-product-code">كود المنتج: {product.productCode}</span>}
-              {hasDiscount && <span className="old-price detail-old-price">السعر السابق: {money(product.price)}</span>}
             </div>
             <div className="price-stack">
               <strong>{money(finalPrice)}</strong>
+              {hasDiscount && <span className="old-price detail-old-price">{money(product.price)}</span>}
             </div>
             <p className="detail-description">{product.description}</p>
             {Array.isArray(product.variants) && product.variants.map((variant) => {
@@ -1114,6 +1114,7 @@ function MyOrders() {
 }
 
 function Login() {
+  const storeSettings = useSiteSettings();
   const [mode, setMode] = useState('login');
   const [fullName, setFullName] = useState('');
   const [identifier, setIdentifier] = useState('');
@@ -1214,8 +1215,9 @@ function Login() {
   }
 
   return (
-    <main className={`login-page ${mode === 'register' ? 'register-page' : ''}`}>
-      {mode === 'login' && <Link to="/" className="brand">نسق</Link>}
+    <>
+      <StoreNav settings={storeSettings} />
+      <main className={`login-page ${mode === 'register' ? 'register-page' : ''}`}>
       <form className="login-card" onSubmit={submit}>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
         {mode === 'register' && <Field label="الاسم الكامل" name="fullName" value={fullName} onChange={(event) => setFullName(event.target.value)} />}
@@ -1238,7 +1240,8 @@ function Login() {
           </>
         )}
       </form>
-    </main>
+      </main>
+    </>
   );
 }
 

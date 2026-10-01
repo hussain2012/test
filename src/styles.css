@@ -723,8 +723,7 @@ button { cursor: pointer; }
   margin-top: -2px;
 }
 
-.detail-product-code,
-.detail-old-price {
+.detail-product-code {
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
@@ -732,11 +731,6 @@ button { cursor: pointer; }
   background: rgba(217, 213, 201, 0.22);
   border: 1px solid rgba(217, 213, 201, 0.55);
   font-size: 12px;
-}
-
-.detail-old-price {
-  color: var(--muted);
-  text-decoration: line-through;
 }
 
 .price-stack {
@@ -754,6 +748,8 @@ button { cursor: pointer; }
   font-size: 13px;
   text-decoration: line-through;
 }
+
+.detail-old-price { font-size: 12px; }
 
 .saving-note {
   color: var(--accent);
@@ -1113,32 +1109,32 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .login-page:not(.register-page) {
   display: block;
   min-height: 100svh;
-  padding: 72px 32px 180px;
+  padding: 42px 20px 120px;
   background: var(--bg);
   color: var(--text);
 }
 
 .register-page .login-card,
 .login-page:not(.register-page) .login-card {
-  width: min(100%, 704px);
+  width: min(100%, 400px);
   margin: 0 auto;
   padding: 0;
-  gap: 28px;
+  gap: 16px;
   background: transparent;
   border: 0;
   box-shadow: none;
 }
 
-.register-page .login-card h1, .login-page:not(.register-page) .login-card h1 { margin: 0 0 18px; color: var(--text); font-size: 40px; text-align: right; }
-.register-page .field-label, .login-page:not(.register-page) .field-label { gap: 14px; color: var(--text); font-size: 22px; text-align: right; }
-.register-page .field-label input, .login-page:not(.register-page) .field-label input { min-height: 86px; padding: 18px 22px; border: 2px solid var(--line); border-radius: 28px; background: var(--paper); color: var(--text); font-size: 18px; }
+.register-page .login-card h1, .login-page:not(.register-page) .login-card h1 { margin: 0 0 6px; color: var(--text); font-size: 30px; text-align: right; }
+.register-page .field-label, .login-page:not(.register-page) .field-label { gap: 8px; color: var(--text); font-size: 15px; text-align: right; }
+.register-page .field-label input, .login-page:not(.register-page) .field-label input { min-height: 54px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); color: var(--text); font-size: 16px; }
 .register-page .input-with-action input { padding-left: 86px; }
 .register-page .reveal-password { font-size: 14px; }
-.register-page .primary.full, .login-page:not(.register-page) .primary.full { min-height: 102px; margin-top: 2px; border-radius: 999px; background: var(--primary); color: var(--soft-gold); font-size: 25px; }
+.register-page .primary.full, .login-page:not(.register-page) .primary.full { min-height: 58px; margin-top: 0; border-radius: 999px; background: var(--primary); color: var(--soft-gold); font-size: 17px; }
 .register-page .primary.full:hover, .login-page:not(.register-page) .primary.full:hover { background: var(--dark-secondary); }
-.register-page .auth-switch-copy, .login-page:not(.register-page) .auth-switch-copy { margin: 10px 0 0; color: var(--muted); font-size: 21px; }
+.register-page .auth-switch-copy, .login-page:not(.register-page) .auth-switch-copy { margin: 0; color: var(--muted); font-size: 15px; }
 .register-page .auth-switch-copy button, .login-page:not(.register-page) .auth-switch-copy button { color: var(--primary); }
-.auth-guest-link { display: block; margin: -16px 0 0; color: var(--muted); font-size: 19px; text-align: center; text-decoration: underline; text-underline-offset: 4px; }
+.auth-guest-link { display: block; margin: 0; color: var(--muted); font-size: 15px; text-align: center; text-decoration: underline; text-underline-offset: 4px; }
 
 .login-page:not(.register-page) { padding: 42px 20px 120px; }
 .login-page:not(.register-page) .login-card { width: min(100%, 430px); margin: 0 auto; padding: 0; gap: 16px; }
@@ -1148,6 +1144,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .login-page:not(.register-page) .primary.full { min-height: 58px; margin-top: 0; font-size: 17px; }
 .login-page:not(.register-page) .auth-switch-copy { margin: 0; font-size: 15px; }
 .login-page:not(.register-page) .back { margin-top: 0; font-size: 15px; }
+.login-page:not(.register-page) .brand { display: none; }
 
 .password-setup-backdrop {
   position: fixed;
