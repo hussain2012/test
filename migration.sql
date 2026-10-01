@@ -29,14 +29,26 @@ grant execute on function public.is_owner() to anon, authenticated;
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public
 as $$
+declare
+  user_identifier text := lower(btrim(coalesce(new.email, new.phone, new.id::text)));
+  invite_found boolean;
 begin
-  insert into public.profiles (id, identifier, "displayName", "pictureUrl")
+  select exists (select 1 from public.admin_invites where identifier = user_identifier) into invite_found;
+
+  insert into public.profiles as existing_profile (id, identifier, role, "isOwner", "displayName", "pictureUrl")
   values (
     new.id,
-    lower(coalesce(new.email, new.phone, new.id::text)),
+    user_identifier,
+    case when invite_found then 'admin' else 'customer' end,
+    false,
     coalesce(new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name'),
     new.raw_user_meta_data ->> 'avatar_url'
-  ) on conflict (id) do nothing;
+  ) on conflict (id) do update
+    set role = case when invite_found then 'admin' else existing_profile.role end;
+
+  if invite_found then
+    delete from public.admin_invites where identifier = user_identifier;
+  end if;
   return new;
 end;
 $$;
@@ -160,6 +172,17 @@ create table if not exists public.admin_invites (
   identifier text primary key,
   "createdAt" timestamptz not null default now()
 );
+
+update public.profiles as profile
+set role = 'admin'
+from public.admin_invites as invite
+where lower(profile.identifier) = lower(invite.identifier)
+  and profile.role <> 'admin';
+
+delete from public.admin_invites as invite
+using public.profiles as profile
+where lower(profile.identifier) = lower(invite.identifier)
+  and profile.role = 'admin';
 
 create table if not exists public.account_carts (
   "accountId" uuid primary key references public.profiles(id) on delete cascade,

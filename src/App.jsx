@@ -93,6 +93,7 @@ const useAuth = () => useContext(AuthContext);
 function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [profileError, setProfileError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -101,45 +102,21 @@ function AuthProvider({ children }) {
       const requestId = ++profileRequestId;
       if (!user) {
         setProfile(null);
+        setProfileError('');
         if (requestId === profileRequestId) setLoading(false);
         return;
       }
       try {
-        const identifier = String(user.email || user.phone || '').trim().toLowerCase();
-        const { data: currentProfile } = await supabase.from('profiles').select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').eq('id', user.id).maybeSingle();
-
-        if (!currentProfile && identifier) {
-          const { data: invite } = await supabase.from('admin_invites').select('identifier').eq('identifier', identifier).maybeSingle();
-          if (invite) {
-            const { data: createdProfile } = await supabase.from('profiles').upsert({
-              id: user.id,
-              identifier,
-              role: 'admin',
-              isOwner: false,
-              displayName: user.user_metadata?.displayName || '',
-              pictureUrl: user.user_metadata?.pictureUrl || '',
-            }, { onConflict: 'id' }).select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').maybeSingle();
-            if (requestId === profileRequestId) setProfile(createdProfile || { id: user.id, identifier, role: 'admin' });
-            return;
-          }
-        }
-
-        if (currentProfile && currentProfile.role !== 'admin' && identifier) {
-          const { data: invite } = await supabase.from('admin_invites').select('identifier').eq('identifier', identifier).maybeSingle();
-          if (invite) {
-            const { data: promotedProfile } = await supabase.from('profiles')
-              .update({ role: 'admin' })
-              .eq('id', user.id)
-              .select('id, identifier, role, "isOwner", "displayName", "pictureUrl"')
-              .maybeSingle();
-            if (requestId === profileRequestId) setProfile(promotedProfile || { ...currentProfile, role: 'admin' });
-            return;
-          }
-        }
+        setProfileError('');
+        const { data: currentProfile, error: profileError } = await supabase.from('profiles').select('id, identifier, role, "isOwner", "displayName", "pictureUrl"').eq('id', user.id).maybeSingle();
+        if (profileError) throw profileError;
 
         if (requestId === profileRequestId) setProfile(currentProfile || null);
-      } catch {
-        if (requestId === profileRequestId) setProfile(null);
+      } catch (error) {
+        if (requestId === profileRequestId) {
+          setProfile(null);
+          setProfileError([error?.message || 'تعذر قراءة ملف الحساب من Supabase', error?.code && `(${error.code})`].filter(Boolean).join(' '));
+        }
       } finally {
         if (requestId === profileRequestId) setLoading(false);
       }
@@ -152,10 +129,11 @@ function AuthProvider({ children }) {
         if (currentSession?.user) setLoading(true);
         await loadProfile(currentSession?.user || null);
       })
-      .catch(() => {
+      .catch((error) => {
         profileRequestId += 1;
         setSession(null);
         setProfile(null);
+        setProfileError([error?.message || 'تعذر استعادة جلسة Supabase', error?.code && `(${error.code})`].filter(Boolean).join(' '));
         setLoading(false);
       });
 
@@ -172,7 +150,7 @@ function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const value = { session, user: session?.user || null, profile, loading };
+  const value = { session, user: session?.user || null, profile, profileError, loading };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -1100,7 +1078,9 @@ function Login() {
   const [capsLock, setCapsLock] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const returnTo = typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith('/') ? location.state.returnTo : '/';
+  const returnTo = typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith('/')
+    ? location.state.returnTo
+    : (location.pathname.startsWith('/admin') ? location.pathname : '/');
 
   const sendMagicLink = async () => {
     setError('');
@@ -1224,13 +1204,19 @@ function Admin() {
   const requestedPage = location.pathname.split('/')[2] || 'overview';
   const page = requestedPage === 'product-discounts' ? 'products' : requestedPage === 'analytics' ? 'overview' : requestedPage;
   const navigate = useNavigate();
-  const { user, profile, loading } = useAuth();
+  const { user, profile, profileError, loading } = useAuth();
   const [logoutError, setLogoutError] = useState('');
 
   if (loading) return <div className="empty">جاري التحقق من الحساب...</div>;
-  if (!user || profile?.role !== 'admin') {
-    return <Login />;
-  }
+  if (!user) return <Login />;
+  if (profileError || profile?.role !== 'admin') return (
+    <main className="empty" role="alert">
+      <h1>تعذر فتح لوحة المشرف</h1>
+      <p>{profileError || (profile ? `دور حسابك في profiles هو «${profile.role}» وليس admin.` : 'لم يتم العثور على ملف لهذا الحساب في جدول profiles.')}</p>
+      <p>تحقق من صلاحية الحساب وسياسات RLS وtrigger إنشاء المستخدم في Supabase.</p>
+      <Link to="/" className="back-link">العودة للمتجر</Link>
+    </main>
+  );
 
   const titleMap = {
     overview: 'نظرة عامة',
@@ -1799,6 +1785,7 @@ function DiscountsAdmin() {
 
 function AdminsAdmin() {
   const [data, setData] = useState({ admins: [], invites: [] });
+  const [loadError, setLoadError] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [message, setMessage] = useState('');
@@ -1809,8 +1796,8 @@ function AdminsAdmin() {
       admins: Array.isArray(result?.admins) ? result.admins : [],
       invites: Array.isArray(result?.invites) ? result.invites : [],
     }))
-    .then(setData)
-    .catch(() => setData({ admins: [], invites: [] }));
+    .then((result) => { setLoadError(''); setData(result); })
+    .catch((reason) => { setLoadError(reason.message || 'تعذر تحميل المشرفين من Supabase'); setData({ admins: [], invites: [] }); });
   useEffect(() => { load(); }, []);
 
   const addAdmin = async (event) => {
@@ -1837,6 +1824,7 @@ function AdminsAdmin() {
     <div className="admin-managers">
       <div className="admin-table">
         <div className="table-title manager-title"><h2>المشرفون</h2><button type="button" className="manager-add-button" onClick={() => { setShowAddForm((value) => !value); setMessage(''); setError(''); }}>+</button></div>
+        {loadError && <p className="error" role="alert">خطأ Supabase: {loadError}</p>}
         {(Array.isArray(data.admins) ? data.admins : []).map((admin) => <div className="table-row manager-row" key={admin.id}><strong>{admin.identifier}</strong>{admin.isOwner ? <span className="owner-label">مالك</span> : <><span>مشرف</span><button type="button" className="danger" onClick={() => handleRemoveAdmin(admin.identifier)}>إزالة</button></>}</div>)}
         {!data.admins.length && <p className="empty">لا يوجد مشرفون</p>}
       </div>
