@@ -1,3 +1,14 @@
+-- Prerequisite: run supabase_schema_fix.sql first to create the store tables.
+do $$
+begin
+  if to_regclass('public.products') is null
+    or to_regclass('public.profiles') is null
+    or to_regclass('public.orders') is null then
+    raise exception 'Run supabase_schema_fix.sql first; required store tables are missing.';
+  end if;
+end;
+$$;
+
 create or replace function public.create_order_with_stock(p_account_id uuid, p_payload jsonb)
 returns integer
 language plpgsql
