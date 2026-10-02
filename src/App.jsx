@@ -684,7 +684,7 @@ function ProductDetailPage() {
   const [productActionMessage, setProductActionMessage] = useState('');
 
   useEffect(() => {
-    recordView('product').catch(() => {});
+    recordView('product', id).catch(() => {});
 
     setLoading(true);
     setError('');
@@ -1266,6 +1266,8 @@ function Overview() {
   const [stats, setStats] = useState({ currentRevenue: 0, growth: 0, totalProfit: 0, homeViews: 0, orderStats: {}, bestSeller: null });
   const [accountsTotal, setAccountsTotal] = useState(0);
   const [catalogStats, setCatalogStats] = useState({ products: 0, categories: 0 });
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [selectedProductId, setSelectedProductId] = useState(null);
 
   useEffect(() => {
     Promise.allSettled([
@@ -1279,6 +1281,8 @@ function Overview() {
         if (accountsResult.status === 'fulfilled') setAccountsTotal(accountsResult.value || 0);
         if (productsResult.status === 'fulfilled') {
           const products = Array.isArray(productsResult.value) ? productsResult.value : [];
+          setCatalogProducts(products);
+          setSelectedProductId((current) => products.some((product) => String(product.id) === String(current)) ? current : (products[0]?.id ?? null));
           const categories = settingsResult.status === 'fulfilled'
             ? getStoreCategories(settingsResult.value?.storeCategories, products).length
             : new Set(products.map((product) => String(product.category || '').trim().toLocaleLowerCase()).filter(Boolean)).size;
@@ -1286,6 +1290,9 @@ function Overview() {
         }
       });
   }, []);
+
+  const selectedProduct = catalogProducts.find((product) => String(product.id) === String(selectedProductId));
+  const selectedProductStats = stats.productStats?.[String(selectedProductId)] || {};
 
   return (
     <div className="dashboard-overview">
@@ -1301,6 +1308,29 @@ function Overview() {
         <div className="highlight"><span>صافي أرباح هذا الشهر</span><strong>{money(stats.totalProfit)}</strong></div>
         <div><span>الحسابات المسجلة</span><strong>{accountsTotal}</strong></div>
       </div>
+      <section className="product-analytics" aria-labelledby="product-analytics-title">
+        <header className="product-analytics-heading">
+          <div><p className="eyebrow">أداء الكتالوج</p><h2 id="product-analytics-title">المنتجات شنو هي؟</h2></div>
+          <span>{catalogProducts.length} منتج</span>
+        </header>
+        {catalogProducts.length ? <div className="product-analytics-layout">
+          <div className="product-analytics-list" aria-label="قائمة المنتجات">
+            {catalogProducts.map((product) => <button type="button" key={product.id} className={`product-analytics-item ${String(selectedProductId) === String(product.id) ? 'selected' : ''}`} aria-pressed={String(selectedProductId) === String(product.id)} onClick={() => setSelectedProductId(product.id)}>
+              <ProductImage src={product.imageUrl} alt="" />
+              <span><strong>{product.name}</strong><small>{product.category || 'غير مصنف'}</small></span>
+            </button>)}
+          </div>
+          {selectedProduct && <div className="product-analytics-detail">
+            <h3>{selectedProduct.name}</h3>
+            <div className="product-analytics-metrics">
+              <div><span>عدد النقرات</span><strong>{selectedProductStats.clicks || 0}</strong></div>
+              <div><span>الكمية المباعة</span><strong>{selectedProductStats.quantity || 0}</strong></div>
+              <div><span>إجمالي المبيعات</span><strong>{money(selectedProductStats.revenue || 0)}</strong></div>
+              <div><span>صافي الربح</span><strong>{money(selectedProductStats.netProfit || 0)}</strong></div>
+            </div>
+          </div>}
+        </div> : <p className="product-analytics-empty">لا توجد منتجات لعرض إحصاءاتها.</p>}
+      </section>
     </div>
   );
 }

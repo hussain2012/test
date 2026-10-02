@@ -19,6 +19,26 @@ const getBestSeller = (orders) => {
   }));
   return [...quantities.values()].sort((first, second) => second.quantity - first.quantity)[0] || null;
 };
+const getProductAnalytics = (views, orders) => {
+  const productStats = {};
+  views.forEach((view) => {
+    if (view.productId == null) return;
+    const key = String(view.productId);
+    productStats[key] = productStats[key] || { clicks: 0, quantity: 0, revenue: 0, netProfit: 0 };
+    productStats[key].clicks += 1;
+  });
+  orders.forEach((order) => order.items.forEach((item) => {
+    if (item.productId == null) return;
+    const key = String(item.productId);
+    const stats = productStats[key] || (productStats[key] = { clicks: 0, quantity: 0, revenue: 0, netProfit: 0 });
+    const quantity = Number(item.quantity || 0);
+    const price = Number(item.price || 0);
+    stats.quantity += quantity;
+    stats.revenue += price * quantity;
+    stats.netProfit += (price - Number(item.costPrice || 0)) * quantity;
+  }));
+  return productStats;
+};
 const asVariants = (value) => asJsonArray(value).map((variant) => ({
   name: String(variant?.name || '').trim(),
   selectionMode: 'single',
@@ -121,7 +141,11 @@ export async function getSiteSettings() {
   const data = throwIfError(await supabase.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle());
   return normalizeSettings(data);
 }
-export async function recordView(type) { return throwIfError(await supabase.from('page_views').insert({ type: type === 'product' ? 'product' : 'home' }).select().single()); }
+export async function recordView(type, productId) {
+  const viewType = type === 'product' ? 'product' : 'home';
+  const payload = viewType === 'product' && productId != null ? { type: viewType, productId } : { type: viewType };
+  return throwIfError(await supabase.from('page_views').insert(payload).select().single());
+}
 export async function listProducts() {
   const query = ensureProductQuery(await queryProducts());
   const data = throwIfError(await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false }));
@@ -264,10 +288,12 @@ export async function createDiscount(form) { return throwIfError(await supabase.
 export async function updateDiscount(id, form) { return throwIfError(await supabase.from('discounts').update({ code: String(form.code).toUpperCase(), type: form.type, value: Number(form.value), active: Boolean(form.active) }).eq('id', id).select().single()); }
 export async function deleteDiscount(id) { return throwIfError(await supabase.from('discounts').delete().eq('id', id)); }
 export async function analytics() {
-  const [{ count: homeViews }, orders] = await Promise.all([
+  const [{ count: homeViews }, { data: productViews, error: productViewsError }, orders] = await Promise.all([
     supabase.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'home'),
+    supabase.from('page_views').select('productId').eq('type', 'product'),
     listOrders(),
   ]);
+  if (productViewsError) throw productViewsError;
   const delivered = orders.filter((order) => order.status === 'delivered');
   const now = new Date();
   const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -291,6 +317,7 @@ export async function analytics() {
     growth,
     totalProfit: profitForOrders(currentMonthOrders),
     bestSeller: getBestSeller(delivered),
+    productStats: getProductAnalytics(productViews || [], delivered),
     totalLosses: 0,
   };
 }
