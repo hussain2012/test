@@ -50,6 +50,19 @@ const parseItems = (value) => {
     return [];
   }
 };
+const getBestSeller = (orders) => {
+  const quantities = new Map();
+  orders.forEach((order) => order.items.forEach((item) => {
+    const quantity = Number(item.quantity || 0);
+    const name = String(item.name || '').trim();
+    if (quantity <= 0 || !name) return;
+    const key = String(item.productId ?? name);
+    const product = quantities.get(key) || { name, quantity: 0 };
+    product.quantity += quantity;
+    quantities.set(key, product);
+  }));
+  return [...quantities.values()].sort((first, second) => second.quantity - first.quantity)[0] || null;
+};
 
 const defaultSiteSettings = {
   storeName: '',
@@ -598,9 +611,10 @@ app.get('/api/admin/analytics', async (req, res) => {
   const currentMonthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
   const lastMonthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
 
-  const revenueForMonth = (start, end) => deliveredOrders
-    .filter((order) => new Date(order.createdAt) >= start && new Date(order.createdAt) < end)
-    .reduce((sum, order) => sum + Number(order.finalTotal || 0), 0);
+  const ordersForMonth = (start, end) => deliveredOrders
+    .filter((order) => new Date(order.createdAt) >= start && new Date(order.createdAt) < end);
+  const revenueForMonth = (start, end) => ordersForMonth(start, end)
+    .reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + Number(item.price || 0) * Number(item.quantity || 0), 0), 0);
 
   const currentRevenue = revenueForMonth(currentMonthStart, currentMonthEnd);
   const lastRevenue = revenueForMonth(lastMonthStart, lastMonthEnd);
@@ -613,7 +627,7 @@ app.get('/api/admin/analytics', async (req, res) => {
     cancelled: cancelledOrders.length,
   };
 
-  const totalProfit = deliveredOrders.reduce((sum, order) => {
+  const totalProfit = ordersForMonth(currentMonthStart, currentMonthEnd).reduce((sum, order) => {
     const items = parseItems(order.items);
     const orderProfit = items.reduce((itemSum, item) => {
       const unitProfit = Number(item.price || 0) - Number(item.costPrice || 0);
@@ -631,6 +645,7 @@ app.get('/api/admin/analytics', async (req, res) => {
     lastRevenue,
     growth,
     totalProfit,
+    bestSeller: getBestSeller(deliveredOrders),
     totalLosses: 0,
   });
 });

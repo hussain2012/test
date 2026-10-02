@@ -11,6 +11,19 @@ const empty = (status = 204) => new Response(null, {
 const errorResponse = (message, status = 500) => json({ error: message }, status);
 const bool = (value) => value === true || value === 'true' || value === 1 || value === '1';
 const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const getBestSeller = (orders) => {
+  const quantities = new Map();
+  orders.forEach((order) => order.items.forEach((item) => {
+    const quantity = number(item.quantity);
+    const name = String(item.name || '').trim();
+    if (quantity <= 0 || !name) return;
+    const key = String(item.productId ?? name);
+    const product = quantities.get(key) || { name, quantity: 0 };
+    product.quantity += quantity;
+    quantities.set(key, product);
+  }));
+  return [...quantities.values()].sort((first, second) => second.quantity - first.quantity)[0] || null;
+};
 const generateProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
 const productCodeColumn = (body, generateIfMissing = false) => {
   if (!Object.prototype.hasOwnProperty.call(body ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(body ?? {}, 'product_code')) {
@@ -354,9 +367,21 @@ export async function onRequest(context) {
         supabase.from('orders').select('*'),
       ]);
       const rows = (orders || []).map(normalizeOrder); const delivered = rows.filter((order) => order.status === 'delivered');
-      const revenue = delivered.reduce((sum, order) => sum + number(order.finalTotal), 0);
-      const totalProfit = delivered.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + (number(item.price) - number(item.costPrice)) * number(item.quantity), 0), 0);
-      return json({ totalViews: (homeViews || 0) + (productViews || 0), homeViews: homeViews || 0, productViews: productViews || 0, orderStats: { total: rows.length, new: rows.filter((o) => o.status === 'new').length, processing: rows.filter((o) => o.status === 'processing').length, delivered: delivered.length, cancelled: rows.filter((o) => o.status === 'cancelled').length }, currentRevenue: revenue, lastRevenue: 0, growth: 0, totalProfit, totalLosses: 0 });
+      const now = new Date();
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const ordersForMonth = (start, end) => delivered.filter((order) => {
+        const createdAt = new Date(order.createdAt);
+        return createdAt >= start && createdAt < end;
+      });
+      const revenueForOrders = (monthOrders) => monthOrders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + number(item.price) * number(item.quantity), 0), 0);
+      const profitForOrders = (monthOrders) => monthOrders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + (number(item.price) - number(item.costPrice)) * number(item.quantity), 0), 0);
+      const currentMonthOrders = ordersForMonth(currentMonthStart, nextMonthStart);
+      const currentRevenue = revenueForOrders(currentMonthOrders);
+      const lastRevenue = revenueForOrders(ordersForMonth(lastMonthStart, currentMonthStart));
+      const growth = lastRevenue === 0 ? (currentRevenue > 0 ? 100 : 0) : Number((((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2));
+      return json({ homeViews: homeViews || 0, orderStats: { total: rows.length, new: rows.filter((o) => o.status === 'new').length, processing: rows.filter((o) => o.status === 'processing').length, delivered: delivered.length, cancelled: rows.filter((o) => o.status === 'cancelled').length }, currentRevenue, lastRevenue, growth, totalProfit: profitForOrders(currentMonthOrders), bestSeller: getBestSeller(delivered), totalLosses: 0 });
     }
     if (route === 'admin/site-settings' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);

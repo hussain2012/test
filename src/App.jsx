@@ -696,7 +696,7 @@ function ProductDetailPage() {
         setSelectedImage(data?.productImages?.[0] ?? data?.imageUrl ?? '');
         setSelectedVariants(Object.fromEntries((data.variants || []).map((variant) => {
           const firstChoice = variantChoiceLabel(variant.values[0]);
-          return [variant.name, variant.selectionMode === 'multiple' ? (firstChoice ? [firstChoice] : []) : firstChoice];
+          return [variant.name, firstChoice];
         })));
         setLoading(false);
         listProducts()
@@ -721,20 +721,12 @@ function ProductDetailPage() {
   const thumbnailImages = (productImages.length ? productImages : [product?.imageUrl]).filter(Boolean);
   const variantsComplete = (product.variants || []).every((variant) => {
     if (!variant.required) return true;
-    return variant.selectionMode === 'multiple'
-      ? (Array.isArray(selectedVariants[variant.name]) && selectedVariants[variant.name].length > 0)
-      : Boolean(selectedVariants[variant.name]);
+    return Boolean(selectedVariants[variant.name]);
   });
   const isProductFavorite = isProductSaved || (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
 
   const chooseVariantOption = (variant, label) => {
-    setSelectedVariants((current) => {
-      if (variant.selectionMode !== 'multiple') return { ...current, [variant.name]: label };
-      const selected = Array.isArray(current[variant.name]) ? current[variant.name] : [];
-      if (selected.includes(label)) return { ...current, [variant.name]: selected.filter((item) => item !== label) };
-      if (selected.length >= variant.maxSelections) return current;
-      return { ...current, [variant.name]: [...selected, label] };
-    });
+    setSelectedVariants((current) => ({ ...current, [variant.name]: label }));
   };
 
   const toggleProductFavorite = async () => {
@@ -828,7 +820,7 @@ function ProductDetailPage() {
               return (
                 <section className={`detail-option-card ${isReplacement ? 'detail-weight-card' : ''}`} key={variant.name}>
                   <header className="detail-option-heading">
-                    <div><h2>{variant.name}</h2><p>{variant.selectionMode === 'multiple' ? `اختر لحد ${variant.maxSelections}` : 'اختر واحد'}</p></div>
+                    <div><h2>{variant.name}</h2><p>اختر خيارًا واحدًا</p></div>
                     <span className={`detail-option-status ${selected.length ? 'selected' : ''}`} aria-label={selected.length ? 'تم الاختيار' : 'لم يتم الاختيار'}>{selected.length ? '✓' : ''}</span>
                   </header>
                   <div className={isReplacement ? 'detail-weight-options' : 'detail-option-list'}>
@@ -836,14 +828,13 @@ function ProductDetailPage() {
                       const label = variantChoiceLabel(choice);
                       const choicePrice = variantChoicePrice(choice);
                       const isSelected = selected.includes(label);
-                      const isDisabled = variant.selectionMode === 'multiple' && !isSelected && selected.length >= variant.maxSelections;
                       return isReplacement ? (
                         <button type="button" key={label} className={`detail-weight-choice ${isSelected ? 'selected' : ''}`} aria-pressed={isSelected} onClick={() => chooseVariantOption(variant, label)}>
                           <strong>{label}</strong>{choicePrice > 0 && <span>{money(choicePrice)}</span>}
                         </button>
                       ) : (
-                        <label className={`detail-option-row ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`} key={label}>
-                          <input type={variant.selectionMode === 'multiple' ? 'checkbox' : 'radio'} name={`option-${product.id}-${variant.name}`} checked={isSelected} disabled={isDisabled} onChange={() => chooseVariantOption(variant, label)} />
+                        <label className={`detail-option-row ${isSelected ? 'selected' : ''}`} key={label}>
+                          <input type="radio" name={`option-${product.id}-${variant.name}`} checked={isSelected} onChange={() => chooseVariantOption(variant, label)} />
                           <span className="detail-option-label">{label}</span>
                           {choicePrice > 0 && <strong dir="auto">{variant.priceMode === 'replace' ? money(choicePrice) : `+${money(choicePrice)}`}</strong>}
                         </label>
@@ -1274,19 +1265,28 @@ function Admin() {
 }
 
 function Overview() {
-  const [stats, setStats] = useState({ totalViews: 0, currentRevenue: 0, growth: 0, totalProfit: 0, homeViews: 0, productViews: 0, orderStats: {} });
+  const [stats, setStats] = useState({ currentRevenue: 0, growth: 0, totalProfit: 0, homeViews: 0, orderStats: {}, bestSeller: null });
   const [accountsTotal, setAccountsTotal] = useState(0);
+  const [catalogStats, setCatalogStats] = useState({ products: 0, categories: 0 });
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       analytics(),
       accountCount(),
+      adminProducts(),
+      getSiteSettings(),
     ])
-      .then(([analyticsData, accounts]) => {
-        setStats(analyticsData || {});
-        setAccountsTotal(typeof accounts === 'number' ? accounts : 0);
-      })
-      .catch(() => {});
+      .then(([analyticsResult, accountsResult, productsResult, settingsResult]) => {
+        if (analyticsResult.status === 'fulfilled') setStats(analyticsResult.value || {});
+        if (accountsResult.status === 'fulfilled') setAccountsTotal(accountsResult.value || 0);
+        if (productsResult.status === 'fulfilled') {
+          const products = Array.isArray(productsResult.value) ? productsResult.value : [];
+          const categories = settingsResult.status === 'fulfilled'
+            ? getStoreCategories(settingsResult.value?.storeCategories, products).length
+            : new Set(products.map((product) => String(product.category || '').trim().toLocaleLowerCase()).filter(Boolean)).size;
+          setCatalogStats({ products: products.length, categories });
+        }
+      });
   }, []);
 
   return (
@@ -1295,11 +1295,12 @@ function Overview() {
         <div><span>مبيعات هذا الشهر</span><strong>{money(stats.currentRevenue)}</strong></div>
         <div><span>الطلبات الكلية</span><strong>{stats.orderStats?.total || 0}</strong></div>
         <div><span>طلبات مكتملة</span><strong>{stats.orderStats?.delivered || 0}</strong></div>
-        <div><span>إجمالي الزيارات</span><strong>{stats.totalViews || 0}</strong></div>
+        <div><span>عدد المنتجات</span><strong>{catalogStats.products}</strong></div>
+        <div><span>التصنيفات</span><strong>{catalogStats.categories}</strong></div>
+        <div className="best-seller"><span>المنتج الأكثر مبيعًا</span><strong>{stats.bestSeller?.name || 'لا توجد مبيعات'}</strong>{stats.bestSeller?.quantity > 0 && <small>{stats.bestSeller.quantity} قطعة مباعة</small>}</div>
         <div><span>زيارات الموقع</span><strong>{stats.homeViews || 0}</strong></div>
-        <div><span>زيارات المنتجات</span><strong>{stats.productViews || 0}</strong></div>
         <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong></div>
-        <div className="highlight"><span>صافي الأرباح</span><strong>{money(stats.totalProfit)}</strong></div>
+        <div className="highlight"><span>صافي أرباح هذا الشهر</span><strong>{money(stats.totalProfit)}</strong></div>
         <div><span>الحسابات المسجلة</span><strong>{accountsTotal}</strong></div>
       </div>
     </div>
@@ -1431,10 +1432,10 @@ function ProductsAdmin() {
     const wasEditing = editingId !== null;
     const variants = form.variants.map((variant) => ({
       name: String(variant.name || '').trim(),
-      selectionMode: variant.selectionMode === 'multiple' ? 'multiple' : 'single',
+      selectionMode: 'single',
       priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
       required: variant.required !== false,
-      maxSelections: Math.max(1, Number(variant.maxSelections) || 1),
+      maxSelections: 1,
       values: (Array.isArray(variant.options) ? variant.options : []).map((option) => ({
         label: String(option.label || '').trim(),
         price: option.hasPrice ? Number(option.price) || 0 : 0,
@@ -1503,10 +1504,10 @@ function ProductsAdmin() {
       productImages: Array.isArray(product?.productImages) ? product.productImages : [],
       variants: (Array.isArray(product.variants) ? product.variants : []).map((variant) => ({
         name: String(variant.name || ''),
-        selectionMode: variant.selectionMode === 'multiple' ? 'multiple' : 'single',
+        selectionMode: 'single',
         priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
         required: variant.required !== false,
-        maxSelections: Math.max(1, Number(variant.maxSelections) || 1),
+        maxSelections: 1,
         options: Array.isArray(variant.values) ? variant.values.map((choice) => {
           const price = variantChoicePrice(choice);
           return { label: variantChoiceLabel(choice), price: price ? String(price) : '', hasPrice: price > 0 };
@@ -1543,14 +1544,9 @@ function ProductsAdmin() {
               {form.variants.map((variant, index) => <div className="product-variant-row" key={`variant-${index}`}>
                 <label>اسم المجموعة<input value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
                 <div className="product-variant-selection">
-                  <span>نوع الاختيار</span>
-                  <div role="group" aria-label="نوع الاختيار" className="variant-mode-control">
-                    <button type="button" className={variant.selectionMode === 'single' ? 'active' : ''} aria-pressed={variant.selectionMode === 'single'} onClick={() => updateVariant(index, 'selectionMode', 'single')}>واحد</button>
-                    <button type="button" className={variant.selectionMode === 'multiple' ? 'active' : ''} aria-pressed={variant.selectionMode === 'multiple'} onClick={() => updateVariant(index, 'selectionMode', 'multiple')}>متعدد</button>
-                  </div>
+                  <span>اختيار واحد فقط</span>
                   <label className="check-label"><input type="checkbox" checked={variant.required} onChange={(event) => updateVariant(index, 'required', event.target.checked)} />مطلوب</label>
                 </div>
-                {variant.selectionMode === 'multiple' && <label className="variant-max-selections">أقصى عدد<input type="number" min="1" value={variant.maxSelections} onChange={(event) => updateVariant(index, 'maxSelections', event.target.value)} /></label>}
                 <div className="product-option-list">
                   {(variant.options || []).map((option, optionIndex) => <div className={`product-option-row ${option.hasPrice ? 'has-price' : ''}`} key={`option-${index}-${optionIndex}`}>
                     <input aria-label={`قيمة الخيار ${optionIndex + 1}`} value={option.label} onChange={(event) => updateVariantOption(index, optionIndex, 'label', event.target.value)} />

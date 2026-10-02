@@ -1328,6 +1328,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .stats span { display: block; color: var(--muted); font-size: 12px; }
 .stats strong { display: block; font-size: 36px; margin: 8px 0; }
 .stats small { color: var(--muted); font-size: 11px; }
+.stats .best-seller strong { font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
 .stats .highlight { background: var(--accent); color: var(--primary); }
 .stats .highlight span, .stats .highlight strong, .stats .highlight small { color: var(--primary); }
 

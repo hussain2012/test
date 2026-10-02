@@ -6,12 +6,25 @@ const asJsonArray = (value) => Array.isArray(value) ? value : (() => {
 })();
 const ensureProductQuery = (query) => (query && typeof query.order === 'function' ? query : supabase.from('products').select('*'));
 const asProductRows = (value) => asArray(value).filter((row) => row && typeof row === 'object');
+const getBestSeller = (orders) => {
+  const quantities = new Map();
+  orders.forEach((order) => order.items.forEach((item) => {
+    const quantity = Number(item.quantity || 0);
+    const name = String(item.name || '').trim();
+    if (quantity <= 0 || !name) return;
+    const key = String(item.productId ?? name);
+    const product = quantities.get(key) || { name, quantity: 0 };
+    product.quantity += quantity;
+    quantities.set(key, product);
+  }));
+  return [...quantities.values()].sort((first, second) => second.quantity - first.quantity)[0] || null;
+};
 const asVariants = (value) => asJsonArray(value).map((variant) => ({
   name: String(variant?.name || '').trim(),
-  selectionMode: variant?.selectionMode === 'multiple' ? 'multiple' : 'single',
+  selectionMode: 'single',
   priceMode: variant?.priceMode === 'replace' ? 'replace' : 'add',
   required: variant?.required !== false,
-  maxSelections: Math.max(1, Number(variant?.maxSelections) || 1),
+  maxSelections: 1,
   values: asArray(variant?.values).map((item) => typeof item === 'object' && item !== null
     ? { label: String(item.label ?? item.value ?? '').trim(), price: Number(item.price || 0) }
     : { label: String(item).trim(), price: 0 }).filter((item) => item.label),
@@ -250,7 +263,37 @@ export async function listDiscounts() { return asArray(throwIfError(await supaba
 export async function createDiscount(form) { return throwIfError(await supabase.from('discounts').insert({ code: String(form.code).toUpperCase(), type: form.type, value: Number(form.value), active: form.active !== false }).select().single()); }
 export async function updateDiscount(id, form) { return throwIfError(await supabase.from('discounts').update({ code: String(form.code).toUpperCase(), type: form.type, value: Number(form.value), active: Boolean(form.active) }).eq('id', id).select().single()); }
 export async function deleteDiscount(id) { return throwIfError(await supabase.from('discounts').delete().eq('id', id)); }
-export async function analytics() { const [{ count: homeViews }, { count: productViews }, orders] = await Promise.all([supabase.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'home'), supabase.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'product'), listOrders()]); const delivered = orders.filter((order) => order.status === 'delivered'); const totalProfit = delivered.reduce((sum, order) => sum + order.items.reduce((sub, item) => sub + (Number(item.price || 0) - Number(item.costPrice || 0)) * Number(item.quantity || 0), 0), 0); return { totalViews: (homeViews || 0) + (productViews || 0), homeViews: homeViews || 0, productViews: productViews || 0, orderStats: { total: orders.length, new: orders.filter((o) => o.status === 'new').length, processing: orders.filter((o) => o.status === 'processing').length, delivered: delivered.length, cancelled: orders.filter((o) => o.status === 'cancelled').length }, currentRevenue: delivered.reduce((sum, order) => sum + Number(order.finalTotal || 0), 0), lastRevenue: 0, growth: 0, totalProfit, totalLosses: 0 }; }
+export async function analytics() {
+  const [{ count: homeViews }, orders] = await Promise.all([
+    supabase.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'home'),
+    listOrders(),
+  ]);
+  const delivered = orders.filter((order) => order.status === 'delivered');
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const ordersForMonth = (start, end) => delivered.filter((order) => {
+    const createdAt = new Date(order.createdAt);
+    return createdAt >= start && createdAt < end;
+  });
+  const revenueForOrders = (monthOrders) => monthOrders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + Number(item.price || 0) * Number(item.quantity || 0), 0), 0);
+  const profitForOrders = (monthOrders) => monthOrders.reduce((sum, order) => sum + order.items.reduce((itemSum, item) => itemSum + (Number(item.price || 0) - Number(item.costPrice || 0)) * Number(item.quantity || 0), 0), 0);
+  const currentMonthOrders = ordersForMonth(currentMonthStart, nextMonthStart);
+  const currentRevenue = revenueForOrders(currentMonthOrders);
+  const lastRevenue = revenueForOrders(ordersForMonth(lastMonthStart, currentMonthStart));
+  const growth = lastRevenue === 0 ? (currentRevenue > 0 ? 100 : 0) : Number((((currentRevenue - lastRevenue) / lastRevenue) * 100).toFixed(2));
+  return {
+    homeViews: homeViews || 0,
+    orderStats: { total: orders.length, new: orders.filter((order) => order.status === 'new').length, processing: orders.filter((order) => order.status === 'processing').length, delivered: delivered.length, cancelled: orders.filter((order) => order.status === 'cancelled').length },
+    currentRevenue,
+    lastRevenue,
+    growth,
+    totalProfit: profitForOrders(currentMonthOrders),
+    bestSeller: getBestSeller(delivered),
+    totalLosses: 0,
+  };
+}
 export async function accountCount() { const { count, error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }); if (error) throw error; return count || 0; }
 export async function listAdmins() { const [admins, invites] = await Promise.all([supabase.from('profiles').select('id,identifier,createdAt,isOwner').eq('role', 'admin').order('createdAt'), supabase.from('admin_invites').select('identifier,createdAt').order('createdAt', { ascending: false })]); return { admins: asArray(throwIfError(admins)), invites: asArray(throwIfError(invites)) }; }
 export async function inviteAdmin(identifier) { const normalized = String(identifier).trim().toLowerCase(); const profile = throwIfError(await supabase.from('profiles').select('id,role').eq('identifier', normalized).maybeSingle()); if (profile?.role === 'admin') throw new Error('هذا الحساب مشرف مسبقاً'); if (profile) return throwIfError(await supabase.from('profiles').update({ role: 'admin' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').upsert({ identifier: normalized }, { onConflict: 'identifier' })); }
