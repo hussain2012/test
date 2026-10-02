@@ -113,3 +113,4 @@ $$;
 revoke all on function public.create_order_with_stock(uuid, jsonb) from public;
 revoke all on function public.create_order_with_stock(uuid, jsonb) from anon;
 grant execute on function public.create_order_with_stock(uuid, jsonb) to authenticated;
+notify pgrst, 'reload schema';

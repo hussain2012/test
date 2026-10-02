@@ -946,7 +946,10 @@ function Checkout() {
       clearCart();
       setDone(orderId);
     } catch (reason) {
-      setError(reason.message || 'تعذر إرسال الطلب');
+      const message = String(reason?.message || '');
+      setError(reason?.code === 'PGRST202' || message.includes('create_order_with_stock')
+        ? 'دالة إنشاء الطلب غير مفعّلة في قاعدة البيانات. شغّل scripts/create-order-with-stock.sql في Supabase ثم أعد المحاولة.'
+        : (message || 'تعذر إرسال الطلب'));
     }
   };
 
