@@ -545,7 +545,7 @@ function Store() {
     ? safeProducts.filter((product) => {
         const matchesCategory = category === 'الكل' || product.category === category;
         const query = search.trim().toLowerCase();
-        const matchesQuery = !query || product.name.toLowerCase().includes(query) || String(product.productCode || '').toLowerCase().includes(query);
+        const matchesQuery = !query || product.name.toLowerCase().includes(query);
         return matchesCategory && matchesQuery;
       })
     : [];
@@ -656,7 +656,6 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
       </Link>
       <div className="product-info">
         <span>{product.category || 'بدون فئة'}</span>
-        {product.productCode && <small className="product-code">كود: {product.productCode}</small>}
         <Link to={`/product/${product.id}`} className="product-name"><h3>{product.name}</h3></Link>
         <div className="product-bottom">
           <div className="price-wrap">
@@ -807,7 +806,6 @@ function ProductDetailPage() {
             </div>
             <h1>{product.name}</h1>
             <div className="detail-meta-row">
-              {product.productCode && <span className="product-code detail-product-code">كود المنتج: {product.productCode}</span>}
             </div>
             <div className="price-stack">
               <strong>{money(finalPrice)}</strong>
