@@ -727,6 +727,8 @@ button { cursor: pointer; }
   margin-top: -2px;
 }
 
+.product-stock-count { color: var(--success); font-size: 12px; font-weight: 700; }
+
 .detail-product-code {
   display: inline-flex;
   align-items: center;

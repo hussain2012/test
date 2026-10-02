@@ -806,6 +806,7 @@ function ProductDetailPage() {
             </div>
             <h1>{product.name}</h1>
             <div className="detail-meta-row">
+              {productAvailabilityMode(product) === 'ready' && <span className="product-stock-count">متوفر بالمخزون: {new Intl.NumberFormat('ar-IQ').format(Number(product.stockQuantity || 0))} قطعة</span>}
             </div>
             <div className="price-stack">
               <strong>{money(finalPrice)}</strong>
@@ -1313,7 +1314,7 @@ function Overview() {
       </div>
       <section className="product-analytics" aria-labelledby="product-analytics-title">
         <header className="product-analytics-heading">
-          <div><p className="eyebrow">أداء الكتالوج</p><h2 id="product-analytics-title">المنتجات شنو هي؟</h2></div>
+          <div><h2 id="product-analytics-title">المنتجات</h2></div>
           <span>{catalogProducts.length} منتج</span>
         </header>
         {catalogProducts.length ? <div className="product-analytics-layout">
