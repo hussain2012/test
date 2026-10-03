@@ -2047,10 +2047,9 @@ function SiteSettingsAdmin() {
 
   const deleteStoreCategory = async (category) => {
     const categoryProducts = products.filter((product) => product.category === category.name);
-    const remainingCategories = categoryItems.filter((item) => item.id !== category.id);
-    const targetCategory = remainingCategories.find((item) => item.name === 'عام')?.name || remainingCategories[0]?.name || '';
+    const targetCategory = '';
     const message = categoryProducts.length
-      ? `سيتم حذف فئة «${category.name}» ونقل ${categoryProducts.length} من منتجاتها إلى «${targetCategory || 'بدون فئة'}». هل تريد المتابعة؟`
+      ? `سيتم حذف فئة «${category.name}» ونقل ${categoryProducts.length} من منتجاتها إلى «بدون فئة». هل تريد المتابعة؟`
       : `هل تريد حذف فئة «${category.name}»؟`;
     if (!window.confirm(message)) return;
 
