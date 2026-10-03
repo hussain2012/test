@@ -15,6 +15,7 @@ const mediaUrl = (value) => {
 };
 const provinces = ['بغداد','البصرة','نينوى','أربيل','النجف','كربلاء','كركوك','السليمانية','دهوك','الأنبار','بابل','ذي قار','ديالى','الديوانية','ميسان','المثنى','صلاح الدين','واسط'];
 const money = (value) => `${new Intl.NumberFormat('ar-IQ').format(Number(value || 0))} د.ع`;
+const createRequestId = () => crypto.randomUUID();
 const productDiscountValue = (product) => Number(product?.discountValue ?? product?.discountPercentage ?? 0);
 const hasProductDiscount = (product) => productDiscountValue(product) > 0;
 const getProductDiscountedPrice = (product) => {
@@ -184,7 +185,12 @@ const useCart = () => useContext(CartContext);
 
 function CartProvider({ children }) {
   const { session } = useAuth();
-  const accountCartLoaded = useRef(!session);
+  const [loadedAccountId, setLoadedAccountId] = useState(null);
+  const [cartSyncError, setCartSyncError] = useState('');
+  const [cartReloadKey, setCartReloadKey] = useState(0);
+  const cartLoadRequest = useRef(0);
+  const cartSaveRequest = useRef(0);
+  const cartSaveQueue = useRef(Promise.resolve());
   const [cart, setCart] = useState(() => {
     try {
       const storedCart = JSON.parse(localStorage.getItem('cart') || '[]');
@@ -195,30 +201,54 @@ function CartProvider({ children }) {
   });
 
   useEffect(() => {
-    localStorage.setItem('cart', JSON.stringify(cart));
-    if (!accountCartLoaded.current || !session) return;
-    saveCart(session.user.id, cart).catch(() => {});
-  }, [cart, session]);
-
-  useEffect(() => {
     const loadAccountCart = async () => {
+      const requestId = ++cartLoadRequest.current;
+      cartSaveRequest.current += 1;
       if (!session) {
-        accountCartLoaded.current = true;
+        setLoadedAccountId(null);
+        setCartSyncError('');
         return;
       }
-      accountCartLoaded.current = false;
+      setLoadedAccountId(null);
+      setCartSyncError('');
       try {
         const items = await getCart(session.user.id);
+        if (requestId !== cartLoadRequest.current) return;
         setCart(Array.isArray(items) ? items : []);
-      } finally {
-        accountCartLoaded.current = true;
+        setLoadedAccountId(session.user.id);
+      } catch {
+        if (requestId === cartLoadRequest.current) setCartSyncError('تعذر تحميل سلة الحساب. أعد تحميل الصفحة قبل متابعة المزامنة.');
       }
     };
     loadAccountCart();
     window.addEventListener('account-session-changed', loadAccountCart);
-    return () => window.removeEventListener('account-session-changed', loadAccountCart);
-  }, [session]);
+    return () => {
+      cartLoadRequest.current += 1;
+      window.removeEventListener('account-session-changed', loadAccountCart);
+    };
+  }, [session, cartReloadKey]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('cart', JSON.stringify(cart));
+    } catch {
+      setCartSyncError('تعذر حفظ السلة على هذا الجهاز.');
+    }
+    if (!session || loadedAccountId !== session.user.id) return;
+
+    const requestId = ++cartSaveRequest.current;
+    const accountId = session.user.id;
+    cartSaveQueue.current = cartSaveQueue.current
+      .then(() => saveCart(accountId, cart))
+      .then(() => {
+        if (requestId === cartSaveRequest.current) setCartSyncError('');
+      })
+      .catch(() => {
+        if (requestId === cartSaveRequest.current) setCartSyncError('تعذر مزامنة السلة مع حسابك. تحقق من الاتصال ثم أعد تحميل الصفحة.');
+      });
+  }, [cart, session, loadedAccountId]);
+
+  const cartLoading = Boolean(session && loadedAccountId !== session.user.id);
   const addItem = (product, quantity = 1) => {
     const sellingPrice = Number(product.selectedPrice ?? product.discountedPrice ?? product.price ?? 0);
     const productKey = variantKey(product.selectedVariants);
@@ -242,7 +272,7 @@ function CartProvider({ children }) {
   const subtotal = (Array.isArray(cart) ? cart : []).reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0);
 
   return (
-    <CartContext.Provider value={{ cart, addItem, updateItem, clearCart, count: cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0), subtotal }}>
+    <CartContext.Provider value={{ cart, addItem, updateItem, clearCart, retryCartLoad: () => setCartReloadKey((value) => value + 1), count: cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0), subtotal, cartLoading, cartSyncError }}>
       {children}
     </CartContext.Provider>
   );
@@ -250,17 +280,23 @@ function CartProvider({ children }) {
 
 function useSiteSettings() {
   const [settings, setSettings] = useState(defaultSettings);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    let active = true;
     getSiteSettings()
       .then((data) => {
+        if (!active) return;
         const nextSettings = { ...defaultSettings, ...(data || {}) };
         setSettings(nextSettings);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) setError('تعذر تحميل إعدادات المتجر. تحقق من الاتصال ثم أعد تحميل الصفحة.');
+      });
+    return () => { active = false; };
   }, []);
 
-  return settings;
+  return { settings, error };
 }
 
 function ProductImage({ src, alt, className = '' }) {
@@ -273,7 +309,7 @@ function ProductImage({ src, alt, className = '' }) {
 }
 
 function AddToCartButton({ product, quantity = 1, className = 'primary', disabled = false, label = 'أضف للسلة', disabledLabel = 'غير متوفر' }) {
-  const { addItem, cart } = useCart();
+  const { addItem, cart, cartLoading } = useCart();
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
   const productVariantKey = variantKey(product.selectedVariants);
@@ -286,7 +322,7 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
   }, [status]);
 
   const handleClick = () => {
-    if (disabled) return;
+    if (disabled || cartLoading) return;
     if (inCart) {
       navigate('/checkout');
       return;
@@ -296,8 +332,8 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
   };
 
   return (
-    <button type="button" className={className} disabled={disabled} onClick={handleClick}>
-      {status || (disabled ? disabledLabel : (inCart ? 'عرض السلة' : label))}
+    <button type="button" className={className} disabled={disabled || cartLoading} onClick={handleClick}>
+      {status || (cartLoading ? 'جاري تحميل السلة...' : (disabled ? disabledLabel : (inCart ? 'عرض السلة' : label)))}
     </button>
   );
 }
@@ -376,7 +412,7 @@ function BottomNav() {
 
 function AccountPage() {
   const { user, profile } = useAuth();
-  const settings = useSiteSettings();
+  const { settings, error: settingsError } = useSiteSettings();
   const location = useLocation();
   const navigate = useNavigate();
   const metadata = user?.user_metadata || {};
@@ -463,7 +499,7 @@ function AccountPage() {
 
   return (
     <>
-      <StoreNav settings={settings} />
+      <StoreNav settings={settings} settingsError={settingsError} />
       <main className={`account-page ${activePanel === 'menu' ? 'account-menu-view' : 'account-detail-view'}`}>
         <div className="account-page-head"><p className="eyebrow">حسابك</p><h1>{activePanel === 'menu' ? (displayName ? `أهلاً، ${displayName}` : 'أهلاً بك') : activePanel === 'account' ? 'بيانات الحساب' : activePanel === 'password' ? (passwordSet ? 'تغيير كلمة المرور' : 'عيّن كلمة المرور') : activePanel === 'favorites' ? 'خيارات الطلب المفضلة' : activePanel === 'products' ? 'المنتجات المفضلة' : settings.policyTitle}</h1>{activePanel === 'menu' && <p>{user.email}</p>}</div>
         {activePanel !== 'menu' && <Link to="/account" className="account-back"><span aria-hidden="true">›</span> العودة إلى الحساب</Link>}
@@ -491,44 +527,62 @@ function AccountPage() {
   );
 }
 
-function StoreNav({ settings }) {
+function StoreNav({ settings, settingsError = '' }) {
   const { count } = useCart();
   const { user, profile } = useAuth();
   const storeName = settings.storeName || 'المتجر';
 
   return (
-    <header className="nav">
-      <Link to="/" className="brand store-wordmark">
-        <span>{storeName}</span>
-        {settings.tagline && <small>{settings.tagline}</small>}
-      </Link>
-      <nav>
-        {!user && <Link to="/login">تسجيل الدخول</Link>}
-        {user && <Link to="/account">الحساب</Link>}
-        {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
-        {user && <Link to="/my-orders">طلباتي السابقة</Link>}
-        <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
-      </nav>
-    </header>
+    <>
+      <header className="nav">
+        <Link to="/" className="brand store-wordmark">
+          <span>{storeName}</span>
+          {settings.tagline && <small>{settings.tagline}</small>}
+        </Link>
+        <nav>
+          {!user && <Link to="/login">تسجيل الدخول</Link>}
+          {user && <Link to="/account">الحساب</Link>}
+          {profile?.role === 'admin' && <Link to="/admin">لوحة الإدارة</Link>}
+          {user && <Link to="/my-orders">طلباتي السابقة</Link>}
+          <Link to="/checkout" className="cart-link">السلة <b>{count}</b></Link>
+        </nav>
+      </header>
+      {settingsError && <p className="error settings-load-error" role="alert">{settingsError}</p>}
+    </>
   );
 }
 
 function Store() {
-  const settings = useSiteSettings();
+  const { settings, error: settingsError } = useSiteSettings();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('الكل');
   const [currentPage, setCurrentPage] = useState(1);
   const productsPerPage = 8;
 
   useEffect(() => {
-    recordView('home').catch(() => {});
-    listProducts()
-      .then((data) => setProducts(Array.isArray(data) ? data : []))
-      .catch(() => setProducts([]))
-      .finally(() => setLoading(false));
+    recordView('home').catch((reason) => console.error('تعذر تسجيل زيارة الصفحة الرئيسية', reason));
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError('');
+    listProducts()
+      .then((data) => {
+        if (active) setProducts(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (active) setLoadError('تعذر تحميل المنتجات. تحقق من الاتصال ثم أعد المحاولة.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [reloadKey]);
 
   const safeProducts = Array.isArray(products) ? products : [];
   const storeCategories = getStoreCategories(settings.storeCategories, safeProducts);
@@ -571,7 +625,7 @@ function Store() {
 
   return (
     <>
-      <StoreNav settings={settings} />
+      <StoreNav settings={settings} settingsError={settingsError} />
       <main>
         {settings.maintenanceMode && <div className="maintenance-banner">المتجر في وضع الصيانة: يمكنك تصفح المنتجات، والطلبات متوقفة مؤقتاً.</div>}
         <section id="catalog" className="catalog">
@@ -591,6 +645,8 @@ function Store() {
 
           {loading ? (
             <div className="empty">جاري تحميل المنتجات...</div>
+          ) : loadError ? (
+            <div className="empty" role="alert">{loadError}<button type="button" className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>إعادة المحاولة</button></div>
           ) : !products.length ? (
             <div className="empty">لا توجد منتجات</div>
           ) : !visibleProducts.length ? (
@@ -672,7 +728,7 @@ function ProductDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const settings = useSiteSettings();
+  const { settings, error: settingsError } = useSiteSettings();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -684,7 +740,7 @@ function ProductDetailPage() {
   const [productActionMessage, setProductActionMessage] = useState('');
 
   useEffect(() => {
-    recordView('product', id).catch(() => {});
+    recordView('product', id).catch((reason) => console.error('تعذر تسجيل زيارة المنتج', reason));
 
     setLoading(true);
     setError('');
@@ -700,18 +756,21 @@ function ProductDetailPage() {
         setLoading(false);
         listProducts()
           .then((products) => setSimilarProducts(products.filter((item) => item.id !== data.id && item.category === data.category).slice(0, 4)))
-          .catch(() => setSimilarProducts([]));
+          .catch((reason) => {
+            console.error('تعذر تحميل المنتجات المشابهة', reason);
+            setSimilarProducts([]);
+          });
       })
-      .catch((reason) => setError(reason.message))
+      .catch(() => setError('تعذر تحميل المنتج. تحقق من الاتصال ثم أعد المحاولة.'))
       .finally(() => setLoading(false));
   }, [id]);
 
   if (loading) {
-    return <><StoreNav settings={settings} /><div className="empty">جاري تحميل المنتج...</div></>;
+    return <><StoreNav settings={settings} settingsError={settingsError} /><div className="empty">جاري تحميل المنتج...</div></>;
   }
 
   if (error || !product) {
-    return <><StoreNav settings={settings} /><div className="empty"><h2>{error || 'المنتج غير موجود'}</h2><Link to="/" className="primary">العودة إلى المتجر</Link></div></>;
+    return <><StoreNav settings={settings} settingsError={settingsError} /><div className="empty"><h2>{error || 'المنتج غير موجود'}</h2><Link to="/" className="primary">العودة إلى المتجر</Link></div></>;
   }
 
   const hasDiscount = hasProductDiscount(product);
@@ -769,7 +828,7 @@ function ProductDetailPage() {
 
   return (
     <>
-      <StoreNav settings={settings} />
+      <StoreNav settings={settings} settingsError={settingsError} />
       <main className="detail-page">
         <div className="product-detail-layout">
           <div className="detail-image-wrap">
@@ -880,13 +939,17 @@ function Field({ label, name, type = 'text', inputMode, value, onChange, placeho
 }
 
 function Checkout() {
-  const settings = useSiteSettings();
-  const { cart, subtotal, updateItem, clearCart } = useCart();
+  const { settings, error: settingsError } = useSiteSettings();
+  const { cart, subtotal, updateItem, clearCart, cartLoading, cartSyncError, retryCartLoad } = useCart();
   const { user } = useAuth();
   const [form, setForm] = useState({ customerName: '', province: '', address: '', nearestLandmark: '', phoneNumber: '', discountCode: '' });
   const [discount, setDiscount] = useState(null);
   const [error, setError] = useState('');
+  const [couponMessage, setCouponMessage] = useState('');
+  const [couponApplying, setCouponApplying] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [done, setDone] = useState(null);
+  const orderRequest = useRef({ fingerprint: '', id: '' });
   const navigate = useNavigate();
   const needsPassword = Boolean(user && user.user_metadata?.password_set !== true);
 
@@ -899,49 +962,74 @@ function Checkout() {
   }, [user]);
 
   const delivery = form.province && form.province !== 'بغداد' ? 5000 : 3000;
-  const discountAmount = discount ? (discount.type === 'percentage' ? subtotal * Number(discount.value || 0) / 100 : Math.min(Number(discount.value || 0), subtotal)) : 0;
+  const discountAmount = discount ? (discount.type === 'percentage' ? subtotal * Math.min(100, Math.max(0, Number(discount.value || 0))) / 100 : Math.min(Number(discount.value || 0), subtotal)) : 0;
   const total = subtotal - discountAmount + delivery;
 
-  const handleChange = (event) => setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({ ...current, [name]: value }));
+    if (name === 'discountCode') {
+      setDiscount(null);
+      setCouponMessage('');
+      setError('');
+    }
+  };
 
   const applyDiscount = async () => {
-    if (!form.discountCode.trim()) return;
-    const data = await validateDiscount(form.discountCode.trim());
-    setDiscount(data || null);
-    if (!data) {
-      setError('كود الخصم غير صالح أو غير فعال');
-      return;
-    }
-    if (user) {
-      saveCoupon(user.id, data.id).catch(() => {});
+    if (!form.discountCode.trim() || couponApplying) return;
+    setCouponApplying(true);
+    setDiscount(null);
+    setError('');
+    setCouponMessage('');
+    try {
+      const data = await validateDiscount(form.discountCode.trim());
+      if (!data || (data.type === 'percentage' && (Number(data.value) < 0 || Number(data.value) > 100))) {
+        setError('كود الخصم غير صالح أو غير فعال');
+        return;
+      }
+      setDiscount(data);
+      if (user) {
+        try {
+          await saveCoupon(user.id, data.id);
+        } catch {
+          setCouponMessage('تم تطبيق الخصم، لكن تعذر حفظه ضمن أكواد حسابك.');
+        }
+      }
+    } catch {
+      setError('تعذر التحقق من كود الخصم. تحقق من الاتصال ثم أعد المحاولة.');
+    } finally {
+      setCouponApplying(false);
     }
   };
 
   const submitOrder = async (event) => {
     event.preventDefault();
+    if (isSubmitting) return;
     setError('');
     if (!user) return setError('لا يمكنك إكمال الطلب إلا بعد تسجيل الدخول');
     if (needsPassword) return setError('قبل إرسال الطلب، اذهب إلى الحساب وعيّن كلمة مرور أولاً.');
     if (settings.maintenanceMode) return setError('الطلبات متوقفة مؤقتاً بسبب الصيانة');
-
+    if (cartLoading) return setError('انتظر حتى يكتمل تحميل سلة حسابك.');
     if (!/^07\d{9}$/.test(form.phoneNumber)) return setError('يرجى إدخال رقم هاتف عراقي صحيح');
-    if (!form.customerName || !form.province || !form.address || !form.nearestLandmark) return setError('يرجى إكمال جميع الحقول المطلوبة');
+    if (!form.customerName.trim() || !form.province || !form.address.trim() || !form.nearestLandmark.trim()) return setError('يرجى إكمال جميع الحقول المطلوبة');
     if (!cart.length) return setError('السلة فارغة');
 
     const payload = {
-      items: (Array.isArray(cart) ? cart : []).map((item) => ({ productId: item.id, name: item.name, price: Number(item.price || 0), quantity: Number(item.quantity || 0), selectedVariants: item.selectedVariants || {} })),
-      customerName: form.customerName,
+      items: (Array.isArray(cart) ? cart : []).map((item) => ({ productId: item.id, quantity: Number(item.quantity || 0), selectedVariants: item.selectedVariants || {} })),
+      customerName: form.customerName.trim(),
       province: form.province,
-      address: form.address,
-      nearestLandmark: form.nearestLandmark,
+      address: form.address.trim(),
+      nearestLandmark: form.nearestLandmark.trim(),
       phoneNumber: form.phoneNumber,
-      subtotal,
       discountCode: discount?.code || '',
-      discountAmount,
-      deliveryFee: delivery,
-      finalTotal: total,
     };
+    const fingerprint = JSON.stringify(payload);
+    if (orderRequest.current.fingerprint !== fingerprint) {
+      orderRequest.current = { fingerprint, id: createRequestId() };
+    }
+    payload.requestId = orderRequest.current.id;
 
+    setIsSubmitting(true);
     try {
       const orderId = await createOrder(payload, user.id);
       clearCart();
@@ -950,14 +1038,16 @@ function Checkout() {
       const message = String(reason?.message || '');
       setError(reason?.code === 'PGRST202' || message.includes('create_order_with_stock')
         ? 'مخطط قاعدة البيانات غير مكتمل. شغّل supabase_schema_fix.sql في Supabase ثم أعد المحاولة.'
-        : (message || 'تعذر إرسال الطلب'));
+        : (/[\u0600-\u06FF]/.test(message) ? message : supabaseErrorMessage(reason, 'تعذر إرسال الطلب. تحقق من الاتصال ثم أعد المحاولة.')));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   if (done) {
     return (
       <>
-        <StoreNav settings={settings} />
+        <StoreNav settings={settings} settingsError={settingsError} />
         <main className="confirmation">
           <div className="check">✓</div>
           <p className="eyebrow">تم استلام طلبك</p>
@@ -971,7 +1061,7 @@ function Checkout() {
 
   return (
     <>
-      <StoreNav settings={settings} />
+      <StoreNav settings={settings} settingsError={settingsError} />
       <main className="checkout">
         <div className="checkout-head">
           <p className="eyebrow">الخطوة الأخيرة</p>
@@ -979,7 +1069,12 @@ function Checkout() {
           <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
         </div>
 
-        {!cart.length ? (
+        {cartLoading ? (
+          <div className="empty" role="status">
+            {cartSyncError || 'جاري تحميل سلة حسابك...'}
+            {cartSyncError && <button type="button" className="secondary-button" onClick={retryCartLoad}>إعادة المحاولة</button>}
+          </div>
+        ) : !cart.length ? (
           <div className="empty">السلة فارغة حالياً. <Link to="/">تصفح المنتجات</Link></div>
         ) : (
           <div className="checkout-layout">
@@ -1001,10 +1096,14 @@ function Checkout() {
               <Field label="رقم هاتف" name="phoneNumber" type="tel" value={form.phoneNumber} onChange={handleChange} placeholder="07xxxxxxxxx" />
               <div className="discount-field">
                 <Field label="كود خصم اذا توفر" name="discountCode" value={form.discountCode} onChange={handleChange} required={false} />
-                <button type="button" onClick={applyDiscount}>تطبيق</button>
+                <button type="button" onClick={applyDiscount} disabled={couponApplying}>{couponApplying ? 'جارٍ التحقق...' : 'تطبيق'}</button>
               </div>
+              {couponMessage && <p className="success-message" role="status">{couponMessage}</p>}
+              {cartSyncError && <p className="error" role="alert">{cartSyncError}</p>}
               {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}{needsPassword && <><br /><Link to="/account">الذهاب إلى الحساب وتعيين كلمة المرور</Link></>}</p>}
-              <button type="submit" className="primary full" disabled={settings.maintenanceMode}>{settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : 'تأكيد وإرسال الطلب'}</button>
+              <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading} aria-busy={isSubmitting}>
+                {settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (isSubmitting ? 'جارٍ إرسال الطلب...' : 'تأكيد وإرسال الطلب')}
+              </button>
             </form>
 
             <aside className="receipt">
@@ -1039,26 +1138,45 @@ function Checkout() {
 
 function MyOrders() {
   const { user } = useAuth();
+  const { settings, error: settingsError } = useSiteSettings();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    if (!user) return undefined;
+    let active = true;
+    if (!user) {
+      setOrders([]);
+      setLoading(false);
+      return () => { active = false; };
+    }
+    setLoading(true);
+    setLoadError('');
     getAccountOrders(user.id)
-      .then((data) => setOrders(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false));
-    return undefined;
-  }, [user]);
+      .then((data) => {
+        if (active) setOrders(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (active) setLoadError('تعذر تحميل طلباتك. تحقق من الاتصال ثم أعد المحاولة.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [user, reloadKey]);
 
   const statusLabels = { new: 'جديد', processing: 'قيد التجهيز', delivered: 'تم التوصيل', cancelled: 'ملغي' };
+  if (!user) return <Navigate to="/login" replace state={{ returnTo: '/my-orders' }} />;
+
   return (
     <>
-      <StoreNav settings={useSiteSettings()} />
+      <StoreNav settings={settings} settingsError={settingsError} />
       <main className="account-orders">
         <p className="eyebrow">حسابي</p>
         <h1>طلباتي</h1>
         <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
-        {loading ? <div className="empty">جاري تحميل الطلبات...</div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
+        {loading ? <div className="empty">جاري تحميل الطلبات...</div> : loadError ? <div className="empty" role="alert">{loadError}<button type="button" className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>إعادة المحاولة</button></div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
             {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
               <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
@@ -1078,7 +1196,7 @@ function MyOrders() {
 }
 
 function Login() {
-  const storeSettings = useSiteSettings();
+  const { settings: storeSettings, error: settingsError } = useSiteSettings();
   const [mode, setMode] = useState('login');
   const [fullName, setFullName] = useState('');
   const [identifier, setIdentifier] = useState('');
@@ -1180,7 +1298,7 @@ function Login() {
 
   return (
     <>
-      <StoreNav settings={storeSettings} />
+      <StoreNav settings={storeSettings} settingsError={settingsError} />
       <main className={`login-page ${mode === 'register' ? 'register-page' : ''}`}>
       <form className="login-card" onSubmit={submit}>
         <h1>{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</h1>
@@ -1816,31 +1934,69 @@ function DiscountsAdmin() {
   const [form, setForm] = useState({ code: '', type: 'percentage', value: 10 });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const load = () => listDiscounts().then((data) => setItems(Array.isArray(data) ? data : []));
-
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    listDiscounts()
+      .then((data) => { if (active) setItems(Array.isArray(data) ? data : []); })
+      .catch((reason) => { if (active) setError(supabaseErrorMessage(reason, 'تعذر تحميل أكواد الخصم من Supabase')); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reloadKey]);
 
   const save = async (event) => {
     event.preventDefault();
+    if (saving) return;
     setMessage('');
     setError('');
+    setSaving(true);
     try {
       await createDiscount(form);
     } catch (reason) {
       setError(reason?.code === '23505'
         ? 'كود الخصم هذا مستخدم مسبقًا. اختر كودًا آخر.'
-        : supabaseErrorMessage(reason, 'تعذر إضافة كود الخصم'));
+        : (/[\u0600-\u06FF]/.test(String(reason?.message || '')) ? reason.message : supabaseErrorMessage(reason, 'تعذر إضافة كود الخصم')));
       return;
+    } finally {
+      setSaving(false);
     }
     setForm({ code: '', type: 'percentage', value: 10 });
     setMessage('تمت إضافة كود الخصم');
-    load();
+    setReloadKey((value) => value + 1);
   };
 
   const toggle = async (discount) => {
-    await updateDiscount(discount.id, { ...discount, active: !discount.active });
-    load();
+    if (busyId !== null) return;
+    setBusyId(discount.id);
+    setError('');
+    try {
+      await updateDiscount(discount.id, { ...discount, active: !discount.active });
+      setReloadKey((value) => value + 1);
+    } catch (reason) {
+      setError(/[\u0600-\u06FF]/.test(String(reason?.message || '')) ? reason.message : supabaseErrorMessage(reason, 'تعذر تحديث كود الخصم'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (discount) => {
+    if (busyId !== null) return;
+    setBusyId(discount.id);
+    setError('');
+    try {
+      await deleteDiscount(discount.id);
+      setReloadKey((value) => value + 1);
+    } catch (reason) {
+      setError(/[\u0600-\u06FF]/.test(String(reason?.message || '')) ? reason.message : supabaseErrorMessage(reason, 'تعذر حذف كود الخصم'));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
@@ -1853,22 +2009,22 @@ function DiscountsAdmin() {
           <option value="fixed">مبلغ ثابت</option>
         </select>
         <label className="field-label">قيمة الخصم {form.type === 'percentage' ? '(%)' : '(د.ع)'}<input type="number" min="0" placeholder="القيمة" value={form.value} onChange={(event) => setForm({ ...form, value: event.target.value })} /></label>
-        <button type="submit" className="primary">إضافة الكود</button>
+        <button type="submit" className="primary" disabled={saving || loading}>{saving ? 'جارٍ الحفظ...' : 'إضافة الكود'}</button>
         {message && <p className="success-message">{message}</p>}
-        {error && <p className="error">{error}</p>}
       </form>
 
       <div className="admin-table">
         <div className="table-title"><h2>أكواد الخصم</h2></div>
-        {(Array.isArray(items) ? items : []).map((discount) => (
+        {error && <p className="error" role="alert">{error}{!items.length && <button type="button" className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>إعادة المحاولة</button>}</p>}
+        {loading ? <div className="empty">جاري تحميل أكواد الخصم...</div> : !error && !items.length ? <div className="empty">لا توجد أكواد خصم</div> : (Array.isArray(items) ? items : []).map((discount) => (
           <div className="table-row" key={discount.id}>
             <strong>{discount.code}</strong>
             <span>{discount.type === 'percentage' ? 'نسبة مئوية' : 'مبلغ ثابت'}</span>
             <span>{discount.value}{discount.type === 'percentage' ? '%' : ' د.ع'}</span>
             <span className={discount.active ? 'active-status' : 'inactive-status'}>{discount.active ? 'فعال' : 'متوقف'}</span>
             <div className="inline-actions">
-              <button type="button" onClick={() => toggle(discount)}>{discount.active ? 'إيقاف' : 'تفعيل'}</button>
-              <button type="button" className="danger" onClick={() => deleteDiscount(discount.id).then(load)}>حذف</button>
+              <button type="button" disabled={busyId !== null} onClick={() => toggle(discount)}>{busyId === discount.id ? 'جارٍ التحديث...' : (discount.active ? 'إيقاف' : 'تفعيل')}</button>
+              <button type="button" className="danger" disabled={busyId !== null} onClick={() => remove(discount)}>حذف</button>
             </div>
           </div>
         ))}
@@ -1945,6 +2101,15 @@ function AdminsAdmin() {
 function SiteSettingsAdmin() {
   const [settings, setSettings] = useState(defaultSettings);
   const [products, setProducts] = useState([]);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsLoadError, setSettingsLoadError] = useState('');
+  const [productsLoaded, setProductsLoaded] = useState(false);
+  const [productsLoadError, setProductsLoadError] = useState('');
+  const [settingsReloadKey, setSettingsReloadKey] = useState(0);
+  const [productsReloadKey, setProductsReloadKey] = useState(0);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryNameDrafts, setCategoryNameDrafts] = useState({});
   const [uploadingCategoryId, setUploadingCategoryId] = useState('');
@@ -1953,22 +2118,48 @@ function SiteSettingsAdmin() {
   const lastSavedSettings = useRef('');
   const categoryItems = getStoreCategories(settings.storeCategories, products);
 
-  const loadSettings = () => {
+  useEffect(() => {
+    let active = true;
+    setSettingsLoading(true);
+    setSettingsLoadError('');
     getSiteSettings()
       .then((data) => {
+        if (!active) return;
         const nextSettings = { ...defaultSettings, ...data };
         lastSavedSettings.current = JSON.stringify(nextSettings);
         setSettings(nextSettings);
+        setSettingsLoaded(true);
       })
-      .catch(() => {
-        lastSavedSettings.current = JSON.stringify(defaultSettings);
-        setSettings(defaultSettings);
+      .catch((reason) => {
+        if (active) setSettingsLoadError(supabaseErrorMessage(reason, 'تعذر تحميل إعدادات المتجر من Supabase. لم يتم استبدال بيانات المتجر.'));
+      })
+      .finally(() => {
+        if (active) setSettingsLoading(false);
       });
-  };
+    return () => { active = false; };
+  }, [settingsReloadKey]);
+
+  useEffect(() => {
+    let active = true;
+    setProductsLoaded(false);
+    setProductsLoadError('');
+    listProducts()
+      .then((data) => {
+        if (!active) return;
+        setProducts(Array.isArray(data) ? data : []);
+        setProductsLoaded(true);
+      })
+      .catch((reason) => {
+        if (active) setProductsLoadError(supabaseErrorMessage(reason, 'تعذر تحميل المنتجات. لا يمكن إدارة الفئات بأمان حتى تنجح إعادة المحاولة.'));
+      });
+    return () => { active = false; };
+  }, [productsReloadKey]);
 
   const saveSettings = async (nextSettings, automatic = false) => {
+    if (!settingsLoaded || savingSettings) return;
     setStatusMessage('');
     setStatusError('');
+    setSavingSettings(true);
     try {
       const data = await saveSiteSettings(nextSettings);
       const savedSettings = { ...defaultSettings, ...data };
@@ -1978,20 +2169,17 @@ function SiteSettingsAdmin() {
     } catch (reason) {
       setStatusError(supabaseErrorMessage(reason, 'تعذر حفظ إعدادات المتجر'));
       return;
+    } finally {
+      setSavingSettings(false);
     }
   };
 
   useEffect(() => {
-    loadSettings();
-    listProducts().then((data) => setProducts(Array.isArray(data) ? data : [])).catch(() => setProducts([]));
-  }, []);
-
-  useEffect(() => {
     const serializedSettings = JSON.stringify(settings);
-    if (!lastSavedSettings.current || serializedSettings === lastSavedSettings.current) return undefined;
+    if (!settingsLoaded || !lastSavedSettings.current || serializedSettings === lastSavedSettings.current) return undefined;
     const timer = setTimeout(() => saveSettings(settings, true), 700);
     return () => clearTimeout(timer);
-  }, [settings]);
+  }, [settings, settingsLoaded]);
 
   const save = (event) => {
     event.preventDefault();
@@ -2082,26 +2270,36 @@ function SiteSettingsAdmin() {
   };
 
   const resetStore = async () => {
+    if (resetting) return;
     const confirmed = window.confirm('هل أنت متأكد؟ سيؤدي هذا إلى حذف المنتجات والطلبات والإحصائيات والخصومات وكل بيانات المتجر، مع الاحتفاظ بحسابات المديرين.');
     if (!confirmed) return;
 
     setStatusMessage('');
     setStatusError('');
+    setResetting(true);
 
     try {
       await resetStoreData();
     } catch (reason) {
-      setStatusError(reason.message || 'تعذر إعادة ضبط المتجر');
+      setStatusError(/[\u0600-\u06FF]/.test(String(reason?.message || '')) ? reason.message : supabaseErrorMessage(reason, 'تعذر إعادة ضبط المتجر'));
       return;
+    } finally {
+      setResetting(false);
     }
 
     setStatusMessage('تمت إعادة ضبط المتجر');
-    loadSettings();
+    setSettingsLoaded(false);
+    setSettingsReloadKey((value) => value + 1);
+    setProductsReloadKey((value) => value + 1);
   };
 
   return (
     <form className="admin-form settings-form" onSubmit={save}>
       <header className="settings-heading"><div><p className="eyebrow">إدارة المتجر</p><h2>إعدادات المتجر</h2></div></header>
+      {(settingsLoading || settingsLoadError) && <div className="settings-load-status" role={settingsLoadError ? 'alert' : 'status'}>
+        {settingsLoading ? 'جاري تحميل إعدادات المتجر...' : <>{settingsLoadError}<button type="button" className="secondary-button" onClick={() => setSettingsReloadKey((value) => value + 1)}>إعادة المحاولة</button></>}
+      </div>}
+      <fieldset className="settings-content" disabled={!settingsLoaded || savingSettings || resetting}>
 
       <section className="settings-section" aria-labelledby="settings-appearance-title">
         <div className="settings-section-heading"><span>01</span><div><h3 id="settings-appearance-title">واجهة المتجر</h3></div></div>
@@ -2119,7 +2317,8 @@ function SiteSettingsAdmin() {
           <label className="featured-section-title-input">عنوان القسم<input value={settings.featuredSectionTitle || ''} onChange={(event) => setSettings({ ...settings, featuredSectionTitle: event.target.value })} /></label>
           <div className="featured-product-settings">
             <strong>المنتجات المعروضة</strong>
-            {products.length ? <div className="featured-product-options">{products.map((product) => {
+            {productsLoadError && <p className="error" role="alert">{productsLoadError}<button type="button" className="secondary-button" onClick={() => setProductsReloadKey((value) => value + 1)}>إعادة تحميل المنتجات</button></p>}
+            {!productsLoaded && !productsLoadError ? <p className="account-muted">جاري تحميل المنتجات...</p> : products.length ? <div className="featured-product-options">{products.map((product) => {
               const selectedIds = Array.isArray(settings.featuredProductIds) ? settings.featuredProductIds.map(String) : [];
               return <label className="featured-product-option" key={product.id}><input type="checkbox" checked={selectedIds.includes(String(product.id))} onChange={() => toggleFeaturedProduct(product.id)} /><ProductImage src={product.imageUrl} alt="" /><span>{product.name}</span></label>;
             })}</div> : <p className="account-muted">لا توجد منتجات متاحة للاختيار.</p>}
@@ -2141,7 +2340,7 @@ function SiteSettingsAdmin() {
                 <div className="settings-category-preview"><ProductImage src={category.imageUrl || product?.imageUrl} alt={category.name} /></div>
                 <label className="settings-category-name">اسم الفئة<input value={categoryNameDrafts[category.id] ?? category.name} onChange={(event) => setCategoryNameDrafts((current) => ({ ...current, [category.id]: event.target.value }))} /></label>
                 <label className="settings-category-image">{uploadingCategoryId === category.id ? 'جاري رفع الصورة...' : 'تغيير الصورة'}<input type="file" accept="image/*" disabled={uploadingCategoryId === category.id} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; changeStoreCategoryImage(category, file); }} /></label>
-                <div className="settings-category-actions"><button type="button" className="secondary-button" onClick={() => saveStoreCategoryName(category)}>حفظ الاسم</button><button type="button" className="danger" onClick={() => deleteStoreCategory(category)}>حذف</button></div>
+                <div className="settings-category-actions"><button type="button" className="secondary-button" disabled={!productsLoaded || Boolean(productsLoadError)} onClick={() => saveStoreCategoryName(category)}>حفظ الاسم</button><button type="button" className="danger" disabled={!productsLoaded || Boolean(productsLoadError)} onClick={() => deleteStoreCategory(category)}>حذف</button></div>
               </div>;
             })}
             {!categoryItems.length && <p className="account-muted">لا توجد فئات بعد.</p>}
@@ -2172,10 +2371,11 @@ function SiteSettingsAdmin() {
       <section className="settings-section settings-operations" aria-labelledby="settings-operations-title">
         <div className="settings-section-heading"><span>06</span><div><h3 id="settings-operations-title">حالة المتجر</h3></div></div>
         <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>يسمح بالتصفح ويوقف إضافة المنتجات وإرسال الطلبات.</small></span></label>
-        <button type="button" className="danger" onClick={resetStore}>إعادة ضبط المتجر</button>
+        <button type="button" className="danger" disabled={resetting} onClick={resetStore}>{resetting ? 'جارٍ إعادة الضبط...' : 'إعادة ضبط المتجر'}</button>
       </section>
+      </fieldset>
 
-      <div className="settings-actions"><button type="submit" className="primary">حفظ الإعدادات</button>
+      <div className="settings-actions"><button type="submit" className="primary" disabled={!settingsLoaded || savingSettings || resetting}>{savingSettings ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}</button>
       {statusMessage && <p className="success-message">{statusMessage}</p>}
       {statusError && <p className="error">{statusError}</p>}
       </div>

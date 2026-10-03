@@ -284,8 +284,16 @@ export async function listOrders() { const data = throwIfError(await supabase.fr
 export async function updateOrder(id, updates) { return throwIfError(await supabase.from('orders').update(updates).eq('id', id)); }
 export async function unreadOrderCount() { const { count } = throwIfError(await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('isRead', false)); return count || 0; }
 export async function listDiscounts() { return asArray(throwIfError(await supabase.from('discounts').select('*').order('id', { ascending: false }))); }
-export async function createDiscount(form) { return throwIfError(await supabase.from('discounts').insert({ code: String(form.code).toUpperCase(), type: form.type, value: Number(form.value), active: form.active !== false }).select().single()); }
-export async function updateDiscount(id, form) { return throwIfError(await supabase.from('discounts').update({ code: String(form.code).toUpperCase(), type: form.type, value: Number(form.value), active: Boolean(form.active) }).eq('id', id).select().single()); }
+const discountPayload = (form) => {
+  const type = form.type === 'fixed' ? 'fixed' : 'percentage';
+  const value = Number(form.value);
+  if (!Number.isFinite(value) || value < 0 || (type === 'percentage' && value > 100)) {
+    throw new Error(type === 'percentage' ? 'يجب أن تكون نسبة الخصم بين 0 و100.' : 'أدخل مبلغ خصم صحيحاً.');
+  }
+  return { code: String(form.code).trim().toUpperCase(), type, value, active: form.active !== false };
+};
+export async function createDiscount(form) { return throwIfError(await supabase.from('discounts').insert(discountPayload(form)).select().single()); }
+export async function updateDiscount(id, form) { return throwIfError(await supabase.from('discounts').update(discountPayload(form)).eq('id', id).select().single()); }
 export async function deleteDiscount(id) { return throwIfError(await supabase.from('discounts').delete().eq('id', id)); }
 export async function analytics() {
   const [{ count: homeViews }, { data: productViews, error: productViewsError }, orders] = await Promise.all([
@@ -324,7 +332,7 @@ export async function analytics() {
 export async function accountCount() { const { count, error } = await supabase.from('profiles').select('id', { count: 'exact', head: true }); if (error) throw error; return count || 0; }
 export async function listAdmins() { const [admins, invites] = await Promise.all([supabase.from('profiles').select('id,identifier,createdAt,isOwner').eq('role', 'admin').order('createdAt'), supabase.from('admin_invites').select('identifier,createdAt').order('createdAt', { ascending: false })]); return { admins: asArray(throwIfError(admins)), invites: asArray(throwIfError(invites)) }; }
 export async function inviteAdmin(identifier) { const normalized = String(identifier).trim().toLowerCase(); const profile = throwIfError(await supabase.from('profiles').select('id,role').eq('identifier', normalized).maybeSingle()); if (profile?.role === 'admin') throw new Error('هذا الحساب مشرف مسبقاً'); if (profile) return throwIfError(await supabase.from('profiles').update({ role: 'admin' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').upsert({ identifier: normalized }, { onConflict: 'identifier' })); }
-export async function removeAdmin(identifier) { const profile = throwIfError(await supabase.from('profiles').select('id,isOwner').eq('identifier', String(identifier).toLowerCase()).eq('role', 'admin').maybeSingle()); if (profile?.isOwner) throw new Error('لا يمكن حذف مالك المتجر'); if (profile) await supabase.from('profiles').update({ role: 'customer' }).eq('id', profile.id); return throwIfError(await supabase.from('admin_invites').delete().eq('identifier', String(identifier).toLowerCase())); }
+export async function removeAdmin(identifier) { const profile = throwIfError(await supabase.from('profiles').select('id,isOwner').eq('identifier', String(identifier).toLowerCase()).eq('role', 'admin').maybeSingle()); if (profile?.isOwner) throw new Error('لا يمكن حذف مالك المتجر'); if (profile) throwIfError(await supabase.from('profiles').update({ role: 'customer' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').delete().eq('identifier', String(identifier).toLowerCase())); }
 export async function saveSiteSettings(settings) {
   const current = await getSiteSettings();
   const payload = { ...settings, id: undefined };
@@ -338,4 +346,4 @@ export async function saveSiteSettings(settings) {
   const data = throwIfError(await query.select().single());
   return { ...defaultSettings, ...data, featuredProductIds: getFeaturedProductIds(data), storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null };
 }
-export async function resetStore() { await Promise.all([supabase.from('account_coupons').delete().neq('discountId', 0), supabase.from('account_carts').delete().neq('accountId', ''), supabase.from('orders').delete().neq('id', 0), supabase.from('products').delete().neq('id', 0), supabase.from('discounts').delete().neq('id', 0), supabase.from('page_views').delete().neq('id', 0), supabase.from('admin_invites').delete().neq('identifier', ''), supabase.from('site_settings').delete().neq('id', 0)]); throwIfError(await supabase.from('site_settings').insert(defaultSettings)); }
+export async function resetStore() { return throwIfError(await supabase.rpc('reset_store')); }

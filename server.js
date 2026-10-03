@@ -504,60 +504,22 @@ app.get('/api/orders/unread-count', async (req, res) => {
   res.json({ count: count || 0 });
 });
 app.post('/api/orders', async (req, res) => {
-  let siteSettings;
-  try {
-    siteSettings = await getSiteSettings();
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
-  }
-  if (siteSettings.maintenanceMode) return res.status(503).json({ error: 'الطلبات متوقفة مؤقتاً بسبب الصيانة' });
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'يجب تسجيل الدخول لإرسال الطلب' });
   if (!requireSupabase(res)) return;
-  const b = req.body;
-  if (!b.customerName || !b.province || !b.address || !b.nearestLandmark || !b.phoneNumber || !b.items?.length) {
-    return res.status(400).json({ error: 'يرجى إكمال الحقول المطلوبة' });
-  }
-
-  const productIds = b.items.map((item) => item.productId);
-  const { data: products, error: productsError } = await supabaseServer.from('products').select('id, costPrice, discountPercentage').in('id', productIds);
-  if (productsError) return res.status(500).json({ error: productsError.message });
-  const productMap = new Map((products || []).map((product) => [String(product.id), product]));
-  const enrichedItems = b.items.map((item) => {
-    const product = productMap.get(String(item.productId));
-    return {
-      productId: item.productId,
-      name: item.name,
-      price: Number(item.price || 0),
-      quantity: Number(item.quantity || 0),
-      selectedVariants: item.selectedVariants || {},
-      costPrice: Number(product?.costPrice || 0),
-      discountPercentage: Number(product?.discountPercentage || 0),
-    };
+  const payload = req.body && typeof req.body === 'object' ? req.body : {};
+  const { data: accountOrderNumber, error: orderError } = await supabaseServer.rpc('create_order_with_stock', {
+    p_account_id: session.accountId,
+    p_payload: payload,
   });
-
-  const { data: latestOrder, error: latestOrderError } = await supabaseServer.from('orders').select('accountOrderNumber').eq('accountId', session.accountId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-  if (latestOrderError) return res.status(500).json({ error: latestOrderError.message });
-  const accountOrderNumber = Number(latestOrder?.accountOrderNumber || 0) + 1;
-  const { data: createdOrder, error: orderError } = await supabaseServer.from('orders').insert({
-    items: enrichedItems,
-    customerName: b.customerName,
-    province: b.province,
-    address: b.address,
-    nearestLandmark: b.nearestLandmark,
-    phoneNumber: b.phoneNumber,
-    subtotal: Number(b.subtotal || 0),
-    discountCode: b.discountCode || '',
-    discountAmount: Number(b.discountAmount || 0),
-    deliveryFee: Number(b.deliveryFee || 0),
-    finalTotal: Number(b.finalTotal || 0),
-    accountId: session.accountId,
-    accountOrderNumber,
-    status: 'processing',
-    createdAt: new Date().toISOString(),
-  }).select('id').single();
   if (orderError) return res.status(400).json({ error: orderError.message });
-  res.status(201).json({ id: createdOrder.id });
+  const { data: createdOrder, error: lookupError } = await supabaseServer.from('orders')
+    .select('id, accountOrderNumber')
+    .eq('accountId', session.accountId)
+    .eq('requestKey', String(payload.requestId || ''))
+    .maybeSingle();
+  if (lookupError || !createdOrder) return res.status(500).json({ error: lookupError?.message || 'تعذر استرجاع الطلب بعد إنشائه' });
+  res.status(201).json({ id: createdOrder.id, accountOrderNumber: createdOrder.accountOrderNumber ?? accountOrderNumber });
 });
 
 app.get('/api/account/orders', async (req, res) => {
@@ -662,22 +624,8 @@ app.get('/api/admin/site-settings', async (req, res) => {
 app.post('/api/admin/reset-store', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إعادة ضبطه' });
   if (!requireSupabase(res)) return;
-
-  const resetOperations = await Promise.all([
-    supabaseServer.from('account_coupons').delete().neq('discountId', 0),
-    supabaseServer.from('account_carts').delete().neq('accountId', '00000000-0000-0000-0000-000000000000'),
-    supabaseServer.from('orders').delete().neq('id', 0),
-    supabaseServer.from('products').delete().neq('id', 0),
-    supabaseServer.from('discounts').delete().neq('id', 0),
-    supabaseServer.from('page_views').delete().neq('id', 0),
-    supabaseServer.from('admin_invites').delete().neq('identifier', ''),
-    supabaseServer.from('site_settings').delete().neq('id', 0),
-  ]);
-  const resetError = resetOperations.find((result) => result.error)?.error;
-  if (resetError) return res.status(500).json({ error: resetError.message });
-
-  const { error: settingsError } = await supabaseServer.from('site_settings').insert(defaultSiteSettings);
-  if (settingsError) return res.status(500).json({ error: settingsError.message });
+  const { error } = await supabaseServer.rpc('reset_store', { p_owner_id: getSession(req).accountId });
+  if (error) return res.status(500).json({ error: error.message });
 
   res.json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
 });

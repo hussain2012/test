@@ -1661,6 +1661,27 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   overflow: hidden;
 }
 
+.settings-content {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-load-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 24px;
+  color: var(--danger);
+  background: var(--paper-soft);
+}
+
+.settings-load-status[role="status"] { color: var(--muted); }
+
 .settings-heading {
   display: flex;
   align-items: end;

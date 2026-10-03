@@ -329,25 +329,19 @@ export async function onRequest(context) {
     }
     if (route === 'orders' && method === 'POST') {
       if (!session) return errorResponse('يجب تسجيل الدخول لإرسال الطلب', 401);
-      const settings = await getSettings(supabase);
-      if (settings.maintenanceMode) return errorResponse('الطلبات متوقفة مؤقتاً بسبب الصيانة', 503);
       const body = await parseBody(request);
-      if (!body.customerName || !body.province || !body.address || !body.nearestLandmark || !body.phoneNumber || !body.items?.length) return errorResponse('يرجى إكمال الحقول المطلوبة', 400);
-      const ids = body.items.map((item) => item.productId);
-      const { data: products, error: productsError } = await supabase.from('products').select('id, name, costPrice, discountPercentage, discountType, discountValue, availabilityMode, inStock, stockQuantity').in('id', ids);
-      if (productsError) throw productsError;
-      const productMap = new Map((products || []).map((product) => [String(product.id), product]));
-      const unavailableProduct = body.items.map((item) => productMap.get(String(item.productId))).find((product) => {
-        if (!product) return true;
-        const mode = product.availabilityMode || (number(product.stockQuantity) <= 0 ? 'unavailable' : (Boolean(product.inStock) ? 'ready' : 'preorder'));
-        return mode === 'unavailable' || (mode === 'ready' && number(product.stockQuantity) <= 0);
+      const { data: accountOrderNumber, error: orderError } = await supabase.rpc('create_order_with_stock', {
+        p_account_id: session.accountId,
+        p_payload: body,
       });
-      if (unavailableProduct) return errorResponse(`${unavailableProduct.name || 'أحد المنتجات'} غير متوفر حاليًا`, 409);
-      const items = body.items.map((item) => ({ ...item, price: number(item.price), quantity: number(item.quantity), costPrice: number(productMap.get(String(item.productId))?.costPrice), discountPercentage: number(productMap.get(String(item.productId))?.discountPercentage), discountType: productMap.get(String(item.productId))?.discountType || 'percentage', discountValue: number(productMap.get(String(item.productId))?.discountValue, number(productMap.get(String(item.productId))?.discountPercentage)) }));
-      const { data: latest } = await supabase.from('orders').select('accountOrderNumber').eq('accountId', session.accountId).order('accountOrderNumber', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-      const { data, error } = await supabase.from('orders').insert({ items, customerName: body.customerName, province: body.province, address: body.address, nearestLandmark: body.nearestLandmark, phoneNumber: body.phoneNumber, subtotal: number(body.subtotal), discountCode: body.discountCode || '', discountAmount: number(body.discountAmount), deliveryFee: number(body.deliveryFee), finalTotal: number(body.finalTotal), accountId: session.accountId, accountOrderNumber: number(latest?.accountOrderNumber) + 1, status: 'processing', createdAt: new Date().toISOString() }).select('id').single();
-      if (error) throw error;
-      return json({ id: data.id }, 201);
+      if (orderError) return errorResponse(orderError.message, 400);
+      const { data: createdOrder, error: lookupError } = await supabase.from('orders')
+        .select('id, accountOrderNumber')
+        .eq('accountId', session.accountId)
+        .eq('requestKey', String(body.requestId || ''))
+        .maybeSingle();
+      if (lookupError || !createdOrder) return errorResponse(lookupError?.message || 'تعذر استرجاع الطلب بعد إنشائه', 500);
+      return json({ id: createdOrder.id, accountOrderNumber: createdOrder.accountOrderNumber ?? accountOrderNumber }, 201);
     }
     if (parts[0] === 'orders' && parts.length === 2 && method === 'PATCH') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
@@ -422,8 +416,9 @@ export async function onRequest(context) {
     }
     if (route === 'admin/reset-store' && method === 'POST') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إعادة ضبطه', 403);
-      await Promise.all([supabase.from('account_coupons').delete().neq('discountId', 0), supabase.from('account_carts').delete().neq('accountId', '00000000-0000-0000-0000-000000000000'), supabase.from('orders').delete().neq('id', 0), supabase.from('products').delete().neq('id', 0), supabase.from('discounts').delete().neq('id', 0), supabase.from('page_views').delete().neq('id', 0), supabase.from('admin_invites').delete().neq('identifier', ''), supabase.from('site_settings').delete().neq('id', 0)]);
-      await supabase.from('site_settings').insert(defaultSettings); return json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
+      const { error } = await supabase.rpc('reset_store', { p_owner_id: session.accountId });
+      if (error) throw error;
+      return json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
     }
     return errorResponse('المسار غير موجود', 404);
   } catch (error) {
