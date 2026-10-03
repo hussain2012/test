@@ -1828,7 +1828,9 @@ function DiscountsAdmin() {
     try {
       await createDiscount(form);
     } catch (reason) {
-      setError(reason.message || 'تعذر إضافة الكود');
+      setError(reason?.code === '23505'
+        ? 'كود الخصم هذا مستخدم مسبقًا. اختر كودًا آخر.'
+        : supabaseErrorMessage(reason, 'تعذر إضافة كود الخصم'));
       return;
     }
     setForm({ code: '', type: 'percentage', value: 10 });
