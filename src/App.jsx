@@ -364,7 +364,7 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
 
   return (
     <button type="button" className={className} disabled={buttonDisabled} onClick={handleClick}>
-      {status || (cartLoading ? 'جاري تحميل السلة...' : (disabled ? disabledLabel : (needsVariantSelection ? 'اختر الخيارات' : (stockExceeded && !inCart ? 'الكمية المتوفرة أضيفت للسلة' : (inCart ? 'عرض السلة' : label)))))}
+      {status || (cartLoading ? 'جاري تحميل السلة...' : (disabled ? disabledLabel : (stockExceeded && !inCart ? 'الكمية المتوفرة أضيفت للسلة' : (inCart ? 'عرض السلة' : label))))}
     </button>
   );
 }
@@ -729,6 +729,15 @@ function StoreFooter({ settings }) {
 function ProductCard({ product, maintenanceMode = false, compact = false }) {
   const hasDiscount = hasProductDiscount(product);
   const unitPrice = Number(product.discountedPrice ?? product.price ?? 0);
+  const selectedVariants = Object.fromEntries((product.variants || []).flatMap((variant) => {
+    const middleChoice = (variant.values || []).find((choice) => ['وسط', 'متوسط', 'medium'].includes(variantChoiceLabel(choice).trim().toLocaleLowerCase()));
+    return middleChoice ? [[variant.name, variantChoiceLabel(middleChoice)]] : [];
+  }));
+  const cardProduct = {
+    ...product,
+    selectedVariants,
+    selectedPrice: getProductOptionPrice(product, selectedVariants),
+  };
 
   return (
     <article className={`product ${compact ? 'product-compact' : ''}`} key={product.id}>
@@ -746,7 +755,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
           <div className="price-wrap">
             {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(unitPrice)}</strong></> : <strong>{money(product.price)}</strong>}
           </div>
-          <AddToCartButton product={product} quantity={1} className="mini-button" label="عرض المنتج" openProductDetails />
+          <AddToCartButton product={cardProduct} quantity={1} className="mini-button" disabled={maintenanceMode || productAvailabilityMode(product) === 'unavailable'} label="أضف للسلة" disabledLabel={maintenanceMode ? 'المتجر في وضع الصيانة' : 'غير متوفر'} />
         </div>
       </div>
     </article>
@@ -911,14 +920,14 @@ function ProductDetailPage() {
               return (
                 <section className="detail-option-card" key={variant.name}>
                   <header className="detail-option-heading">
-                    <div><h2>{variant.name}</h2><p>اختر خيارًا واحدًا</p></div>
+                    <div><h2>{variant.name}</h2></div>
                   </header>
                   <div className="detail-option-list">
                     {variant.values.map((choice) => {
                       const label = variantChoiceLabel(choice);
                       const choicePrice = variantChoicePrice(choice);
                       const isSelected = selected.includes(label);
-                      return <label className={`detail-option-row ${isSelected ? 'selected' : ''}`} key={label}>
+                      return <label className={`detail-option-row ${isSelected ? 'selected' : ''}`} key={label} onClick={() => chooseVariantOption(variant, label)}>
                         <input type="radio" name={`option-${product.id}-${variant.name}`} checked={isSelected} onChange={() => chooseVariantOption(variant, label)} />
                         <span className="detail-option-label">{label}</span>
                         {choicePrice > 0 && <strong dir="auto">{money(choicePrice)}</strong>}
