@@ -159,12 +159,13 @@ create table if not exists public.orders (
   "accountId" uuid references public.profiles(id) on delete set null,
   "accountOrderNumber" integer,
   "requestKey" text,
-  status text not null default 'new',
+  status text not null default 'processing',
   "isRead" boolean not null default false,
   "createdAt" timestamptz not null default now()
 );
 
 alter table public.orders add column if not exists "requestKey" text;
+alter table public.orders alter column status set default 'processing';
 create unique index if not exists orders_account_request_key_idx
   on public.orders ("accountId", "requestKey")
   where "accountId" is not null and "requestKey" is not null;

@@ -57,6 +57,9 @@ const getProductOptionPrice = (product, selectedVariants) => {
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
 const cartItemKey = (item) => `${item.id}-${variantKey(item.selectedVariants)}`;
+const getCartProductQuantity = (cart, productId, exceptVariantKey = null) => (Array.isArray(cart) ? cart : [])
+  .filter((item) => Number(item.id) === Number(productId) && (exceptVariantKey === null || variantKey(item.selectedVariants) !== exceptVariantKey))
+  .reduce((total, item) => total + Math.max(0, Number(item.quantity || 0)), 0);
 const getStoreCategories = (configuredCategories, products) => {
   const productNames = [...new Set(products.map((product) => String(product.category || '').trim()).filter(Boolean))];
   const source = Array.isArray(configuredCategories) ? configuredCategories : productNames.map((name) => ({ name }));
@@ -253,19 +256,33 @@ function CartProvider({ children }) {
     const sellingPrice = Number(product.selectedPrice ?? product.discountedPrice ?? product.price ?? 0);
     const productKey = variantKey(product.selectedVariants);
     setCart((current) => {
-      const existing = current.find((item) => item.id === product.id && variantKey(item.selectedVariants) === productKey);
+      const safeCart = Array.isArray(current) ? current : [];
+      const existing = safeCart.find((item) => item.id === Number(product.id) && variantKey(item.selectedVariants) === productKey);
+      const stockLimit = productAvailabilityMode(product) === 'ready'
+        ? Math.max(0, Number(product.stockQuantity || 0) - getCartProductQuantity(safeCart, product.id))
+        : Infinity;
+      const nextQuantity = Math.min(Math.max(0, Number(quantity) || 0), stockLimit);
+      if (nextQuantity <= 0) return safeCart;
       if (existing) {
-        return (Array.isArray(current) ? current : []).map((item) => item.id === product.id && variantKey(item.selectedVariants) === productKey ? { ...item, quantity: item.quantity + quantity, price: sellingPrice } : item);
+        return safeCart.map((item) => item.id === Number(product.id) && variantKey(item.selectedVariants) === productKey ? { ...item, quantity: item.quantity + nextQuantity, price: sellingPrice } : item);
       }
-      return [...current, { ...product, id: Number(product.id), quantity, price: sellingPrice }];
+      return [...safeCart, { ...product, id: Number(product.id), quantity: nextQuantity, price: sellingPrice }];
     });
   };
 
   const updateItem = (id, quantity, selectedVariants = {}) => {
     const productKey = variantKey(selectedVariants);
-    setCart((current) => quantity < 1
-      ? (Array.isArray(current) ? current : []).filter((item) => item.id !== id || variantKey(item.selectedVariants) !== productKey)
-      : (Array.isArray(current) ? current : []).map((item) => item.id === id && variantKey(item.selectedVariants) === productKey ? { ...item, quantity } : item));
+    setCart((current) => {
+      const safeCart = Array.isArray(current) ? current : [];
+      if (quantity < 1) return safeCart.filter((item) => item.id !== id || variantKey(item.selectedVariants) !== productKey);
+      return safeCart.map((item) => {
+        if (item.id !== id || variantKey(item.selectedVariants) !== productKey) return item;
+        const stockLimit = productAvailabilityMode(item) === 'ready'
+          ? Math.max(0, Number(item.stockQuantity || 0) - getCartProductQuantity(safeCart, id, productKey))
+          : Infinity;
+        return { ...item, quantity: stockLimit > 0 ? Math.min(quantity, stockLimit) : item.quantity };
+      }).filter((item) => item.quantity > 0);
+    });
   };
 
   const clearCart = () => setCart([]);
@@ -314,6 +331,9 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
   const [status, setStatus] = useState('');
   const productVariantKey = variantKey(product.selectedVariants);
   const inCart = cart.some((item) => item.id === Number(product.id) && variantKey(item.selectedVariants) === productVariantKey);
+  const stockExceeded = productAvailabilityMode(product) === 'ready'
+    && quantity > Math.max(0, Number(product.stockQuantity || 0) - getCartProductQuantity(cart, product.id));
+  const buttonDisabled = disabled || cartLoading || (stockExceeded && !inCart);
 
   useEffect(() => {
     if (!status) return undefined;
@@ -322,7 +342,7 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
   }, [status]);
 
   const handleClick = () => {
-    if (disabled || cartLoading) return;
+    if (buttonDisabled) return;
     if (inCart) {
       navigate('/checkout');
       return;
@@ -332,8 +352,8 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
   };
 
   return (
-    <button type="button" className={className} disabled={disabled || cartLoading} onClick={handleClick}>
-      {status || (cartLoading ? 'جاري تحميل السلة...' : (disabled ? disabledLabel : (inCart ? 'عرض السلة' : label)))}
+    <button type="button" className={className} disabled={buttonDisabled} onClick={handleClick}>
+      {status || (cartLoading ? 'جاري تحميل السلة...' : (disabled ? disabledLabel : (stockExceeded && !inCart ? 'الكمية المتوفرة أضيفت للسلة' : (inCart ? 'عرض السلة' : label))))}
     </button>
   );
 }
@@ -707,8 +727,6 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
           {product.isNew && <span className="product-badge new-badge">جديد</span>}
           {hasDiscount && <span dir="auto" className="product-badge offer-badge">{productDiscountLabel(product)}</span>}
         </div>
-        {productAvailabilityMode(product) === 'preorder' && <span className="sold">طلب مسبق</span>}
-        {productAvailabilityMode(product) === 'unavailable' && <span className="sold">غير متوفر</span>}
       </Link>
       <div className="product-info">
         <span>{product.category || 'بدون فئة'}</span>
@@ -727,6 +745,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
 function ProductDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { cart } = useCart();
   const navigate = useNavigate();
   const { settings, error: settingsError } = useSiteSettings();
   const [product, setProduct] = useState(null);
@@ -744,6 +763,7 @@ function ProductDetailPage() {
 
     setLoading(true);
     setError('');
+    setQuantity(1);
     getProduct(id)
       .then((data) => {
         if (!data) throw new Error('تعذر تحميل المنتج');
@@ -781,6 +801,12 @@ function ProductDetailPage() {
     if (!variant.required) return true;
     return Boolean(selectedVariants[variant.name]);
   });
+  const readyForStock = productAvailabilityMode(product) === 'ready';
+  const remainingStock = readyForStock
+    ? Math.max(0, Number(product.stockQuantity || 0) - getCartProductQuantity(cart, product.id))
+    : Infinity;
+  const maxSelectableQuantity = readyForStock ? remainingStock : Infinity;
+  const displayedQuantity = readyForStock ? Math.min(quantity, maxSelectableQuantity) : quantity;
   const isProductFavorite = isProductSaved || (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
 
   const chooseVariantOption = (variant, label) => {
@@ -904,12 +930,12 @@ function ProductDetailPage() {
             })}
             <div className="detail-purchase-row">
               <div className="quantity-row">
-                <button type="button" onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
-                <span>{quantity}</span>
-                <button type="button" onClick={() => setQuantity((value) => value + 1)}>+</button>
+                <button type="button" aria-label="تقليل الكمية" disabled={displayedQuantity <= 1} onClick={() => setQuantity((value) => Math.max(1, Math.min(value, maxSelectableQuantity) - 1))}>−</button>
+                <span>{displayedQuantity}</span>
+                <button type="button" aria-label="زيادة الكمية" disabled={readyForStock && displayedQuantity >= maxSelectableQuantity} onClick={() => setQuantity((value) => readyForStock ? Math.min(Math.min(value, maxSelectableQuantity) + 1, maxSelectableQuantity) : value + 1)}>+</button>
               </div>
               <div className="detail-purchase-summary"><small>{product.name}</small><strong>{money(finalPrice)}</strong></div>
-              <AddToCartButton product={{ ...product, selectedVariants, selectedPrice: finalPrice }} quantity={quantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || !variantsComplete} className="primary block" label="أضف إلى السلة" disabledLabel={settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : 'غير متوفر')} />
+              <AddToCartButton product={{ ...product, selectedVariants, selectedPrice: finalPrice }} quantity={displayedQuantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || (readyForStock && maxSelectableQuantity < 1) || !variantsComplete} className="primary block" label="أضف إلى السلة" disabledLabel={settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : (readyForStock && maxSelectableQuantity < 1 ? 'لا توجد كمية متبقية' : 'غير متوفر'))} />
             </div>
           </div>
         </div>
@@ -1179,7 +1205,7 @@ function MyOrders() {
         {loading ? <div className="empty">جاري تحميل الطلبات...</div> : loadError ? <div className="empty" role="alert">{loadError}<button type="button" className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>إعادة المحاولة</button></div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
             {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
-              <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
+              <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleDateString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
               <div className="account-order-items">{(Array.isArray(order.items) ? order.items : []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && <small>{selectedVariantText(item.selectedVariants)}</small>}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
               <div className="account-order-totals">
                 <div><span>المجموع</span><strong>{money(order.subtotal)}</strong></div>
@@ -1385,7 +1411,7 @@ function Admin() {
 }
 
 function Overview() {
-  const [stats, setStats] = useState({ currentRevenue: 0, growth: 0, totalProfit: 0, homeViews: 0, orderStats: {}, bestSeller: null });
+  const [stats, setStats] = useState({ currentRevenue: 0, totalProfit: 0, homeViews: 0, orderStats: {}, bestSeller: null });
   const [accountsTotal, setAccountsTotal] = useState(0);
   const [catalogStats, setCatalogStats] = useState({ products: 0, categories: 0 });
   const [catalogProducts, setCatalogProducts] = useState([]);
@@ -1426,7 +1452,6 @@ function Overview() {
         <div><span>التصنيفات</span><strong>{catalogStats.categories}</strong></div>
         <div className="best-seller"><span>المنتج الأكثر مبيعًا</span><strong>{stats.bestSeller?.name || 'لا توجد مبيعات'}</strong>{stats.bestSeller?.quantity > 0 && <small>{stats.bestSeller.quantity} قطعة مباعة</small>}</div>
         <div><span>زيارات الموقع</span><strong>{stats.homeViews || 0}</strong></div>
-        <div><span>نسبة النمو</span><strong>{stats.growth || 0}%</strong></div>
         <div className="highlight"><span>صافي أرباح هذا الشهر</span><strong>{money(stats.totalProfit)}</strong></div>
         <div><span>الحسابات المسجلة</span><strong>{accountsTotal}</strong></div>
       </div>
@@ -1461,6 +1486,9 @@ function ProductsAdmin() {
   const emptyForm = { name: '', description: '', price: '', costPrice: '', discountType: 'percentage', discountValue: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, availabilityMode: 'ready', inStock: true, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
+  const [categoryMode, setCategoryMode] = useState('existing');
+  const [storeSettings, setStoreSettings] = useState(defaultSettings);
+  const [categorySettingsError, setCategorySettingsError] = useState('');
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
   const [additionalImageFiles, setAdditionalImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState({ primary: '', additional: [] });
@@ -1470,6 +1498,7 @@ function ProductsAdmin() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const categoryItems = getStoreCategories(storeSettings.storeCategories, items);
 
   const load = async () => {
     try {
@@ -1487,6 +1516,21 @@ function ProductsAdmin() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    getSiteSettings()
+      .then((data) => {
+        if (active) {
+          setStoreSettings({ ...defaultSettings, ...data });
+          setCategorySettingsError('');
+        }
+      })
+      .catch((reason) => {
+        if (active) setCategorySettingsError(supabaseErrorMessage(reason, 'تعذر تحميل التصنيفات من إعدادات المتجر.'));
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     const primary = primaryImageFile ? URL.createObjectURL(primaryImageFile) : '';
     const additional = additionalImageFiles.map((file) => URL.createObjectURL(file));
     setImagePreviews({ primary, additional });
@@ -1495,6 +1539,7 @@ function ProductsAdmin() {
 
   const resetForm = () => {
     setForm(emptyForm);
+    setCategoryMode('existing');
     setPrimaryImageFile(null);
     setAdditionalImageFiles([]);
     if (primaryImageInputRef.current) primaryImageInputRef.current.value = '';
@@ -1594,8 +1639,26 @@ function ProductsAdmin() {
     const availabilityMode = Number(form.stockQuantity) <= 0 && form.availabilityMode === 'ready' ? 'unavailable' : form.availabilityMode;
 
     try {
+      const categoryName = String(form.category || '').trim();
+      if (categoryMode === 'new') {
+        if (!categoryName) throw new Error('اكتب اسم التصنيف');
+        if (categoryItems.some((category) => category.name.toLocaleLowerCase() === categoryName.toLocaleLowerCase())) {
+          throw new Error('هذا التصنيف موجود مسبقًا. اختره من قائمة التصنيفات الموجودة.');
+        }
+        const currentSettings = { ...defaultSettings, ...(await getSiteSettings()) };
+        const currentCategories = getStoreCategories(currentSettings.storeCategories, items);
+        if (currentCategories.some((category) => category.name.toLocaleLowerCase() === categoryName.toLocaleLowerCase())) {
+          throw new Error('هذا التصنيف موجود مسبقًا. اختره من قائمة التصنيفات الموجودة.');
+        }
+        const nextSettings = await saveSiteSettings({
+          ...currentSettings,
+          storeCategories: [...currentCategories, { id: crypto.randomUUID(), name: categoryName, imageUrl: '' }],
+        });
+        setStoreSettings(nextSettings);
+      }
       const payload = {
         ...form,
+        category: categoryName,
         id: editingId,
         variants,
         productImages: Array.isArray(form.productImages) ? form.productImages : [],
@@ -1640,6 +1703,7 @@ function ProductsAdmin() {
       return;
     }
     setEditingId(product.id);
+    setCategoryMode('existing');
     setForm({
       name: product.name,
       productCode: product.productCode || '',
@@ -1677,13 +1741,15 @@ function ProductsAdmin() {
   return (
     <>
       <form className="admin-form product-editor" onSubmit={submit}>
-        <header className="product-editor-heading"><div><p className="eyebrow">كتالوج المتجر</p><h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2></div>{editingId && <button type="button" className="secondary-button" onClick={resetForm}>إلغاء التعديل</button>}</header>
+        <header className="product-editor-heading"><div><h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2></div>{editingId && <button type="button" className="secondary-button" onClick={resetForm}>إلغاء التعديل</button>}</header>
 
         <section className="product-editor-section" aria-labelledby="product-info-title">
           <div className="product-editor-section-heading"><h3 id="product-info-title">معلومات المنتج</h3></div>
           <div className="product-editor-fields">
             <label>اسم المنتج<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-            <label>التصنيف<input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
+            <label>طريقة التصنيف<select value={categoryMode} onChange={(event) => { setCategoryMode(event.target.value); setForm((current) => ({ ...current, category: '' })); }}><option value="existing">الانضمام إلى تصنيف</option><option value="new">إنشاء تصنيف جديد</option></select></label>
+            {categoryMode === 'existing' ? <label>التصنيف<select required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}><option value="">اختر تصنيفًا</option>{categoryItems.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label> : <label>اسم التصنيف الجديد<input required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>}
+            {categorySettingsError && <p className="error product-editor-wide" role="alert">{categorySettingsError}</p>}
             <label className="product-editor-wide">الوصف<textarea required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="product-variants product-editor-wide">
               <div className="product-variants-heading"><strong>خيارات المنتج</strong><button type="button" className="add-variant-button" onClick={() => addVariant()}>+ مجموعة فارغة</button></div>
@@ -1772,7 +1838,7 @@ function ProductsAdmin() {
                 </div>
                 <div className="product-inventory-meta">
                   <strong>{money(product.price)}</strong>
-                  <span>{productAvailabilityMode(product) === 'ready' ? `${product.stockQuantity} قطعة` : (productAvailabilityMode(product) === 'preorder' ? 'طلب مسبق' : 'غير متوفر')}</span>
+                  {productAvailabilityMode(product) === 'ready' && <span>{product.stockQuantity} قطعة</span>}
                   <span className={productAvailabilityMode(product) === 'ready' ? 'status-ok' : 'status-warn'}>{productAvailabilityMode(product) === 'ready' ? 'جاهز' : (productAvailabilityMode(product) === 'preorder' ? 'طلب مسبق' : 'غير متوفر')}</span>
                 </div>
               </div>
@@ -1894,7 +1960,7 @@ function OrdersAdmin() {
           <div className="order-card-head">
             <div>
               <span className="order-id">طلب #{order.id}</span>
-              <small>{new Date(order.createdAt).toLocaleString('ar-IQ')}</small>
+              <small>{new Date(order.createdAt).toLocaleDateString('ar-IQ')}</small>
               {!order.isRead && <b className="unread-badge">طلب غير مقروء</b>}
             </div>
             <select value={order.status} disabled={updatingOrderId === order.id} onChange={(event) => changeOrderStatus(order.id, event.target.value)}>

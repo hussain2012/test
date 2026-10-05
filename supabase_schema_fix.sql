@@ -130,7 +130,7 @@ create table if not exists public.orders (
   "finalTotal" numeric(12,2) not null default 0,
   "accountId" uuid,
   "accountOrderNumber" integer,
-  status text not null default 'new',
+  status text not null default 'processing',
   "isRead" boolean not null default false,
   "createdAt" timestamptz not null default now()
 );
@@ -150,7 +150,8 @@ alter table public.orders add column if not exists "finalTotal" numeric(12,2) no
 alter table public.orders add column if not exists "accountId" uuid;
 alter table public.orders add column if not exists "accountOrderNumber" integer;
 alter table public.orders add column if not exists "requestKey" text;
-alter table public.orders add column if not exists status text not null default 'new';
+alter table public.orders add column if not exists status text not null default 'processing';
+alter table public.orders alter column status set default 'processing';
 alter table public.orders add column if not exists "isRead" boolean not null default false;
 alter table public.orders add column if not exists "createdAt" timestamptz not null default now();
 

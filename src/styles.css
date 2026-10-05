@@ -829,23 +829,37 @@ button { cursor: pointer; }
 .quantity-row {
   display: inline-flex;
   align-items: center;
-  gap: 18px;
-  padding: 8px 14px;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 10px;
   border: 1px solid var(--line);
   background: var(--paper);
-  border-radius: 12px;
+  border-radius: 999px;
   box-shadow: 0 8px 16px rgba(27, 24, 19, 0.04);
 }
 
 .quantity-row button {
-  width: 30px;
-  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
   border-radius: 50%;
   background: var(--paper-soft);
   color: var(--primary);
-  font-size: 22px;
+  font-size: 21px;
+  font-weight: 700;
   line-height: 1;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
+
+.quantity-row button:not(:disabled):hover { border-color: var(--primary); background: var(--primary); color: var(--paper); }
+.quantity-row button:not(:disabled):active { transform: scale(0.94); }
+.quantity-row button:disabled { cursor: not-allowed; opacity: 0.4; }
+.quantity-row > span { min-width: 24px; color: var(--text); font-size: 16px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 
 .back-link {
   color: var(--accent);
@@ -992,16 +1006,27 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .qty {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   margin-top: 6px;
 }
 
 .qty button {
-  width: 20px;
-  height: 20px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
   border-radius: 50%;
   background: var(--paper-soft);
+  color: var(--primary);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
 }
+
+.qty button:disabled { cursor: not-allowed; opacity: 0.4; }
+.qty > span { min-width: 20px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 
 .totals {
   margin-top: 20px;
@@ -2356,7 +2381,9 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .product-detail-actions { top: 10px; right: 10px; left: 10px; }
   .detail-content h1 { font-size: 30px; }
   .price-stack strong { font-size: 29px; }
-  .quantity-row { display: none; }
+  .quantity-row { min-height: 42px; gap: 4px; padding: 4px; box-shadow: none; }
+  .quantity-row button { flex-basis: 32px; width: 32px; height: 32px; font-size: 19px; }
+  .quantity-row > span { min-width: 18px; font-size: 14px; }
   .detail-option-card { gap: 8px; padding: 20px 20px; border-radius: 28px; }
   .detail-option-heading h2 { font-size: 22px; }
   .detail-option-heading p { font-size: 15px; }
@@ -2365,7 +2392,8 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .detail-option-row > strong { font-size: 15px; }
   .detail-weight-options { gap: 10px; }
   .detail-weight-choice { min-width: 132px; padding: 10px 16px; }
-  .detail-purchase-row { position: fixed; right: 0; bottom: calc(71px + env(safe-area-inset-bottom)); left: 0; z-index: 55; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; margin: 0; padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--divider); background: var(--paper); direction: rtl; }
+  .detail-purchase-row { position: fixed; right: 0; bottom: calc(71px + env(safe-area-inset-bottom)); left: 0; z-index: 55; display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(112px, 148px); align-items: center; gap: 8px; margin: 0; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--divider); background: var(--paper); direction: rtl; }
+  .detail-purchase-row .quantity-row { justify-self: start; }
   .detail-purchase-summary { display: grid; gap: 4px; min-width: 0; direction: rtl; text-align: right; }
   .detail-purchase-summary small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
   .detail-purchase-summary strong { color: var(--text); font-size: 16px; }
@@ -2381,6 +2409,13 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .account-order-heading { align-items: flex-start; }
   .account-order-status { white-space: nowrap; }
   .account-order-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
+}
+
+@media (max-width: 360px) {
+  .detail-purchase-row { grid-template-columns: auto minmax(0, 1fr) minmax(100px, 122px); gap: 6px; padding-right: 8px; padding-left: 8px; }
+  .detail-purchase-row .primary.block { min-height: 42px; padding-right: 8px; padding-left: 8px; font-size: 13px; }
+  .quantity-row { gap: 2px; }
+  .quantity-row button { flex-basis: 30px; width: 30px; height: 30px; }
 }
 
 @keyframes bottom-nav-enter {
