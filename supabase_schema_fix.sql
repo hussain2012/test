@@ -171,6 +171,7 @@ create table if not exists public.site_settings (
   "featuredSectionTitle" text not null default '',
   "featuredProductIds" jsonb,
   "storeCategories" jsonb not null default '[]'::jsonb,
+  "deliveryFee" numeric(12,2) not null default 5000,
   "maintenanceMode" boolean not null default false,
   "instagramUrl" text not null default '',
   "tiktokUrl" text not null default '',
@@ -193,6 +194,8 @@ alter table public.site_settings add column if not exists "heroButtonText" text 
 alter table public.site_settings add column if not exists "featuredSectionTitle" text not null default '';
 alter table public.site_settings add column if not exists "featuredProductIds" jsonb;
 alter table public.site_settings add column if not exists "storeCategories" jsonb not null default '[]'::jsonb;
+alter table public.site_settings add column if not exists "deliveryFee" numeric(12,2) not null default 5000;
+alter table public.site_settings alter column "deliveryFee" set default 5000;
 alter table public.site_settings add column if not exists "maintenanceMode" boolean not null default false;
 alter table public.site_settings add column if not exists "instagramUrl" text not null default '';
 alter table public.site_settings add column if not exists "tiktokUrl" text not null default '';
@@ -449,7 +452,6 @@ declare
   v_quantity integer;
   v_choice_price numeric;
   v_base_price numeric;
-  v_addon_price numeric;
   v_unit_price numeric;
   v_subtotal numeric := 0;
   v_discount_amount numeric := 0;
@@ -461,7 +463,6 @@ declare
   v_remaining integer;
   v_order_number integer;
   v_maintenance_mode boolean;
-  v_has_replacement boolean;
 begin
   if p_account_id is null
      or (coalesce(auth.role(), '') <> 'service_role'
@@ -561,18 +562,13 @@ begin
     end if;
     v_saved_variants := '{}'::jsonb;
     v_base_price := v_product.price;
-    v_addon_price := 0;
-    v_has_replacement := false;
 
     for v_variant in
       select value from jsonb_array_elements(coalesce(v_product.variants, '[]'::jsonb))
     loop
       v_selected_label := v_selected_variants->>btrim(v_variant->>'name');
       if v_selected_label is null then
-        if coalesce((v_variant->>'required')::boolean, true) then
-          raise exception 'اختر قيمة % للمنتج %', v_variant->>'name', v_product.name;
-        end if;
-        continue;
+        raise exception 'اختر قيمة % للمنتج %', v_variant->>'name', v_product.name;
       end if;
 
       select value into v_choice
@@ -587,13 +583,8 @@ begin
       end if;
       v_choice_price := greatest(0, coalesce(nullif(v_choice->>'price', '')::numeric, 0));
 
-      if v_variant->>'priceMode' = 'replace' then
-        if not v_has_replacement then
-          v_base_price := v_choice_price;
-          v_has_replacement := true;
-        end if;
-      else
-        v_addon_price := v_addon_price + v_choice_price;
+      if v_choice_price > 0 then
+        v_base_price := v_choice_price;
       end if;
       v_saved_variants := v_saved_variants || jsonb_build_object(btrim(v_variant->>'name'), v_selected_label);
     end loop;
@@ -614,7 +605,7 @@ begin
     else
       v_base_price := v_base_price * (1 - least(100, greatest(0, coalesce(v_product."discountValue", v_product."discountPercentage", 0))) / 100);
     end if;
-    v_unit_price := round(v_base_price + v_addon_price, 2);
+    v_unit_price := round(v_base_price, 2);
     v_subtotal := v_subtotal + v_unit_price * v_quantity;
     v_order_items := v_order_items || jsonb_build_array(jsonb_build_object(
       'productId', v_product.id,
@@ -648,7 +639,8 @@ begin
     end;
   end if;
 
-  v_delivery_fee := case when btrim(p_payload->>'province') = 'بغداد' then 3000 else 5000 end;
+  select greatest(0, coalesce((select "deliveryFee" from public.site_settings order by id desc limit 1), 5000))
+  into v_delivery_fee;
   v_final_total := v_subtotal - v_discount_amount + v_delivery_fee;
 
   insert into public.orders (

@@ -39,24 +39,25 @@ const selectedChoices = (variant, selection) => {
   const values = Array.isArray(selection) ? selection : (selection ? [selection] : []);
   return values.map((value) => (variant.values || []).find((choice) => variantChoiceLabel(choice) === value)).filter(Boolean);
 };
-const getProductOptionPrice = (product, selectedVariants) => {
+const getProductOptionBasePrice = (product, selectedVariants) => {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
-  const replacementVariant = variants.find((variant) => variant.priceMode === 'replace' && selectedVariants[variant.name]);
-  const replacementChoice = replacementVariant && selectedChoices(replacementVariant, selectedVariants[replacementVariant.name])[0];
-  const basePrice = replacementChoice ? variantChoicePrice(replacementChoice) : Number(product?.price || 0);
+  return variants.reduce((price, variant) => {
+    const choice = selectedChoices(variant, selectedVariants[variant.name])[0];
+    const choicePrice = choice ? variantChoicePrice(choice) : 0;
+    return choicePrice > 0 ? choicePrice : price;
+  }, Number(product?.price || 0));
+};
+const getProductOptionPrice = (product, selectedVariants) => {
+  const basePrice = getProductOptionBasePrice(product, selectedVariants);
   const discountValue = Math.max(0, productDiscountValue(product));
-  const discountedBase = product?.discountType === 'amount'
+  return Number((product?.discountType === 'amount'
     ? Math.max(0, basePrice - discountValue)
-    : basePrice * (1 - Math.min(discountValue, 100) / 100);
-  const extras = variants
-    .filter((variant) => variant.priceMode !== 'replace')
-    .flatMap((variant) => selectedChoices(variant, selectedVariants[variant.name]))
-    .reduce((total, choice) => total + variantChoicePrice(choice), 0);
-  return Number((discountedBase + extras).toFixed(2));
+    : basePrice * (1 - Math.min(discountValue, 100) / 100)).toFixed(2));
 };
 const selectedVariantText = (variants) => Object.entries(variants || {}).map(([name, value]) => `${name}: ${value}`).join('، ');
 const variantKey = (variants) => JSON.stringify(variants || {});
 const cartItemKey = (item) => `${item.id}-${variantKey(item.selectedVariants)}`;
+const uncategorizedCategoryValue = '__uncategorized__';
 const getCartProductQuantity = (cart, productId, exceptVariantKey = null) => (Array.isArray(cart) ? cart : [])
   .filter((item) => Number(item.id) === Number(productId) && (exceptVariantKey === null || variantKey(item.selectedVariants) !== exceptVariantKey))
   .reduce((total, item) => total + Math.max(0, Number(item.quantity || 0)), 0);
@@ -325,7 +326,7 @@ function ProductImage({ src, alt, className = '' }) {
     : <div className={`image-empty ${className}`}>لا توجد صورة</div>;
 }
 
-function AddToCartButton({ product, quantity = 1, className = 'primary', disabled = false, label = 'أضف للسلة', disabledLabel = 'غير متوفر' }) {
+function AddToCartButton({ product, quantity = 1, className = 'primary', disabled = false, label = 'أضف للسلة', disabledLabel = 'غير متوفر', openProductDetails = false }) {
   const { addItem, cart, cartLoading } = useCart();
   const navigate = useNavigate();
   const [status, setStatus] = useState('');
@@ -333,7 +334,9 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
   const inCart = cart.some((item) => item.id === Number(product.id) && variantKey(item.selectedVariants) === productVariantKey);
   const stockExceeded = productAvailabilityMode(product) === 'ready'
     && quantity > Math.max(0, Number(product.stockQuantity || 0) - getCartProductQuantity(cart, product.id));
-  const buttonDisabled = disabled || cartLoading || (stockExceeded && !inCart);
+  const needsVariantSelection = Array.isArray(product.variants) && product.variants.length > 0
+    && (!product.selectedVariants || product.variants.some((variant) => !product.selectedVariants[variant.name]));
+  const buttonDisabled = openProductDetails ? false : disabled || cartLoading || (stockExceeded && !inCart);
 
   useEffect(() => {
     if (!status) return undefined;
@@ -343,6 +346,14 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
 
   const handleClick = () => {
     if (buttonDisabled) return;
+    if (openProductDetails) {
+      navigate(`/product/${product.id}`);
+      return;
+    }
+    if (needsVariantSelection) {
+      navigate(`/product/${product.id}`);
+      return;
+    }
     if (inCart) {
       navigate('/checkout');
       return;
@@ -353,7 +364,7 @@ function AddToCartButton({ product, quantity = 1, className = 'primary', disable
 
   return (
     <button type="button" className={className} disabled={buttonDisabled} onClick={handleClick}>
-      {status || (cartLoading ? 'جاري تحميل السلة...' : (disabled ? disabledLabel : (stockExceeded && !inCart ? 'الكمية المتوفرة أضيفت للسلة' : (inCart ? 'عرض السلة' : label))))}
+      {status || (cartLoading ? 'جاري تحميل السلة...' : (disabled ? disabledLabel : (needsVariantSelection ? 'اختر الخيارات' : (stockExceeded && !inCart ? 'الكمية المتوفرة أضيفت للسلة' : (inCart ? 'عرض السلة' : label)))))}
     </button>
   );
 }
@@ -735,7 +746,7 @@ function ProductCard({ product, maintenanceMode = false, compact = false }) {
           <div className="price-wrap">
             {hasDiscount ? <><span className="old-price">{money(product.price)}</span><strong>{money(unitPrice)}</strong></> : <strong>{money(product.price)}</strong>}
           </div>
-          <AddToCartButton product={product} quantity={1} className="mini-button" disabled={maintenanceMode || productAvailabilityMode(product) === 'unavailable'} label="أضف للسلة" disabledLabel={maintenanceMode ? 'المتجر في وضع الصيانة' : 'غير متوفر'} />
+          <AddToCartButton product={product} quantity={1} className="mini-button" label="عرض المنتج" openProductDetails />
         </div>
       </div>
     </article>
@@ -769,10 +780,7 @@ function ProductDetailPage() {
         if (!data) throw new Error('تعذر تحميل المنتج');
         setProduct(data);
         setSelectedImage(data?.productImages?.[0] ?? data?.imageUrl ?? '');
-        setSelectedVariants(Object.fromEntries((data.variants || []).map((variant) => {
-          const firstChoice = variantChoiceLabel(variant.values[0]);
-          return [variant.name, firstChoice];
-        })));
+        setSelectedVariants({});
         setLoading(false);
         listProducts()
           .then((products) => setSimilarProducts(products.filter((item) => item.id !== data.id && item.category === data.category).slice(0, 4)))
@@ -794,11 +802,11 @@ function ProductDetailPage() {
   }
 
   const hasDiscount = hasProductDiscount(product);
+  const optionBasePrice = getProductOptionBasePrice(product, selectedVariants);
   const finalPrice = getProductOptionPrice(product, selectedVariants);
   const productImages = Array.isArray(product?.productImages) ? product.productImages : [];
   const thumbnailImages = (productImages.length ? productImages : [product?.imageUrl]).filter(Boolean);
   const variantsComplete = (product.variants || []).every((variant) => {
-    if (!variant.required) return true;
     return Boolean(selectedVariants[variant.name]);
   });
   const readyForStock = productAvailabilityMode(product) === 'ready';
@@ -895,34 +903,25 @@ function ProductDetailPage() {
             </div>
             <div className="price-stack">
               <strong>{money(finalPrice)}</strong>
-              {hasDiscount && <span className="old-price detail-old-price">{money(product.price)}</span>}
+              {hasDiscount && <span className="old-price detail-old-price">{money(optionBasePrice)}</span>}
             </div>
             <p className="detail-description">{product.description}</p>
             {Array.isArray(product.variants) && product.variants.map((variant) => {
               const selected = Array.isArray(selectedVariants[variant.name]) ? selectedVariants[variant.name] : [selectedVariants[variant.name]].filter(Boolean);
-              const isReplacement = variant.priceMode === 'replace';
               return (
-                <section className={`detail-option-card ${isReplacement ? 'detail-weight-card' : ''}`} key={variant.name}>
+                <section className="detail-option-card detail-weight-card" key={variant.name}>
                   <header className="detail-option-heading">
                     <div><h2>{variant.name}</h2><p>اختر خيارًا واحدًا</p></div>
                     <span className={`detail-option-status ${selected.length ? 'selected' : ''}`} aria-label={selected.length ? 'تم الاختيار' : 'لم يتم الاختيار'}>{selected.length ? '✓' : ''}</span>
                   </header>
-                  <div className={isReplacement ? 'detail-weight-options' : 'detail-option-list'}>
+                  <div className="detail-weight-options">
                     {variant.values.map((choice) => {
                       const label = variantChoiceLabel(choice);
                       const choicePrice = variantChoicePrice(choice);
                       const isSelected = selected.includes(label);
-                      return isReplacement ? (
-                        <button type="button" key={label} className={`detail-weight-choice ${isSelected ? 'selected' : ''}`} aria-pressed={isSelected} onClick={() => chooseVariantOption(variant, label)}>
-                          <strong>{label}</strong>{choicePrice > 0 && <span>{money(choicePrice)}</span>}
-                        </button>
-                      ) : (
-                        <label className={`detail-option-row ${isSelected ? 'selected' : ''}`} key={label}>
-                          <input type="radio" name={`option-${product.id}-${variant.name}`} checked={isSelected} onChange={() => chooseVariantOption(variant, label)} />
-                          <span className="detail-option-label">{label}</span>
-                          {choicePrice > 0 && <strong dir="auto">{variant.priceMode === 'replace' ? money(choicePrice) : `+${money(choicePrice)}`}</strong>}
-                        </label>
-                      );
+                      return <button type="button" key={label} className={`detail-weight-choice ${isSelected ? 'selected' : ''}`} aria-pressed={isSelected} onClick={() => chooseVariantOption(variant, label)}>
+                        <strong>{label}</strong>{choicePrice > 0 && <span>{money(choicePrice)}</span>}
+                      </button>;
                     })}
                   </div>
                 </section>
@@ -987,7 +986,7 @@ function Checkout() {
     setForm((current) => ({ ...current, ...selected, discountCode: current.discountCode }));
   }, [user]);
 
-  const delivery = form.province && form.province !== 'بغداد' ? 5000 : 3000;
+  const delivery = Number(settings.deliveryFee ?? defaultSettings.deliveryFee);
   const discountAmount = discount ? (discount.type === 'percentage' ? subtotal * Math.min(100, Math.max(0, Number(discount.value || 0))) / 100 : Math.min(Number(discount.value || 0), subtotal)) : 0;
   const total = subtotal - discountAmount + delivery;
 
@@ -1149,7 +1148,6 @@ function Checkout() {
                 </div>
               ))}
               <div className="totals">
-                <div><span>السعر الاجمالي</span><strong>{money(subtotal)}</strong></div>
                 <div><span>الخصم {discount ? `(${discount.type === 'percentage' ? `${discount.value}%` : money(discount.value)})` : ''}</span><strong>- {money(discountAmount)}</strong></div>
                 <div><span>التوصيل</span><strong>{money(delivery)}</strong></div>
                 <div className="total-row"><span>السعر الاجمالي</span><strong>{money(total)}</strong></div>
@@ -1584,7 +1582,7 @@ function ProductsAdmin() {
 
   const addVariant = (preset) => {
     const options = (preset?.values || []).map((label) => ({ label, price: '', hasPrice: false }));
-    setForm((current) => ({ ...current, variants: [...current.variants, { name: preset?.name || '', options, selectionMode: 'single', priceMode: 'add', required: true, maxSelections: 1 }] }));
+    setForm((current) => ({ ...current, variants: [...current.variants, { name: preset?.name || '', options, selectionMode: 'single', priceMode: 'replace', required: true, maxSelections: 1 }] }));
   };
 
   const updateVariantOption = (variantIndex, optionIndex, field, value) => {
@@ -1628,8 +1626,8 @@ function ProductsAdmin() {
     const variants = form.variants.map((variant) => ({
       name: String(variant.name || '').trim(),
       selectionMode: 'single',
-      priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
-      required: variant.required !== false,
+      priceMode: 'replace',
+      required: true,
       maxSelections: 1,
       values: (Array.isArray(variant.options) ? variant.options : []).map((option) => ({
         label: String(option.label || '').trim(),
@@ -1639,7 +1637,9 @@ function ProductsAdmin() {
     const availabilityMode = Number(form.stockQuantity) <= 0 && form.availabilityMode === 'ready' ? 'unavailable' : form.availabilityMode;
 
     try {
-      const categoryName = String(form.category || '').trim();
+      const categoryName = categoryMode === 'existing' && form.category === uncategorizedCategoryValue
+        ? ''
+        : String(form.category || '').trim();
       if (categoryMode === 'new') {
         if (!categoryName) throw new Error('اكتب اسم التصنيف');
         if (categoryItems.some((category) => category.name.toLocaleLowerCase() === categoryName.toLocaleLowerCase())) {
@@ -1713,14 +1713,14 @@ function ProductsAdmin() {
       discountType: product.discountType || 'percentage',
       discountValue: product.discountValue ?? product.discountPercentage ?? 0,
       discountPercentage: product.discountPercentage ?? 0,
-      category: product.category,
+      category: product.category || uncategorizedCategoryValue,
       imageUrl: product.imageUrl || '',
       productImages: Array.isArray(product?.productImages) ? product.productImages : [],
       variants: (Array.isArray(product.variants) ? product.variants : []).map((variant) => ({
         name: String(variant.name || ''),
         selectionMode: 'single',
-        priceMode: variant.priceMode === 'replace' ? 'replace' : 'add',
-        required: variant.required !== false,
+        priceMode: 'replace',
+        required: true,
         maxSelections: 1,
         options: Array.isArray(variant.values) ? variant.values.map((choice) => {
           const price = variantChoicePrice(choice);
@@ -1748,7 +1748,7 @@ function ProductsAdmin() {
           <div className="product-editor-fields">
             <label>اسم المنتج<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
             <label>طريقة التصنيف<select value={categoryMode} onChange={(event) => { setCategoryMode(event.target.value); setForm((current) => ({ ...current, category: '' })); }}><option value="existing">الانضمام إلى تصنيف</option><option value="new">إنشاء تصنيف جديد</option></select></label>
-            {categoryMode === 'existing' ? <label>التصنيف<select required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}><option value="">اختر تصنيفًا</option>{categoryItems.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label> : <label>اسم التصنيف الجديد<input required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>}
+            {categoryMode === 'existing' ? <label>التصنيف<select required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}><option value="">اختر تصنيفًا</option><option value={uncategorizedCategoryValue}>الكل (بدون تصنيف)</option>{categoryItems.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label> : <label>اسم التصنيف الجديد<input required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>}
             {categorySettingsError && <p className="error product-editor-wide" role="alert">{categorySettingsError}</p>}
             <label className="product-editor-wide">الوصف<textarea required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="product-variants product-editor-wide">
@@ -1760,22 +1760,17 @@ function ProductsAdmin() {
               {form.variants.map((variant, index) => <div className="product-variant-row" key={`variant-${index}`}>
                 <label>اسم المجموعة<input value={variant.name} onChange={(event) => updateVariant(index, 'name', event.target.value)} /></label>
                 <div className="product-variant-selection">
-                  <span>اختيار واحد فقط</span>
-                  <label className="check-label"><input type="checkbox" checked={variant.required} onChange={(event) => updateVariant(index, 'required', event.target.checked)} />مطلوب</label>
+                  <span>اختيار قيمة واحدة مطلوب</span>
                 </div>
                 <div className="product-option-list">
                   {(variant.options || []).map((option, optionIndex) => <div className={`product-option-row ${option.hasPrice ? 'has-price' : ''}`} key={`option-${index}-${optionIndex}`}>
                     <input aria-label={`قيمة الخيار ${optionIndex + 1}`} value={option.label} onChange={(event) => updateVariantOption(index, optionIndex, 'label', event.target.value)} />
-                    <label className="check-label"><input type="checkbox" checked={Boolean(option.hasPrice)} onChange={(event) => updateVariantOption(index, optionIndex, 'hasPrice', event.target.checked)} />له سعر</label>
-                    {option.hasPrice && <input type="number" min="0" aria-label={`سعر الخيار ${optionIndex + 1}`} value={option.price} onChange={(event) => updateVariantOption(index, optionIndex, 'price', event.target.value)} />}
+                    <label className="check-label"><input type="checkbox" checked={Boolean(option.hasPrice)} onChange={(event) => updateVariantOption(index, optionIndex, 'hasPrice', event.target.checked)} />له سعر نهائي</label>
+                    {option.hasPrice && <input type="number" min="0" aria-label={`السعر النهائي للخيار ${optionIndex + 1}`} value={option.price} onChange={(event) => updateVariantOption(index, optionIndex, 'price', event.target.value)} />}
                     <button type="button" className="danger option-remove" aria-label={`حذف قيمة الخيار ${optionIndex + 1}`} onClick={() => removeVariantOption(index, optionIndex)}>حذف</button>
                   </div>)}
                   <button type="button" className="add-option-button" onClick={() => addVariantOption(index)}>+ إضافة قيمة</button>
                 </div>
-                <details className="product-variant-advanced">
-                  <summary>طريقة احتساب السعر</summary>
-                  <label>السعر<select value={variant.priceMode} onChange={(event) => updateVariant(index, 'priceMode', event.target.value)}><option value="add">إضافة على سعر المنتج</option><option value="replace">السعر الكامل للخيار</option></select></label>
-                </details>
                 <button type="button" className="remove-variant-button" aria-label={`حذف المجموعة ${variant.name || index + 1}`} onClick={() => removeVariant(index)}>حذف المجموعة</button>
               </div>)}
               {!form.variants.length && <p className="product-variants-empty">اختَر مثالاً جاهزاً أو أضف مجموعة فارغة.</p>}
@@ -1977,7 +1972,6 @@ function OrdersAdmin() {
             <p><b>العنوان</b>{order.address}</p>
             <p><b>اقرب نقطة دالة</b>{order.nearestLandmark}</p>
             <p><b>رقم هاتف</b>{order.phoneNumber}</p>
-            <p><b>المجموع الفرعي</b>{money(order.subtotal)}</p>
             <p><b>كود الخصم</b>{order.discountCode || 'لا يوجد'}</p>
             <p><b>الخصم</b>{money(order.discountAmount)}</p>
             <p><b>التوصيل</b>{money(order.deliveryFee)}</p>
@@ -2223,11 +2217,16 @@ function SiteSettingsAdmin() {
 
   const saveSettings = async (nextSettings, automatic = false) => {
     if (!settingsLoaded || savingSettings) return;
+    const deliveryFee = Number(nextSettings.deliveryFee);
+    if (nextSettings.deliveryFee === '' || !Number.isFinite(deliveryFee) || deliveryFee < 0) {
+      setStatusError('أدخل سعر توصيل صحيحًا لا يقل عن صفر');
+      return;
+    }
     setStatusMessage('');
     setStatusError('');
     setSavingSettings(true);
     try {
-      const data = await saveSiteSettings(nextSettings);
+      const data = await saveSiteSettings({ ...nextSettings, deliveryFee });
       const savedSettings = { ...defaultSettings, ...data };
       lastSavedSettings.current = JSON.stringify(savedSettings);
       setSettings(savedSettings);
@@ -2414,8 +2413,15 @@ function SiteSettingsAdmin() {
         </div>
       </section>
 
+      <section className="settings-section" aria-labelledby="settings-delivery-title">
+        <div className="settings-section-heading"><span>04</span><div><h3 id="settings-delivery-title">التوصيل</h3></div></div>
+        <div className="settings-fields">
+          <label>سعر التوصيل لجميع المحافظات<input type="number" min="0" step="1" required value={settings.deliveryFee ?? defaultSettings.deliveryFee} onChange={(event) => setSettings({ ...settings, deliveryFee: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
+        </div>
+      </section>
+
       <section className="settings-section" aria-labelledby="settings-contact-title">
-        <div className="settings-section-heading"><span>04</span><div><h3 id="settings-contact-title">التواصل الاجتماعي</h3></div></div>
+        <div className="settings-section-heading"><span>05</span><div><h3 id="settings-contact-title">التواصل الاجتماعي</h3></div></div>
         <div className="settings-fields">
           <label>إنستغرام<input value={settings.instagramUrl} onChange={(event) => setSettings({ ...settings, instagramUrl: event.target.value })} /></label>
           <label>تيك توك<input value={settings.tiktokUrl} onChange={(event) => setSettings({ ...settings, tiktokUrl: event.target.value })} /></label>
@@ -2425,7 +2431,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section" aria-labelledby="settings-content-title">
-        <div className="settings-section-heading"><span>05</span><div><h3 id="settings-content-title">المحتوى والسياسات</h3></div></div>
+        <div className="settings-section-heading"><span>06</span><div><h3 id="settings-content-title">المحتوى والسياسات</h3></div></div>
         <div className="settings-fields">
           <label>عنوان «من نحن»<input value={settings.aboutTitle} onChange={(event) => setSettings({ ...settings, aboutTitle: event.target.value })} /></label>
           <label>نص «من نحن»<textarea value={settings.aboutText} onChange={(event) => setSettings({ ...settings, aboutText: event.target.value })} /></label>
@@ -2435,7 +2441,7 @@ function SiteSettingsAdmin() {
       </section>
 
       <section className="settings-section settings-operations" aria-labelledby="settings-operations-title">
-        <div className="settings-section-heading"><span>06</span><div><h3 id="settings-operations-title">حالة المتجر</h3></div></div>
+        <div className="settings-section-heading"><span>07</span><div><h3 id="settings-operations-title">حالة المتجر</h3></div></div>
         <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>يسمح بالتصفح ويوقف إضافة المنتجات وإرسال الطلبات.</small></span></label>
         <button type="button" className="danger" disabled={resetting} onClick={resetStore}>{resetting ? 'جارٍ إعادة الضبط...' : 'إعادة ضبط المتجر'}</button>
       </section>

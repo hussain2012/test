@@ -42,8 +42,8 @@ const getProductAnalytics = (views, orders) => {
 const asVariants = (value) => asJsonArray(value).map((variant) => ({
   name: String(variant?.name || '').trim(),
   selectionMode: 'single',
-  priceMode: variant?.priceMode === 'replace' ? 'replace' : 'add',
-  required: variant?.required !== false,
+  priceMode: 'replace',
+  required: true,
   maxSelections: 1,
   values: asArray(variant?.values).map((item) => typeof item === 'object' && item !== null
     ? { label: String(item.label ?? item.value ?? '').trim(), price: Number(item.price || 0) }
@@ -121,21 +121,25 @@ const getFeaturedProductIds = (data) => {
 
 export const defaultSettings = {
   storeName: '', tagline: '', logoUrl: '', heroTitle: '', heroDescription: '', heroImageUrl: '', heroButtonText: '',
-  featuredSectionTitle: '', featuredProductIds: null, storeCategories: null,
+  featuredSectionTitle: '', featuredProductIds: null, storeCategories: null, deliveryFee: 5000,
   instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: '', aboutText: '',
   policyTitle: '', policyText: '', maintenanceMode: false,
 };
 
-const normalizeSettings = (data) => ({
-  ...defaultSettings,
-  ...(data || {}),
-  policyTitle: String(data?.policyTitle || '').trim() || defaultSettings.policyTitle,
-  policyText: String(data?.policyText || '').trim() || defaultSettings.policyText,
-  featuredSectionTitle: String(data?.featuredSectionTitle || '').trim() || defaultSettings.featuredSectionTitle,
-  featuredProductIds: getFeaturedProductIds(data),
-  storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
-  maintenanceMode: Boolean(data?.maintenanceMode),
-});
+const normalizeSettings = (data) => {
+  const deliveryFee = Number(data?.deliveryFee);
+  return {
+    ...defaultSettings,
+    ...(data || {}),
+    policyTitle: String(data?.policyTitle || '').trim() || defaultSettings.policyTitle,
+    policyText: String(data?.policyText || '').trim() || defaultSettings.policyText,
+    featuredSectionTitle: String(data?.featuredSectionTitle || '').trim() || defaultSettings.featuredSectionTitle,
+    featuredProductIds: getFeaturedProductIds(data),
+    storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
+    deliveryFee: Number.isFinite(deliveryFee) && deliveryFee >= 0 ? deliveryFee : defaultSettings.deliveryFee,
+    maintenanceMode: Boolean(data?.maintenanceMode),
+  };
+};
 
 export async function getSiteSettings() {
   const data = throwIfError(await supabase.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle());
@@ -344,6 +348,12 @@ export async function saveSiteSettings(settings) {
     ? supabase.from('site_settings').update(payload).eq('id', current.id)
     : supabase.from('site_settings').insert(payload);
   const data = throwIfError(await query.select().single());
-  return { ...defaultSettings, ...data, featuredProductIds: getFeaturedProductIds(data), storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null };
+  return {
+    ...defaultSettings,
+    ...data,
+    featuredProductIds: getFeaturedProductIds(data),
+    storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
+    deliveryFee: normalizeSettings(data).deliveryFee,
+  };
 }
 export async function resetStore() { return throwIfError(await supabase.rpc('reset_store')); }
