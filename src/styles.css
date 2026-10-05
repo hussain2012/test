@@ -2164,7 +2164,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 
 .order-details {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 20px;
   padding: 18px 0;
 }
@@ -2312,7 +2312,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .admin-form h2 { font-size: 20px; }
   .admin-form .primary, .admin-form .secondary-button { width: 100%; }
   .settings-form .primary, .settings-form .danger { width: fit-content; min-height: 38px; padding: 7px 12px; }
-  .order-details { grid-template-columns: 1fr; }
+  .order-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .discount-field { grid-template-columns: minmax(0, 1fr) auto; }
   .maintenance-banner { margin-inline: 14px; font-size: 11px; }
   .admin-content { width: 100%; padding: 24px 14px; }
