@@ -909,19 +909,20 @@ function ProductDetailPage() {
             {Array.isArray(product.variants) && product.variants.map((variant) => {
               const selected = Array.isArray(selectedVariants[variant.name]) ? selectedVariants[variant.name] : [selectedVariants[variant.name]].filter(Boolean);
               return (
-                <section className="detail-option-card detail-weight-card" key={variant.name}>
+                <section className="detail-option-card" key={variant.name}>
                   <header className="detail-option-heading">
                     <div><h2>{variant.name}</h2><p>اختر خيارًا واحدًا</p></div>
-                    <span className={`detail-option-status ${selected.length ? 'selected' : ''}`} aria-label={selected.length ? 'تم الاختيار' : 'لم يتم الاختيار'}>{selected.length ? '✓' : ''}</span>
                   </header>
-                  <div className="detail-weight-options">
+                  <div className="detail-option-list">
                     {variant.values.map((choice) => {
                       const label = variantChoiceLabel(choice);
                       const choicePrice = variantChoicePrice(choice);
                       const isSelected = selected.includes(label);
-                      return <button type="button" key={label} className={`detail-weight-choice ${isSelected ? 'selected' : ''}`} aria-pressed={isSelected} onClick={() => chooseVariantOption(variant, label)}>
-                        <strong>{label}</strong>{choicePrice > 0 && <span>{money(choicePrice)}</span>}
-                      </button>;
+                      return <label className={`detail-option-row ${isSelected ? 'selected' : ''}`} key={label}>
+                        <input type="radio" name={`option-${product.id}-${variant.name}`} checked={isSelected} onChange={() => chooseVariantOption(variant, label)} />
+                        <span className="detail-option-label">{label}</span>
+                        {choicePrice > 0 && <strong dir="auto">{money(choicePrice)}</strong>}
+                      </label>;
                     })}
                   </div>
                 </section>

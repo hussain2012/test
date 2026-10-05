@@ -796,18 +796,18 @@ button { cursor: pointer; }
   font-size: 15px;
 }
 
-.detail-option-card { display: grid; gap: 10px; padding: 24px 28px; border: 2px solid var(--divider); border-radius: 32px; background: var(--paper); }
+.detail-option-card { display: grid; gap: 8px; padding: 16px 20px; border: 2px solid var(--divider); border-radius: 24px; background: var(--paper); }
 .detail-option-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.detail-option-heading h2 { margin: 0; color: var(--text); font-size: 25px; }
-.detail-option-heading p { margin: 4px 0 0; color: var(--muted); font-size: 17px; }
+.detail-option-heading h2 { margin: 0; color: var(--text); font-size: 20px; }
+.detail-option-heading p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
 .detail-option-status { display: grid; place-items: center; width: 66px; height: 38px; border-radius: 999px; background: var(--paper-soft); color: var(--muted); font-size: 19px; font-weight: 800; }
 .detail-option-status.selected { background: var(--accent-soft); color: var(--text); }
 .detail-option-list { display: grid; }
-.detail-option-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 14px; min-height: 96px; padding: 12px 0; border-bottom: 1px solid var(--divider); color: var(--text); cursor: pointer; }
+.detail-option-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 54px; padding: 6px 0; border-bottom: 1px solid var(--divider); color: var(--text); cursor: pointer; }
 .detail-option-row:last-child { border-bottom: 0; }
-.detail-option-row input { width: 30px; height: 30px; margin: 0; accent-color: var(--primary); cursor: pointer; }
-.detail-option-label { font-size: 21px; }
-.detail-option-row > strong { font-size: 17px; white-space: nowrap; }
+.detail-option-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.detail-option-label { font-size: 16px; }
+.detail-option-row > strong { font-size: 13px; white-space: nowrap; }
 .detail-option-row.disabled { opacity: 0.45; }
 .detail-weight-options { display: flex; flex-wrap: wrap; gap: 14px; }
 .detail-weight-choice { display: grid; gap: 5px; min-width: 152px; padding: 12px 20px; border: 2px solid var(--divider); border-radius: 999px; background: transparent; color: var(--text); text-align: center; }
@@ -2388,14 +2388,12 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .quantity-row { min-height: 42px; gap: 4px; padding: 4px; box-shadow: none; }
   .quantity-row button { flex-basis: 32px; width: 32px; height: 32px; font-size: 19px; }
   .quantity-row > span { min-width: 18px; font-size: 14px; }
-  .detail-option-card { gap: 8px; padding: 20px 20px; border-radius: 28px; }
-  .detail-option-heading h2 { font-size: 22px; }
-  .detail-option-heading p { font-size: 15px; }
-  .detail-option-row { min-height: 82px; gap: 10px; }
-  .detail-option-label { font-size: 19px; }
-  .detail-option-row > strong { font-size: 15px; }
-  .detail-weight-options { gap: 10px; }
-  .detail-weight-choice { min-width: 132px; padding: 10px 16px; }
+  .detail-option-card { gap: 7px; padding: 14px 16px; border-radius: 20px; }
+  .detail-option-heading h2 { font-size: 18px; }
+  .detail-option-heading p { font-size: 12px; }
+  .detail-option-row { min-height: 48px; gap: 8px; }
+  .detail-option-label { font-size: 15px; }
+  .detail-option-row > strong { font-size: 12px; }
   .detail-purchase-row { position: fixed; right: 0; bottom: calc(71px + env(safe-area-inset-bottom)); left: 0; z-index: 55; display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(112px, 148px); align-items: center; gap: 8px; margin: 0; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--divider); background: var(--paper); direction: rtl; }
   .detail-purchase-row .quantity-row { justify-self: start; }
   .detail-purchase-summary { display: grid; gap: 4px; min-width: 0; direction: rtl; text-align: right; }
