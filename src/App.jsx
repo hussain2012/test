@@ -1484,7 +1484,6 @@ function ProductsAdmin() {
   const emptyForm = { name: '', description: '', price: '', costPrice: '', discountType: 'percentage', discountValue: '', discountPercentage: '', category: '', imageUrl: '', productImages: [], variants: [], stockQuantity: 10, availabilityMode: 'ready', inStock: true, isNew: false };
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
-  const [categoryMode, setCategoryMode] = useState('existing');
   const [storeSettings, setStoreSettings] = useState(defaultSettings);
   const [categorySettingsError, setCategorySettingsError] = useState('');
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
@@ -1637,25 +1636,9 @@ function ProductsAdmin() {
     const availabilityMode = Number(form.stockQuantity) <= 0 && form.availabilityMode === 'ready' ? 'unavailable' : form.availabilityMode;
 
     try {
-      const categoryName = categoryMode === 'existing' && form.category === uncategorizedCategoryValue
+      const categoryName = form.category === uncategorizedCategoryValue
         ? ''
         : String(form.category || '').trim();
-      if (categoryMode === 'new') {
-        if (!categoryName) throw new Error('اكتب اسم التصنيف');
-        if (categoryItems.some((category) => category.name.toLocaleLowerCase() === categoryName.toLocaleLowerCase())) {
-          throw new Error('هذا التصنيف موجود مسبقًا. اختره من قائمة التصنيفات الموجودة.');
-        }
-        const currentSettings = { ...defaultSettings, ...(await getSiteSettings()) };
-        const currentCategories = getStoreCategories(currentSettings.storeCategories, items);
-        if (currentCategories.some((category) => category.name.toLocaleLowerCase() === categoryName.toLocaleLowerCase())) {
-          throw new Error('هذا التصنيف موجود مسبقًا. اختره من قائمة التصنيفات الموجودة.');
-        }
-        const nextSettings = await saveSiteSettings({
-          ...currentSettings,
-          storeCategories: [...currentCategories, { id: crypto.randomUUID(), name: categoryName, imageUrl: '' }],
-        });
-        setStoreSettings(nextSettings);
-      }
       const payload = {
         ...form,
         category: categoryName,
@@ -1703,7 +1686,6 @@ function ProductsAdmin() {
       return;
     }
     setEditingId(product.id);
-    setCategoryMode('existing');
     setForm({
       name: product.name,
       productCode: product.productCode || '',
@@ -1747,8 +1729,7 @@ function ProductsAdmin() {
           <div className="product-editor-section-heading"><h3 id="product-info-title">معلومات المنتج</h3></div>
           <div className="product-editor-fields">
             <label>اسم المنتج<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-            <label>طريقة التصنيف<select value={categoryMode} onChange={(event) => { setCategoryMode(event.target.value); setForm((current) => ({ ...current, category: '' })); }}><option value="existing">الانضمام إلى تصنيف</option><option value="new">إنشاء تصنيف جديد</option></select></label>
-            {categoryMode === 'existing' ? <label>التصنيف<select required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}><option value="">اختر تصنيفًا</option><option value={uncategorizedCategoryValue}>الكل (بدون تصنيف)</option>{categoryItems.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label> : <label>اسم التصنيف الجديد<input required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>}
+            <label>التصنيف<select required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}><option value="">اختر تصنيفًا</option><option value={uncategorizedCategoryValue}>بدون تصنيف</option>{categoryItems.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label>
             {categorySettingsError && <p className="error product-editor-wide" role="alert">{categorySettingsError}</p>}
             <label className="product-editor-wide">الوصف<textarea required={!editingId} value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
             <div className="product-variants product-editor-wide">
@@ -1979,7 +1960,7 @@ function OrdersAdmin() {
           </div>
 
           <div className="ordered-items">
-            {(Array.isArray(order.items) ? order.items : []).map((item) => <span key={`${order.id}-${item.productId}`}>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && ` (${selectedVariantText(item.selectedVariants)})`}</span>)}
+            {(Array.isArray(order.items) ? order.items : []).map((item) => <Link to={`/product/${item.productId}`} key={`${order.id}-${item.productId}`}>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && ` (${selectedVariantText(item.selectedVariants)})`}</Link>)}
           </div>
         </article>
       ))}
