@@ -900,6 +900,10 @@ button { cursor: pointer; }
 .account-order small { display: block; color: var(--muted); font-size: 10px; margin-top: 4px; }
 .account-order-status { font-weight: 700; color: var(--primary); }
 .account-order-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.account-order-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; flex-wrap: wrap; }
+.account-order-cancel { min-height: 36px; padding: 6px 12px; border: 1px solid var(--danger); border-radius: 7px; background: transparent; color: var(--danger); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.account-order-cancel:hover:not(:disabled) { background: var(--danger); color: var(--paper); }
+.account-order-cancel:disabled { cursor: wait; opacity: 0.65; }
 .account-order-items { display: grid; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .account-order-items > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; font-size: 12px; }
 .account-order-items span { min-width: 0; color: var(--muted); overflow-wrap: anywhere; }
@@ -2408,7 +2412,8 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .account-orders { padding: 32px 14px 64px; }
   .account-orders h1 { font-size: 28px; }
   .account-order { display: block; padding: 15px; }
-  .account-order-heading { align-items: flex-start; }
+  .account-order-heading { align-items: flex-start; flex-wrap: wrap; }
+  .account-order-actions { max-width: 100%; }
   .account-order-status { white-space: nowrap; }
   .account-order-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
 }
