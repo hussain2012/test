@@ -170,6 +170,9 @@ export async function createOrder(payload, userId) {
     p_payload: payload,
   }));
 }
+export async function cancelOrder(orderId) {
+  return throwIfError(await supabase.rpc('cancel_order_if_new', { p_order_id: orderId }));
+}
 export async function getAccountOrders(userId) { const data = throwIfError(await supabase.from('orders').select('*').eq('accountId', userId).order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
 
 export async function adminProducts() {

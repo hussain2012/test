@@ -2,7 +2,7 @@
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
 import {
-  accountCount, adminProducts, analytics, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
+  accountCount, adminProducts, analytics, cancelOrder, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
   defaultSettings, getAccountOrders, getCart, getProduct, getSiteSettings, inviteAdmin, listAdmins, listDiscounts,
   listOrders, listProducts, moveProductsToCategory, recordView, removeAdmin, resetStore as resetStoreData, saveCart, saveCoupon,
   saveSiteSettings, updateDiscount, unreadOrderCount, updateOrder, updateProduct, uploadCategoryImage, validateDiscount,
@@ -589,6 +589,9 @@ function Store() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [cancelingOrderId, setCancelingOrderId] = useState(null);
+  const [orderActionError, setOrderActionError] = useState('');
+  const [orderActionMessage, setOrderActionMessage] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('الكل');
   const [currentPage, setCurrentPage] = useState(1);
@@ -1201,6 +1204,26 @@ function MyOrders() {
   }, [user, reloadKey]);
 
   const statusLabels = { new: 'جديد', processing: 'قيد التجهيز', delivered: 'تم التوصيل', cancelled: 'ملغي' };
+  const handleCancelOrder = async (order) => {
+    if (order.status !== 'new' || !window.confirm(`هل أنت متأكد من إلغاء الطلب رقم #${order.accountOrderNumber || order.id}؟`)) return;
+    setOrderActionError('');
+    setOrderActionMessage('');
+    setCancelingOrderId(order.id);
+    try {
+      const cancelled = await cancelOrder(order.id);
+      if (!cancelled) {
+        setOrderActionError('لا يمكن إلغاء الطلب بعد بدء تجهيزه أو توصيله.');
+        setReloadKey((value) => value + 1);
+        return;
+      }
+      setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: 'cancelled' } : item));
+      setOrderActionMessage('تم إلغاء الطلب.');
+    } catch {
+      setOrderActionError('تعذر إلغاء الطلب. تحقق من الاتصال ثم حاول مرة أخرى.');
+    } finally {
+      setCancelingOrderId(null);
+    }
+  };
   if (!user) return <Navigate to="/login" replace state={{ returnTo: '/my-orders' }} />;
 
   return (
@@ -1210,10 +1233,12 @@ function MyOrders() {
         <p className="eyebrow">حسابي</p>
         <h1>طلباتي</h1>
         <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
+        {orderActionError && <p className="error" role="alert">{orderActionError}</p>}
+        {orderActionMessage && <p className="success-message" role="status">{orderActionMessage}</p>}
         {loading ? <div className="empty">جاري تحميل الطلبات...</div> : loadError ? <div className="empty" role="alert">{loadError}<button type="button" className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>إعادة المحاولة</button></div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
             {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
-              <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleDateString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
+              <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleDateString('ar-IQ')}</small></div><div className="account-order-actions"><span className="account-order-status">{statusLabels[order.status] || order.status}</span>{order.status === 'new' && <button type="button" className="secondary-button account-order-cancel" disabled={cancelingOrderId !== null} onClick={() => handleCancelOrder(order)}>{cancelingOrderId === order.id ? 'جارٍ الإلغاء...' : 'إلغاء الطلب'}</button>}</div></div>
               <div className="account-order-items">{(Array.isArray(order.items) ? order.items : []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && <small>{selectedVariantText(item.selectedVariants)}</small>}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
               <div className="account-order-totals">
                 <div><span>المجموع</span><strong>{money(order.subtotal)}</strong></div>
@@ -1911,6 +1936,11 @@ function OrdersAdmin() {
   }, []);
 
   const changeOrderStatus = async (id, status) => {
+    const order = orders.find((item) => item.id === id);
+    if (status === 'cancelled' && order?.status !== 'new') {
+      setError('لا يمكن إلغاء طلب قيد التجهيز أو تم توصيله.');
+      return;
+    }
     setError('');
     setUpdatingOrderId(id);
     try {
@@ -1934,7 +1964,7 @@ function OrdersAdmin() {
           <option value="new">جديد</option>
           <option value="processing">قيد التجهيز</option>
           <option value="delivered">تم التوصيل</option>
-          <option value="cancelled">ملغي</option>
+          <option value="cancelled" disabled={!['new', 'cancelled'].includes(order.status)}>ملغي</option>
         </select>
       </div>
       <div className="order-legend"><span><i className="legend-dot delivered-dot" />مكتمل</span><span><i className="legend-dot cancelled-dot" />ملغي</span><span><i className="legend-dot processing-dot" />قيد التجهيز</span><span><i className="legend-unread" />غير مقروء</span></div>

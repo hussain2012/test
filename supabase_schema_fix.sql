@@ -130,7 +130,7 @@ create table if not exists public.orders (
   "finalTotal" numeric(12,2) not null default 0,
   "accountId" uuid,
   "accountOrderNumber" integer,
-  status text not null default 'processing',
+  status text not null default 'new',
   "isRead" boolean not null default false,
   "createdAt" timestamptz not null default now()
 );
@@ -150,8 +150,24 @@ alter table public.orders add column if not exists "finalTotal" numeric(12,2) no
 alter table public.orders add column if not exists "accountId" uuid;
 alter table public.orders add column if not exists "accountOrderNumber" integer;
 alter table public.orders add column if not exists "requestKey" text;
-alter table public.orders add column if not exists status text not null default 'processing';
-alter table public.orders alter column status set default 'processing';
+alter table public.orders add column if not exists status text not null default 'new';
+alter table public.orders alter column status set default 'new';
+create or replace function public.prevent_late_order_cancellation()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if new.status = 'cancelled' and old.status not in ('new', 'cancelled') then
+    raise exception 'لا يمكن إلغاء الطلب بعد بدء تجهيزه أو توصيله';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists orders_prevent_late_cancellation on public.orders;
+create trigger orders_prevent_late_cancellation
+before update of status on public.orders
+for each row execute function public.prevent_late_order_cancellation();
 alter table public.orders add column if not exists "isRead" boolean not null default false;
 alter table public.orders add column if not exists "createdAt" timestamptz not null default now();
 
@@ -662,7 +678,7 @@ begin
     p_account_id,
     v_order_number,
     v_request_key,
-    'processing',
+    'new',
     now()
   ) returning id into v_order_id;
 
@@ -674,6 +690,32 @@ revoke all on function public.create_order_with_stock(uuid, jsonb) from public;
 revoke all on function public.create_order_with_stock(uuid, jsonb) from anon;
 grant execute on function public.create_order_with_stock(uuid, jsonb) to authenticated;
 grant execute on function public.create_order_with_stock(uuid, jsonb) to service_role;
+
+create or replace function public.cancel_order_if_new(p_order_id bigint)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_account_id uuid := auth.uid();
+begin
+  if v_account_id is null then
+    raise exception 'يجب تسجيل الدخول لإلغاء الطلب';
+  end if;
+
+  update public.orders
+  set status = 'cancelled'
+  where id = p_order_id
+    and "accountId" = v_account_id
+    and status = 'new';
+  return found;
+end;
+$$;
+
+revoke all on function public.cancel_order_if_new(bigint) from public;
+revoke all on function public.cancel_order_if_new(bigint) from anon;
+grant execute on function public.cancel_order_if_new(bigint) to authenticated;
 
 create or replace function public.reset_store(p_owner_id uuid default null)
 returns void
