@@ -1546,7 +1546,6 @@ function ProductsAdmin() {
 
   const resetForm = () => {
     setForm(emptyForm);
-    setCategoryMode('existing');
     setPrimaryImageFile(null);
     setAdditionalImageFiles([]);
     if (primaryImageInputRef.current) primaryImageInputRef.current.value = '';
