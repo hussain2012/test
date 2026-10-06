@@ -589,9 +589,6 @@ function Store() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
-  const [cancelingOrderId, setCancelingOrderId] = useState(null);
-  const [orderActionError, setOrderActionError] = useState('');
-  const [orderActionMessage, setOrderActionMessage] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('الكل');
   const [currentPage, setCurrentPage] = useState(1);
@@ -1180,6 +1177,9 @@ function MyOrders() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [cancelingOrderId, setCancelingOrderId] = useState(null);
+  const [orderActionError, setOrderActionError] = useState('');
+  const [orderActionMessage, setOrderActionMessage] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -1964,7 +1964,7 @@ function OrdersAdmin() {
           <option value="new">جديد</option>
           <option value="processing">قيد التجهيز</option>
           <option value="delivered">تم التوصيل</option>
-          <option value="cancelled" disabled={!['new', 'cancelled'].includes(order.status)}>ملغي</option>
+          <option value="cancelled">ملغي</option>
         </select>
       </div>
       <div className="order-legend"><span><i className="legend-dot delivered-dot" />مكتمل</span><span><i className="legend-dot cancelled-dot" />ملغي</span><span><i className="legend-dot processing-dot" />قيد التجهيز</span><span><i className="legend-unread" />غير مقروء</span></div>
@@ -1982,7 +1982,7 @@ function OrdersAdmin() {
               <option value="new">جديد</option>
               <option value="processing">قيد التجهيز</option>
               <option value="delivered">تم التوصيل</option>
-              <option value="cancelled">ملغي</option>
+              <option value="cancelled" disabled={!['new', 'cancelled'].includes(order.status)}>ملغي</option>
             </select>
           </div>
 
