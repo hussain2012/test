@@ -1041,6 +1041,9 @@ function Checkout() {
     event.preventDefault();
     if (isSubmitting) return;
     setError('');
+    if (form.discountCode.trim() && (!discount || discount.code?.toUpperCase() !== form.discountCode.trim().toUpperCase())) {
+      return setError('اضغط على «تطبيق» للتحقق من كود الخصم قبل إرسال الطلب.');
+    }
     if (!user) return setError('لا يمكنك إكمال الطلب إلا بعد تسجيل الدخول');
     if (needsPassword) return setError('قبل إرسال الطلب، اذهب إلى الحساب وعيّن كلمة مرور أولاً.');
     if (settings.maintenanceMode) return setError('الطلبات متوقفة مؤقتاً بسبب الصيانة');
