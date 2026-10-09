@@ -123,7 +123,7 @@ export const defaultSettings = {
   storeName: '', tagline: '', logoUrl: '', heroTitle: '', heroDescription: '', heroImageUrl: '', heroButtonText: '',
   featuredSectionTitle: '', featuredProductIds: null, storeCategories: null, deliveryFee: 5000,
   instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: '', aboutText: '',
-  policyTitle: '', policyText: '', maintenanceMode: false,
+  policyTitle: '', policyText: '', taglineFont: 'cairo', taglineColor: '#1B1813', maintenanceMode: false,
 };
 
 const normalizeSettings = (data) => {
@@ -137,6 +137,8 @@ const normalizeSettings = (data) => {
     featuredProductIds: getFeaturedProductIds(data),
     storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
     deliveryFee: Number.isFinite(deliveryFee) && deliveryFee >= 0 ? deliveryFee : defaultSettings.deliveryFee,
+    taglineFont: ['cairo', 'sans', 'serif'].includes(data?.taglineFont) ? data.taglineFont : defaultSettings.taglineFont,
+    taglineColor: /^#[0-9a-fA-F]{6}$/.test(data?.taglineColor || '') ? data.taglineColor.toUpperCase() : defaultSettings.taglineColor,
     maintenanceMode: Boolean(data?.maintenanceMode),
   };
 };
@@ -340,6 +342,27 @@ export async function accountCount() { const { count, error } = await supabase.f
 export async function listAdmins() { const [admins, invites] = await Promise.all([supabase.from('profiles').select('id,identifier,createdAt,isOwner').eq('role', 'admin').order('createdAt'), supabase.from('admin_invites').select('identifier,createdAt').order('createdAt', { ascending: false })]); return { admins: asArray(throwIfError(admins)), invites: asArray(throwIfError(invites)) }; }
 export async function inviteAdmin(identifier) { const normalized = String(identifier).trim().toLowerCase(); const profile = throwIfError(await supabase.from('profiles').select('id,role').eq('identifier', normalized).maybeSingle()); if (profile?.role === 'admin') throw new Error('هذا الحساب مشرف مسبقاً'); if (profile) return throwIfError(await supabase.from('profiles').update({ role: 'admin' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').upsert({ identifier: normalized }, { onConflict: 'identifier' })); }
 export async function removeAdmin(identifier) { const profile = throwIfError(await supabase.from('profiles').select('id,isOwner').eq('identifier', String(identifier).toLowerCase()).eq('role', 'admin').maybeSingle()); if (profile?.isOwner) throw new Error('لا يمكن حذف مالك المتجر'); if (profile) throwIfError(await supabase.from('profiles').update({ role: 'customer' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').delete().eq('identifier', String(identifier).toLowerCase())); }
+export async function createOwnerAccount(name, email, password) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!session?.access_token) throw new Error('يجب تسجيل الدخول كمالك للمتجر');
+  const response = await fetch('/api/admin/owners', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name, email, password }),
+  });
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error('تعذر قراءة رد خادم إنشاء حساب المالك');
+  }
+  if (!response.ok) throw new Error(result?.error || 'تعذر إنشاء حساب المالك');
+  return result;
+}
 export async function saveSiteSettings(settings) {
   const current = await getSiteSettings();
   const payload = { ...settings, id: undefined };
@@ -359,4 +382,49 @@ export async function saveSiteSettings(settings) {
     deliveryFee: normalizeSettings(data).deliveryFee,
   };
 }
-export async function resetStore() { return throwIfError(await supabase.rpc('reset_store')); }
+export async function completeStoreSetup(setup, productImage) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!session?.access_token) throw new Error('يجب تسجيل الدخول كمالك للمتجر');
+  const form = new FormData();
+  form.append('setup', JSON.stringify(setup));
+  if (productImage) form.append('productImage', productImage);
+  const response = await fetch('/api/admin/setup-store', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    body: form,
+  });
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error('تعذر قراءة رد خادم إنشاء المتجر');
+  }
+  if (!response.ok) throw new Error(result?.error || 'تعذر إنشاء المتجر');
+  return result;
+}
+async function resetSecurityRequest(path, body) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (!session?.access_token) throw new Error('يجب تسجيل الدخول كمالك للمتجر');
+  const response = await fetch(`/api/admin/reset-security${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error('تعذر قراءة رد خادم إعادة الضبط');
+  }
+  if (!response.ok) throw new Error(result?.error || 'تعذر تنفيذ عملية إعادة الضبط');
+  return result;
+}
+export async function getResetSecurityStatus() { return resetSecurityRequest(''); }
+export async function createResetSecurityPin(pin) { return resetSecurityRequest('', { pin }); }
+export async function verifyResetSecurityPin(pin) { return resetSecurityRequest('/verify', { pin }); }
+export async function confirmResetStore(resetToken) { return resetSecurityRequest('/confirm', { resetToken }); }

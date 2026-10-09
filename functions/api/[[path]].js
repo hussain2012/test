@@ -39,6 +39,8 @@ const parseJson = (value, fallback = []) => {
 const defaultSettings = {
   storeName: '',
   tagline: '',
+  taglineFont: 'cairo',
+  taglineColor: '#1B1813',
   logoUrl: '',
   heroTitle: '',
   heroDescription: '',
@@ -98,6 +100,26 @@ const getSession = async (request, supabase) => {
 };
 const requireAdmin = (session) => session?.role === 'admin';
 const requireOwner = (session) => session?.role === 'admin' && session.isOwner === true;
+const securityPinHash = async (pin, salt) => {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({
+    name: 'PBKDF2',
+    salt: Uint8Array.from(salt.match(/.{2}/g), (byte) => Number.parseInt(byte, 16)),
+    iterations: 600000,
+    hash: 'SHA-256',
+  }, key, 256);
+  return [...new Uint8Array(bits)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+const equalHashes = (first, second) => {
+  if (first.length !== second.length) return false;
+  let difference = 0;
+  for (let index = 0; index < first.length; index += 1) difference |= first.charCodeAt(index) ^ second.charCodeAt(index);
+  return difference === 0;
+};
+const hashResetToken = async (token) => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
 const parseBody = async (request) => {
   const contentType = request.headers.get('content-type') || '';
   if (contentType.includes('multipart/form-data')) {
@@ -151,7 +173,13 @@ const uploadFormFiles = async (request, form, supabase) => {
 const getSettings = async (supabase) => {
   const { data, error } = await supabase.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle();
   if (error) throw error;
-  return { ...defaultSettings, ...(data || {}), maintenanceMode: Boolean(data?.maintenanceMode) };
+  return {
+    ...defaultSettings,
+    ...(data || {}),
+    taglineFont: ['cairo', 'sans', 'serif'].includes(data?.taglineFont) ? data.taglineFont : defaultSettings.taglineFont,
+    taglineColor: /^#[0-9a-fA-F]{6}$/.test(data?.taglineColor || '') ? data.taglineColor.toUpperCase() : defaultSettings.taglineColor,
+    maintenanceMode: Boolean(data?.maintenanceMode),
+  };
 };
 const pathParts = (request) => new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
 
@@ -381,12 +409,193 @@ export async function onRequest(context) {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
       return json(await getSettings(supabase));
     }
+    if (route === 'admin/setup-store' && method === 'POST') {
+      if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إنشاء المتجر', 403);
+      const form = await request.formData();
+      let setup;
+      try {
+        setup = JSON.parse(String(form.get('setup') || ''));
+      } catch {
+        return errorResponse('بيانات إنشاء المتجر غير صالحة', 400);
+      }
+
+      const allowedFonts = ['cairo', 'sans', 'serif'];
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const storeName = String(setup?.storeName || '').trim();
+      const tagline = String(setup?.tagline || '').trim();
+      const aboutText = String(setup?.aboutText || '').trim();
+      const policyText = String(setup?.policyText || '').trim();
+      if (!storeName || storeName.length > 120 || !tagline || tagline.length > 160 ||
+        !aboutText || aboutText.length > 5000 || !policyText || policyText.length > 5000 ||
+        !allowedFonts.includes(setup?.taglineFont) || !/^#[0-9a-fA-F]{6}$/.test(setup?.taglineColor || '')) {
+        return errorResponse('تحقق من اسم المتجر والشعار ونصوص التعريف والسياسات', 400);
+      }
+
+      const admin = setup.admin || null;
+      if (admin && (!String(admin.name || '').trim() || String(admin.name).trim().length > 120 ||
+        !emailPattern.test(String(admin.email || '').trim()) || String(admin.password || '').length < 8 ||
+        String(admin.password).length > 128)) {
+        return errorResponse('بيانات المشرف غير مكتملة أو غير صالحة', 400);
+      }
+      const product = setup.product || null;
+      if (product && (!String(product.name || '').trim() || String(product.name).trim().length > 160 ||
+        !String(product.description || '').trim() || String(product.description).trim().length > 5000 ||
+        !Number.isFinite(Number(product.price)) || Number(product.price) <= 0 ||
+        String(product.stockQuantity ?? '').trim() === '' ||
+        !Number.isInteger(Number(product.stockQuantity)) || Number(product.stockQuantity) < 0)) {
+        return errorResponse('بيانات المنتج الأول غير مكتملة أو غير صالحة', 400);
+      }
+
+      const image = form.get('productImage');
+      const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (image && typeof image !== 'string' &&
+        (!acceptedImageTypes.includes(image.type) || image.size > 5 * 1024 * 1024)) {
+        return errorResponse('اختر صورة صالحة لا يتجاوز حجمها 5 ميغابايت', 400);
+      }
+      if (image && typeof image !== 'string' && !product) return errorResponse('لا يمكن رفع صورة من دون إضافة منتج', 400);
+      let createdAdminId = null;
+      let imagePath = null;
+      try {
+        if (admin) {
+          const { data, error } = await supabase.auth.admin.createUser({
+            email: String(admin.email).trim().toLowerCase(),
+            password: String(admin.password),
+            email_confirm: true,
+            user_metadata: { full_name: String(admin.name).trim() },
+          });
+          if (error) return errorResponse(/already|registered|exists/i.test(error.message) ? 'هذا البريد الإلكتروني مستخدم مسبقاً' : error.message, /already|registered|exists/i.test(error.message) ? 409 : 400);
+          createdAdminId = data.user.id;
+        }
+
+        let imageUrl = '';
+        if (image && typeof image !== 'string' && product) {
+          const extensionByType = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+          imagePath = `store-products/${crypto.randomUUID()}.${extensionByType[image.type]}`;
+          const { error } = await supabase.storage.from('uploads').upload(
+            imagePath,
+            await image.arrayBuffer(),
+            { contentType: image.type, upsert: false },
+          );
+          if (error) throw error;
+          imageUrl = supabase.storage.from('uploads').getPublicUrl(imagePath).data.publicUrl;
+        }
+
+        const { error } = await supabase.rpc('complete_store_setup', {
+          p_owner_id: session.accountId,
+          p_settings: { storeName, tagline, taglineFont: setup.taglineFont, taglineColor: setup.taglineColor, aboutText, policyText },
+          p_product: product ? {
+            name: String(product.name).trim(),
+            description: String(product.description).trim(),
+            price: Number(product.price),
+            stockQuantity: Number(product.stockQuantity),
+            imageUrl,
+          } : null,
+          p_admin_id: createdAdminId,
+          p_admin_name: admin ? String(admin.name).trim() : null,
+        });
+        if (error) throw error;
+        return json({ ok: true, message: 'تم إنشاء المتجر بنجاح' }, 201);
+      } catch (error) {
+        const cleanupErrors = [];
+        if (imagePath) {
+          try {
+            const { error: storageError } = await supabase.storage.from('uploads').remove([imagePath]);
+            if (storageError) cleanupErrors.push(storageError.message);
+          } catch (cleanupError) {
+            cleanupErrors.push(cleanupError.message);
+          }
+        }
+        if (createdAdminId) {
+          try {
+            const { error: authError } = await supabase.auth.admin.deleteUser(createdAdminId);
+            if (authError) cleanupErrors.push(authError.message);
+          } catch (cleanupError) {
+            cleanupErrors.push(cleanupError.message);
+          }
+        }
+        const message = cleanupErrors.length
+          ? `${error.message} تعذر التراجع عن بعض الموارد: ${cleanupErrors.join('؛ ')}`
+          : error.message;
+        return errorResponse(message, 500);
+      }
+    }
     if (route === 'admin/site-settings' && method === 'POST') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع تعديل الإعدادات', 403);
       const form = await request.formData(); const body = Object.fromEntries([...form.entries()].filter(([key, value]) => typeof value === 'string')); const files = await uploadFormFiles(request, form, supabase); const previous = await getSettings(supabase);
-      const settings = { ...previous, ...body, logoUrl: files.logoImage || body.logoUrl || previous.logoUrl, heroImageUrl: files.heroImage || body.heroImageUrl || previous.heroImageUrl, maintenanceMode: bool(body.maintenanceMode) }; delete settings.id;
+      const settings = {
+        ...previous,
+        ...body,
+        taglineFont: ['cairo', 'sans', 'serif'].includes(body.taglineFont) ? body.taglineFont : previous.taglineFont,
+        taglineColor: /^#[0-9a-fA-F]{6}$/.test(body.taglineColor || '') ? body.taglineColor.toUpperCase() : previous.taglineColor,
+        logoUrl: files.logoImage || body.logoUrl || previous.logoUrl,
+        heroImageUrl: files.heroImage || body.heroImageUrl || previous.heroImageUrl,
+        maintenanceMode: bool(body.maintenanceMode),
+      };
+      delete settings.id;
       const { error } = await supabase.from('site_settings').update(settings).eq('id', previous.id); if (error) throw error;
       return json({ ...settings, id: previous.id });
+    }
+    if (route === 'admin/reset-security' && method === 'GET') {
+      if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إدارة رمز الأمان', 403);
+      const { data, error } = await supabase.from('store_security').select('id').eq('id', 1).maybeSingle();
+      if (error) throw error;
+      return json({ configured: Boolean(data) });
+    }
+    if (route === 'admin/reset-security' && method === 'POST') {
+      if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إنشاء رمز الأمان', 403);
+      const body = await parseBody(request);
+      const pin = typeof body.pin === 'string' ? body.pin : '';
+      if (pin.length < 6 || pin.length > 128) return errorResponse('يجب أن يتكون رمز الأمان من 6 خانات على الأقل وبحد أقصى 128 خانة', 400);
+      const { data: existing, error: selectError } = await supabase.from('store_security').select('id').eq('id', 1).maybeSingle();
+      if (selectError) throw selectError;
+      if (existing) return errorResponse('تم إنشاء رمز الأمان مسبقاً', 409);
+      const salt = [...crypto.getRandomValues(new Uint8Array(16))].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      const pinHash = await securityPinHash(pin, salt);
+      const { error } = await supabase.from('store_security').insert({ id: 1, pin_hash: pinHash, pin_salt: salt });
+      if (error) return errorResponse(error.code === '23505' ? 'تم إنشاء رمز الأمان مسبقاً' : error.message, error.code === '23505' ? 409 : 500);
+      return json({ configured: true }, 201);
+    }
+    if (route === 'admin/reset-security/verify' && method === 'POST') {
+      if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إعادة ضبطه', 403);
+      const body = await parseBody(request);
+      const pin = typeof body.pin === 'string' ? body.pin : '';
+      if (!pin || pin.length > 128) return errorResponse('أدخل رمز الأمان', 400);
+      const { data: security, error } = await supabase.from('store_security').select('pin_hash, pin_salt, locked_until').eq('id', 1).maybeSingle();
+      if (error) throw error;
+      if (!security) return errorResponse('أنشئ رمز الأمان أولاً', 409);
+      if (security.locked_until && new Date(security.locked_until).getTime() > Date.now()) {
+        const minutes = Math.ceil((new Date(security.locked_until).getTime() - Date.now()) / 60000);
+        return errorResponse(`تم قفل المحاولات مؤقتاً. حاول بعد ${minutes} دقيقة.`, 429);
+      }
+      const candidateHash = await securityPinHash(pin, security.pin_salt);
+      const matched = equalHashes(candidateHash, security.pin_hash);
+      const { data: attempt, error: attemptError } = await supabase.rpc('record_reset_pin_attempt', { p_success: matched });
+      if (attemptError) throw attemptError;
+      if (!attempt.ok) {
+        const minutes = Math.max(1, Math.ceil((new Date(attempt.lockedUntil).getTime() - Date.now()) / 60000));
+        return errorResponse(`تم قفل المحاولات مؤقتاً. حاول بعد ${minutes} دقيقة.`, 429);
+      }
+      if (!matched) return errorResponse(`رمز الأمان غير صحيح. المحاولات المتبقية: ${5 - attempt.failedAttempts}`, 401);
+      const token = [...crypto.getRandomValues(new Uint8Array(32))].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const { error: tokenError } = await supabase.from('store_security').update({
+        reset_token_hash: await hashResetToken(token),
+        reset_token_expires_at: expiresAt,
+      }).eq('id', 1);
+      if (tokenError) throw tokenError;
+      return json({ resetToken: token, expiresAt });
+    }
+    if (route === 'admin/reset-security/confirm' && method === 'POST') {
+      if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إعادة ضبطه', 403);
+      const body = await parseBody(request);
+      const token = typeof body.resetToken === 'string' ? body.resetToken : '';
+      if (!/^[a-f0-9]{64}$/.test(token)) return errorResponse('انتهت صلاحية التأكيد. تحقق من الرمز مرة أخرى.', 400);
+      const { data: consumed, error: consumeError } = await supabase.rpc('consume_store_reset_token', { p_token_hash: await hashResetToken(token) });
+      if (consumeError) throw consumeError;
+      if (!consumed) return errorResponse('انتهت صلاحية التأكيد. تحقق من الرمز مرة أخرى.', 401);
+      const { error } = await supabase.rpc('reset_store', { p_owner_id: session.accountId });
+      if (error) throw error;
+      return json({ ok: true, message: 'تمت إعادة ضبط المتجر' });
     }
     if (route === 'admin/admins' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
@@ -416,9 +625,7 @@ export async function onRequest(context) {
     }
     if (route === 'admin/reset-store' && method === 'POST') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إعادة ضبطه', 403);
-      const { error } = await supabase.rpc('reset_store', { p_owner_id: session.accountId });
-      if (error) throw error;
-      return json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
+      return errorResponse('يجب التحقق من رمز الأمان قبل إعادة ضبط المتجر', 410);
     }
     return errorResponse('المسار غير موجود', 404);
   } catch (error) {

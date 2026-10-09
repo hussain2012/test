@@ -1,11 +1,11 @@
-﻿import { useEffect, useRef, useState, createContext, useContext } from 'react';
+import { useEffect, useRef, useState, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
 import {
-  accountCount, adminProducts, analytics, cancelOrder, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
-  defaultSettings, getAccountOrders, getCart, getProduct, getSiteSettings, inviteAdmin, listAdmins, listDiscounts,
-  listOrders, listProducts, moveProductsToCategory, recordView, removeAdmin, resetStore as resetStoreData, saveCart, saveCoupon,
-  saveSiteSettings, updateDiscount, unreadOrderCount, updateOrder, updateProduct, uploadCategoryImage, validateDiscount,
+  accountCount, adminProducts, analytics, cancelOrder, completeStoreSetup, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
+  confirmResetStore, createOwnerAccount, createResetSecurityPin, defaultSettings, getAccountOrders, getCart, getProduct, getResetSecurityStatus, getSiteSettings,
+  inviteAdmin, listAdmins, listDiscounts, listOrders, listProducts, moveProductsToCategory, recordView, removeAdmin, saveCart, saveCoupon,
+  saveSiteSettings, updateDiscount, unreadOrderCount, updateOrder, updateProduct, uploadCategoryImage, validateDiscount, verifyResetSecurityPin,
 } from './lib/supabaseData';
 
 const mediaUrl = (value) => {
@@ -299,22 +299,37 @@ function CartProvider({ children }) {
 function useSiteSettings() {
   const [settings, setSettings] = useState(defaultSettings);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
+    const loadingTimeout = window.setTimeout(() => {
+      if (active) {
+        setError('استغرق تحميل إعدادات المتجر وقتاً أطول من المتوقع. تحقق من الاتصال.');
+        setLoading(false);
+      }
+    }, 15000);
     getSiteSettings()
       .then((data) => {
         if (!active) return;
         const nextSettings = { ...defaultSettings, ...(data || {}) };
         setSettings(nextSettings);
+        setError('');
       })
       .catch(() => {
         if (active) setError('تعذر تحميل إعدادات المتجر. تحقق من الاتصال ثم أعد تحميل الصفحة.');
+      })
+      .finally(() => {
+        window.clearTimeout(loadingTimeout);
+        if (active) setLoading(false);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      window.clearTimeout(loadingTimeout);
+    };
   }, []);
 
-  return { settings, error };
+  return { settings, error, loading };
 }
 
 function ProductImage({ src, alt, className = '' }) {
@@ -397,6 +412,7 @@ function AppContent() {
         <Route path="/account/policy" element={<AccountPage />} />
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/login" element={<Login />} />
+        {import.meta.env.DEV && <Route path="/_preview/setup-store" element={<div className="admin-shell admin-setup-shell"><section className="admin-content"><StoreSetup preview /></section></div>} />}
         <Route path="/admin/*" element={<Admin />} />
         <Route path="*" element={<Store />} />
       </Routes>
@@ -408,6 +424,7 @@ function BottomNav() {
   const { count } = useCart();
   const { user, profile } = useAuth();
   const location = useLocation();
+  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/_preview')) return null;
   const items = [
     { label: 'الرئيسية', to: '/', icon: 'home', active: location.pathname === '/' },
     ...(profile?.role === 'admin' ? [{ label: 'لوحة الإدارة', to: '/admin', icon: 'grid', active: location.pathname.startsWith('/admin') }] : []),
@@ -568,7 +585,10 @@ function StoreNav({ settings, settingsError = '' }) {
       <header className="nav">
         <Link to="/" className="brand store-wordmark">
           <span>{storeName}</span>
-          {settings.tagline && <small>{settings.tagline}</small>}
+          {settings.tagline && <small style={{
+            color: settings.taglineColor || defaultSettings.taglineColor,
+            fontFamily: settings.taglineFont === 'serif' ? 'Georgia, serif' : settings.taglineFont === 'sans' ? 'Arial, sans-serif' : '"Cairo", sans-serif',
+          }}>{settings.tagline}</small>}
         </Link>
         <nav>
           {!user && <Link to="/login">تسجيل الدخول</Link>}
@@ -584,7 +604,7 @@ function StoreNav({ settings, settingsError = '' }) {
 }
 
 function Store() {
-  const { settings, error: settingsError } = useSiteSettings();
+  const { settings, error: settingsError, loading: settingsLoading } = useSiteSettings();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -602,6 +622,12 @@ function Store() {
     let active = true;
     setLoading(true);
     setLoadError('');
+    const loadingTimeout = window.setTimeout(() => {
+      if (active) {
+        setLoadError('استغرق تحميل المنتجات وقتاً أطول من المتوقع. تحقق من الاتصال ثم أعد المحاولة.');
+        setLoading(false);
+      }
+    }, 15000);
     listProducts()
       .then((data) => {
         if (active) setProducts(Array.isArray(data) ? data : []);
@@ -610,9 +636,13 @@ function Store() {
         if (active) setLoadError('تعذر تحميل المنتجات. تحقق من الاتصال ثم أعد المحاولة.');
       })
       .finally(() => {
+        window.clearTimeout(loadingTimeout);
         if (active) setLoading(false);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      window.clearTimeout(loadingTimeout);
+    };
   }, [reloadKey]);
 
   const safeProducts = Array.isArray(products) ? products : [];
@@ -653,6 +683,10 @@ function Store() {
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
+
+  if (loading || settingsLoading) {
+    return <main className="store-startup-loading" role="status">جارٍ تجهيز المتجر...</main>;
+  }
 
   return (
     <>
@@ -1291,7 +1325,7 @@ function Login() {
         setError(authErrorMessage(authError, 'تعذر إرسال رابط الدخول. حاول مرة أخرى.'));
         return false;
       }
-      setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني، يرجى الضغط عليه لإكمال التسجيل.');
+      setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني. افتحه للدخول إلى حسابك.');
       return true;
     } catch {
       setError('تعذر إرسال رابط الدخول حالياً. حاول مرة أخرى.');
@@ -1371,7 +1405,7 @@ function Login() {
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</button>
-        {mode === 'login' && error && <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول جديد إلى البريد</button>}
+        {mode === 'login' && <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول إلى البريد</button>}
         {mode === 'register' ? (
           <>
             <p className="auth-switch-copy">لديك حساب؟ <button type="button" onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button></p>
@@ -1415,11 +1449,12 @@ function Admin() {
     discounts: 'أكواد الخصم',
     settings: 'إعدادات المتجر',
     admins: 'المشرفون',
+    'setup-store': 'أنشئ متجرك',
   };
 
   return (
-    <div className="admin-shell">
-      <aside className="admin-side">
+    <div className={`admin-shell ${page === 'setup-store' ? 'admin-setup-shell' : ''}`}>
+      {page !== 'setup-store' && <aside className="admin-side">
         <Link to="/" className="brand">المتجر<small>لوحة التحكم</small></Link>
         <Link className={page === 'overview' ? 'active' : ''} to="/admin">نظرة عامة</Link>
         <Link className={page === 'products' ? 'active' : ''} to="/admin/products">المنتجات</Link>
@@ -1429,18 +1464,19 @@ function Admin() {
         <Link className={page === 'admins' ? 'active' : ''} to="/admin/admins">المشرفون</Link>
         <button type="button" className="logout" onClick={async () => { if (await signOut(setLogoutError)) navigate('/'); }}>تسجيل الخروج</button>
         {logoutError && <p className="error">{logoutError}</p>}
-      </aside>
+      </aside>}
 
       <section className="admin-content">
-        <div className="admin-top">
+        {page !== 'setup-store' && <div className="admin-top">
           <div>
             <p className="eyebrow"></p>
             <h1>{titleMap[page] || 'لوحة الإدارة'}</h1>
           </div>
           <Link to="/" className="view-store">عرض المتجر ↗</Link>
         </div>
+        }
 
-        {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : page === 'admins' ? <AdminsAdmin /> : <Overview />}
+        {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : page === 'admins' ? <AdminsAdmin /> : page === 'setup-store' ? <StoreSetup /> : <Overview />}
       </section>
     </div>
   );
@@ -2181,7 +2217,228 @@ function AdminsAdmin() {
   );
 }
 
+function StoreSetup({ preview = false }) {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [storeName, setStoreName] = useState('');
+  const [tagline, setTagline] = useState('');
+  const [taglineFont, setTaglineFont] = useState('cairo');
+  const taglineColor = '#1B1813';
+  const [aboutText, setAboutText] = useState('');
+  const [policyText, setPolicyText] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [adminName, setAdminName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [productName, setProductName] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+  const [productPrice, setProductPrice] = useState('');
+  const [productQuantity, setProductQuantity] = useState('');
+  const [productImage, setProductImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const steps = ['هوية المتجر', 'من نحن وسياساتنا', 'إضافة مالك', 'إضافة مشرف', 'إضافة أول منتج'];
+  const colors = [
+    { value: '#1B1813', label: 'فحمي' },
+    { value: '#C8A25B', label: 'ذهبي' },
+    { value: '#53715B', label: 'أخضر' },
+    { value: '#765849', label: 'بني' },
+  ];
+
+  const validateStep = (step) => {
+    if (step === 0 && (!storeName.trim() || !tagline.trim())) return 'أدخل اسم المتجر والشعار النصي للمتابعة.';
+    if (step === 1 && (!aboutText.trim() || !policyText.trim())) return 'أدخل نص «من نحن» وسياسات المتجر للمتابعة.';
+    if (step === 2 &&
+      (!ownerName.trim() || ownerName.trim().length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim()) || ownerPassword.trim().length < 8)) {
+      return 'أدخل الاسم الكريم وبريداً إلكترونياً صحيحاً وكلمة مرور لا تقل عن 8 أحرف للمتابعة.';
+    }
+    if (step === 3 && (adminName.trim() || adminEmail.trim()) &&
+      (!adminName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail.trim()))) {
+      return 'لإضافة مشرف، أدخل الاسم والبريد الإلكتروني الصحيح، أو تخط هذه الخطوة.';
+    }
+    if (step === 4 && (productName.trim() || productDescription.trim() || productPrice !== '' || productQuantity !== '' || productImage)) {
+      const price = Number(productPrice);
+      const quantity = Number(productQuantity);
+      if (!productName.trim() || !productDescription.trim() || !Number.isFinite(price) || price <= 0 ||
+        productQuantity === '' || !Number.isInteger(quantity) || quantity < 0) {
+        return 'لإضافة المنتج، أدخل اسمه ووصفه وسعراً أكبر من صفر وكمية صحيحة لا تقل عن صفر، أو تخط هذه الخطوة.';
+      }
+      if (productImage && (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(productImage.type) || productImage.size > 5 * 1024 * 1024)) {
+        return 'اختر صورة صالحة لا يتجاوز حجمها 5 ميغابايت.';
+      }
+    }
+    return '';
+  };
+
+  const goToNextStep = () => {
+    const validationError = validateStep(currentStep);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError('');
+    setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
+  };
+
+  const skipStep = () => {
+    setError('');
+    if (currentStep === 2) {
+      setOwnerName('');
+      setOwnerEmail('');
+      setOwnerPassword('');
+    }
+    if (currentStep === 3) {
+      setAdminName('');
+      setAdminEmail('');
+    }
+    if (currentStep === 4) {
+      setProductName('');
+      setProductDescription('');
+      setProductPrice('');
+      setProductQuantity('');
+      setProductImage(null);
+    }
+    setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
+  };
+
+  const createStore = async (event) => {
+    event.preventDefault();
+    setError('');
+    for (let step = 0; step < steps.length; step += 1) {
+      const validationError = validateStep(step);
+      if (validationError) {
+        setError(validationError);
+        setCurrentStep(step);
+        return;
+      }
+    }
+    if (preview) {
+      setSuccessMessage('هذه معاينة فقط؛ لم يتم حفظ أي بيانات.');
+      return;
+    }
+    if (profile?.isOwner !== true) {
+      setError('إنشاء المتجر متاح لمالك المتجر فقط.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await completeStoreSetup({
+        storeName: storeName.trim(),
+        tagline: tagline.trim(),
+        taglineFont,
+        taglineColor,
+        aboutText: aboutText.trim(),
+        policyText: policyText.trim(),
+        admin: adminName.trim() ? {
+          name: adminName.trim(),
+          email: adminEmail.trim().toLowerCase(),
+        } : null,
+        product: productName.trim() ? {
+          name: productName.trim(),
+          description: productDescription.trim(),
+          price: Number(productPrice),
+          stockQuantity: Number(productQuantity),
+        } : null,
+      }, productName.trim() ? productImage : null);
+      if (ownerEmail.trim() && ownerPassword.trim()) {
+        try {
+          await createOwnerAccount(ownerName.trim(), ownerEmail.trim().toLowerCase(), ownerPassword);
+        } catch (reason) {
+          setSuccessMessage(`تم إنشاء المتجر، لكن تعذر إنشاء حساب المالك أو نقل الملكية. بقيت الملكية للحساب الحالي. ${reason.message || ''}`);
+          window.setTimeout(() => navigate('/', { replace: true }), 4000);
+          return;
+        }
+      }
+      setSuccessMessage('تم إنشاء المتجر بنجاح. جارٍ فتح متجرك...');
+      window.setTimeout(() => navigate('/', { replace: true }), 1100);
+    } catch (reason) {
+      setError(reason?.message || 'تعذر إنشاء المتجر. تحقق من اتصال الخادم وقاعدة البيانات ثم حاول مجدداً.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStepSubmit = (event) => {
+    event.preventDefault();
+    if (currentStep === steps.length - 1) createStore(event);
+    else goToNextStep();
+  };
+
+  return (
+    <form className="admin-form store-setup-form" onSubmit={handleStepSubmit}>
+      <header className="setup-intro">
+        <h2>أنشئ متجرك</h2>
+        <p>أكمل الخطوات التالية لتجهيز متجرك وإطلاقه.</p>
+      </header>
+      <nav className="setup-stepper" aria-label="خطوات إنشاء المتجر" style={{ '--setup-progress': `${(currentStep / (steps.length - 1)) * 100}%` }}>
+        {steps.map((step, index) => <button
+          type="button"
+          className={`setup-stepper-item ${index === currentStep ? 'active' : ''} ${index < currentStep ? 'complete' : ''}`}
+          key={step}
+          aria-current={index === currentStep ? 'step' : undefined}
+          aria-label={`${index + 1}. ${step}`}
+          disabled={saving || Boolean(successMessage) || index > currentStep}
+          onClick={() => { setError(''); setCurrentStep(index); }}
+        >
+          <span>{index < currentStep ? '✓' : index + 1}</span>
+          <small>{step}</small>
+        </button>)}
+      </nav>
+      <section className="setup-step-panel" aria-live="polite">
+        <h3>{steps[currentStep]}</h3>
+        {currentStep === 0 && <div className="setup-step-fields">
+          <label>اسم المتجر<input autoFocus value={storeName} onChange={(event) => setStoreName(event.target.value)} maxLength={120} /></label>
+          <label>الشعار النصي<input required value={tagline} onChange={(event) => setTagline(event.target.value)} maxLength={160} /></label>
+        </div>}
+        {currentStep === 1 && <div className="setup-step-fields">
+          <button type="button" className="secondary-button setup-template-button" onClick={() => {
+            setAboutText('نحن متجر محلي نهتم بتقديم منتجات مختارة بعناية، ونسعى إلى توفير تجربة تسوق سهلة وخدمة موثوقة لزبائننا.');
+            setPolicyText('الاسترجاع والاستبدال: يمكن طلب الاستبدال أو الاسترجاع خلال 7 أيام من استلام الطلب، بشرط بقاء المنتج بحالته الأصلية.\n\nالشحن والتوصيل: تُجهز الطلبات بأسرع وقت، وتُحدد أجرة ومدة التوصيل عند تأكيد الطلب.\n\nالخصوصية: نستخدم بياناتكم لإتمام الطلب والتواصل بشأنه فقط، ولا نشاركها مع أطراف أخرى.');
+          }}>استخدم نصاً جاهزاً</button>
+          <label>من نحن<textarea autoFocus value={aboutText} onChange={(event) => setAboutText(event.target.value)} maxLength={5000} /></label>
+          <label>سياساتنا<textarea value={policyText} onChange={(event) => setPolicyText(event.target.value)} maxLength={5000} /></label>
+        </div>}
+        {currentStep === 2 && <div className="setup-step-fields">
+          <label>الاسم الكريم<input autoFocus required autoComplete="name" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} maxLength={120} /></label>
+          <label>البريد الإلكتروني<input required type="email" autoComplete="email" dir="ltr" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} /></label>
+          <label>كلمة المرور<input required type="password" autoComplete="new-password" minLength={8} maxLength={128} dir="ltr" value={ownerPassword} onChange={(event) => setOwnerPassword(event.target.value)} /></label>
+        </div>}
+        {currentStep === 3 && <div className="setup-step-fields">
+          <p>سيحصل المشرف على صلاحيات لوحة التحكم كاملة، ويمكنه الدخول باستخدام رابط يُرسل إلى بريده الإلكتروني دون كلمة مرور.</p>
+          <label>الاسم الكريم<input autoFocus value={adminName} onChange={(event) => setAdminName(event.target.value)} maxLength={120} /></label>
+          <label>البريد الإلكتروني<input type="email" autoComplete="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} dir="ltr" /></label>
+        </div>}
+        {currentStep === 4 && <div className="setup-step-fields">
+          <p>يمكنك إضافة أول منتج الآن أو تخطي هذه الخطوة وإضافته لاحقاً.</p>
+          <label>اسم المنتج<input autoFocus value={productName} onChange={(event) => setProductName(event.target.value)} maxLength={160} /></label>
+          <label>وصف المنتج<textarea value={productDescription} onChange={(event) => setProductDescription(event.target.value)} maxLength={5000} /></label>
+          <div className="setup-inline-fields">
+            <label>السعر<input type="number" min="0.01" step="0.01" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} /></label>
+            <label>الكمية<input type="number" min="0" step="1" value={productQuantity} onChange={(event) => setProductQuantity(event.target.value)} /></label>
+          </div>
+          <label>صورة المنتج (اختياري)<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setProductImage(event.target.files?.[0] || null)} /></label>
+        </div>}
+        {error && <p className="error" role="alert">{error}</p>}
+        {successMessage && <p className="success-message" role="status">{successMessage}</p>}
+        <div className="setup-actions">
+          {currentStep > 0 && <button type="button" className="secondary-button" disabled={saving} onClick={() => { setError(''); setCurrentStep((step) => step - 1); }}>السابق</button>}
+          {currentStep >= 3 && currentStep <= 4 && <button type="button" className="setup-skip-button" disabled={saving} onClick={skipStep}>تخطي</button>}
+          {currentStep === steps.length - 1
+            ? <button type="submit" className="primary" disabled={saving || Boolean(successMessage)}>{saving ? 'جارٍ إنشاء المتجر...' : preview ? 'معاينة البيانات' : 'إنشاء المتجر'}</button>
+            : <button type="button" className="primary" disabled={saving} onClick={goToNextStep}>متابعة</button>}
+        </div>
+      </section>
+    </form>
+  );
+}
+
 function SiteSettingsAdmin() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
   const [settings, setSettings] = useState(defaultSettings);
   const [products, setProducts] = useState([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -2193,6 +2450,14 @@ function SiteSettingsAdmin() {
   const [productsReloadKey, setProductsReloadKey] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [securityLoading, setSecurityLoading] = useState(true);
+  const [securityConfigured, setSecurityConfigured] = useState(false);
+  const [securityError, setSecurityError] = useState('');
+  const [securityPin, setSecurityPin] = useState('');
+  const [securityPinConfirm, setSecurityPinConfirm] = useState('');
+  const [resetDialog, setResetDialog] = useState('');
+  const [resetPin, setResetPin] = useState('');
+  const [resetToken, setResetToken] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryNameDrafts, setCategoryNameDrafts] = useState({});
   const [uploadingCategoryId, setUploadingCategoryId] = useState('');
@@ -2200,6 +2465,25 @@ function SiteSettingsAdmin() {
   const [statusError, setStatusError] = useState('');
   const lastSavedSettings = useRef('');
   const categoryItems = getStoreCategories(settings.storeCategories, products);
+
+  useEffect(() => {
+    let active = true;
+    if (profile?.isOwner !== true) {
+      setSecurityLoading(false);
+      return () => { active = false; };
+    }
+    getResetSecurityStatus()
+      .then(({ configured }) => {
+        if (active) setSecurityConfigured(Boolean(configured));
+      })
+      .catch((reason) => {
+        if (active) setSecurityError(reason.message || 'تعذر التحقق من إعداد رمز الأمان');
+      })
+      .finally(() => {
+        if (active) setSecurityLoading(false);
+      });
+    return () => { active = false; };
+  }, [profile?.isOwner]);
 
   useEffect(() => {
     let active = true;
@@ -2357,28 +2641,54 @@ function SiteSettingsAdmin() {
     }
   };
 
-  const resetStore = async () => {
-    if (resetting) return;
-    const confirmed = window.confirm('هل أنت متأكد؟ سيؤدي هذا إلى حذف المنتجات والطلبات والإحصائيات والخصومات وكل بيانات المتجر، مع الاحتفاظ بحسابات المديرين.');
-    if (!confirmed) return;
+  const saveSecurityPin = async () => {
+    setSecurityError('');
+    if (securityPin.length < 6 || securityPin.length > 128) {
+      setSecurityError('يجب أن يتكون رمز الأمان من 6 خانات على الأقل.');
+      return;
+    }
+    if (securityPin !== securityPinConfirm) {
+      setSecurityError('تأكيد رمز الأمان غير مطابق.');
+      return;
+    }
+    try {
+      await createResetSecurityPin(securityPin);
+      setSecurityConfigured(true);
+      setSecurityPin('');
+      setSecurityPinConfirm('');
+      setStatusMessage('تم إنشاء رمز الأمان وحفظه بصورة مشفرة.');
+    } catch (reason) {
+      setSecurityError(reason.message || 'تعذر إنشاء رمز الأمان');
+    }
+  };
 
+  const verifyResetPin = async () => {
+    setSecurityError('');
+    try {
+      const result = await verifyResetSecurityPin(resetPin);
+      setResetToken(result.resetToken);
+      setResetPin('');
+      setResetDialog('final');
+    } catch (reason) {
+      setSecurityError(reason.message || 'تعذر التحقق من رمز الأمان');
+    }
+  };
+
+  const resetStore = async () => {
+    if (resetting || !resetToken) return;
     setStatusMessage('');
     setStatusError('');
     setResetting(true);
-
     try {
-      await resetStoreData();
+      await confirmResetStore(resetToken);
+      navigate('/admin/setup-store', { replace: true });
     } catch (reason) {
-      setStatusError(/[\u0600-\u06FF]/.test(String(reason?.message || '')) ? reason.message : supabaseErrorMessage(reason, 'تعذر إعادة ضبط المتجر'));
-      return;
+      setSecurityError(reason.message || 'تعذر إعادة ضبط المتجر');
+      setResetDialog('verify');
+      setResetToken('');
     } finally {
       setResetting(false);
     }
-
-    setStatusMessage('تمت إعادة ضبط المتجر');
-    setSettingsLoaded(false);
-    setSettingsReloadKey((value) => value + 1);
-    setProductsReloadKey((value) => value + 1);
   };
 
   return (
@@ -2394,8 +2704,17 @@ function SiteSettingsAdmin() {
         <div className="settings-fields">
           <label>اسم المتجر<input value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
           <label>الشعار النصي<input value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} /></label>
+          <label>خط الشعار
+            <select value={settings.taglineFont} onChange={(event) => setSettings({ ...settings, taglineFont: event.target.value })}>
+              <option value="cairo">كايرو</option><option value="sans">نسخي بسيط</option><option value="serif">كلاسيكي</option>
+            </select>
+          </label>
+          <label>لون الشعار
+            <select value={settings.taglineColor} onChange={(event) => setSettings({ ...settings, taglineColor: event.target.value })}>
+              <option value="#1B1813">فحمي</option><option value="#C8A25B">ذهبي</option><option value="#53715B">أخضر</option><option value="#765849">بني</option>
+            </select>
+          </label>
           <label>عنوان الواجهة<input value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} /></label>
-          <label>وصف الواجهة<textarea value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} /></label>
         </div>
       </section>
 
@@ -2466,14 +2785,51 @@ function SiteSettingsAdmin() {
       <section className="settings-section settings-operations" aria-labelledby="settings-operations-title">
         <div className="settings-section-heading"><span>07</span><div><h3 id="settings-operations-title">حالة المتجر</h3></div></div>
         <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>يسمح بالتصفح ويوقف إضافة المنتجات وإرسال الطلبات.</small></span></label>
-        <button type="button" className="danger" disabled={resetting} onClick={resetStore}>{resetting ? 'جارٍ إعادة الضبط...' : 'إعادة ضبط المتجر'}</button>
       </section>
       </fieldset>
+
+      {profile?.isOwner === true && <section className="settings-section reset-security-section" aria-labelledby="reset-security-title">
+        <div className="settings-section-heading"><span>08</span><div><h3 id="reset-security-title">{securityConfigured ? 'أمان إعادة الضبط' : 'إنشاء رمز الأمان'}</h3></div></div>
+        <div className="reset-security-panel">
+          {securityLoading ? <p role="status">جارٍ التحقق من إعدادات الأمان...</p> : securityConfigured ? <p>تم إعداد رمز الأمان.</p> : <div className="reset-pin-fields">
+            <p>أنشئ رمز الأمان قبل إعادة ضبط المتجر. لن يُحفظ الرمز كنص عادي.</p>
+            <label>إنشاء رمز الأمان<input type="password" autoComplete="new-password" minLength={6} maxLength={128} value={securityPin} onChange={(event) => setSecurityPin(event.target.value)} /></label>
+            <label>تأكيد رمز الأمان<input type="password" autoComplete="new-password" minLength={6} maxLength={128} value={securityPinConfirm} onChange={(event) => setSecurityPinConfirm(event.target.value)} /></label>
+            <button type="button" className="secondary-button" disabled={securityLoading || resetting} onClick={saveSecurityPin}>حفظ رمز الأمان</button>
+          </div>}
+          {securityError && !resetDialog && <p className="error" role="alert">{securityError}</p>}
+          <button type="button" className="danger" disabled={resetting || securityLoading || !securityConfigured} onClick={() => { setSecurityError(''); setResetDialog('warning'); }}>
+            {resetting ? 'جارٍ إعادة الضبط...' : securityConfigured ? 'إعادة ضبط المصنع' : 'أنشئ رمز الأمان أولاً'}
+          </button>
+        </div>
+      </section>}
 
       <div className="settings-actions"><button type="submit" className="primary" disabled={!settingsLoaded || savingSettings || resetting}>{savingSettings ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}</button>
       {statusMessage && <p className="success-message">{statusMessage}</p>}
       {statusError && <p className="error">{statusError}</p>}
       </div>
+      {resetDialog && <div className="reset-modal-backdrop">
+        <section className="reset-modal" role="dialog" aria-modal="true" aria-labelledby="reset-dialog-title" dir="rtl">
+          {resetDialog === 'warning' && <>
+            <h2 id="reset-dialog-title">تحذير</h2>
+            <p>تحذير: هذا الإجراء يخص المطور فقط، وسيؤدي إلى حذف جميع بيانات المتجر نهائياً.</p>
+            <div className="reset-modal-actions"><button type="button" className="secondary-button" onClick={() => setResetDialog('')}>إلغاء</button><button type="button" className="danger" onClick={() => { setSecurityError(''); setResetDialog('verify'); }}>متابعة</button></div>
+          </>}
+          {resetDialog === 'verify' && <>
+            <h2 id="reset-dialog-title">التحقق من رمز الأمان</h2>
+            <p>أدخل رمز الأمان للمتابعة إلى التأكيد الأخير.</p>
+            <label>رمز الأمان<input type="password" autoComplete="current-password" maxLength={128} value={resetPin} onChange={(event) => setResetPin(event.target.value)} /></label>
+            {securityError && <p className="error" role="alert">{securityError}</p>}
+            <div className="reset-modal-actions"><button type="button" className="secondary-button" onClick={() => { setResetDialog(''); setResetPin(''); setSecurityError(''); }}>إلغاء</button><button type="button" className="primary" disabled={!resetPin || resetting} onClick={verifyResetPin}>تحقق</button></div>
+          </>}
+          {resetDialog === 'final' && <>
+            <h2 id="reset-dialog-title">التأكيد الأخير</h2>
+            <p>سيتم حذف بيانات المتجر نهائياً ولا يمكن التراجع عن هذا الإجراء. هل تريد المتابعة؟</p>
+            {securityError && <p className="error" role="alert">{securityError}</p>}
+            <div className="reset-modal-actions"><button type="button" className="secondary-button" disabled={resetting} onClick={() => { setResetDialog(''); setResetToken(''); setSecurityError(''); }}>إلغاء</button><button type="button" className="danger" disabled={resetting} onClick={resetStore}>{resetting ? 'جارٍ الحذف...' : 'حذف نهائياً'}</button></div>
+          </>}
+        </section>
+      </div>}
     </form>
   );
 }
