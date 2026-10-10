@@ -16,6 +16,7 @@
   --divider: #DEDACF;
   --success: #1B1813;
   --warning: #6B675F;
+  --brand-brown: var(--dark-surface);
   --dark-surface: #1D1A15;
   --dark-secondary: #35312E;
   --soft-gold: #E8D5A5;
@@ -65,12 +66,12 @@ button { cursor: pointer; }
 }
 
 .store-wordmark {
-  color: var(--text);
+  color: var(--brand-brown);
   font-size: 32px;
 }
 
 .store-wordmark small {
-  color: var(--primary);
+  color: var(--brand-brown) !important;
   font-size: 11px;
   margin-top: 8px;
 }
