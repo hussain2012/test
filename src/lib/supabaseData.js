@@ -159,7 +159,7 @@ export async function getSiteSettings() {
 export async function recordView(type, productId) {
   const viewType = type === 'product' ? 'product' : 'home';
   const payload = viewType === 'product' && productId != null ? { type: viewType, productId } : { type: viewType };
-  return throwIfError(await supabase.from('page_views').insert(payload).select().single());
+  return apiRequest('/api/analytics/view', 'POST', payload);
 }
 export async function listProducts() {
   const data = await apiRequest('/api/products');

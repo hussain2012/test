@@ -227,9 +227,11 @@ export async function onRequest(context) {
     if (route === 'site-settings' && method === 'GET') return json(await getSettings(supabase));
     if (route === 'analytics/view' && method === 'POST') {
       const body = await parseBody(request);
-      const { error } = await supabase.from('page_views').insert({ type: body.type === 'product' ? 'product' : 'home' });
+      const type = body.type === 'product' ? 'product' : 'home';
+      const payload = type === 'product' && body.productId != null ? { type, productId: body.productId } : { type };
+      const { error } = await supabase.from('page_views').insert(payload);
       if (error) throw error;
-      return json({ ok: true, type: body.type === 'product' ? 'product' : 'home' }, 201);
+      return json({ ok: true, type }, 201);
     }
     if (route === 'auth/account-count' && method === 'GET') {
       const { count, error } = await supabase.from('profiles').select('id', { count: 'exact', head: true });

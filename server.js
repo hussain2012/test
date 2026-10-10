@@ -483,7 +483,8 @@ app.get('/api/site-settings', async (req, res) => {
 app.post('/api/analytics/view', async (req, res) => {
   if (!requireSupabase(res)) return;
   const type = req.body?.type === 'product' ? 'product' : 'home';
-  const { error } = await supabaseServer.from('page_views').insert({ type });
+  const payload = type === 'product' && req.body?.productId != null ? { type, productId: req.body.productId } : { type };
+  const { error } = await supabaseServer.from('page_views').insert(payload);
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ ok: true, type });
 });
