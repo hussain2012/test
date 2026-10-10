@@ -681,7 +681,11 @@ export async function onRequest(context) {
     }
     return errorResponse('المسار غير موجود', 404);
   } catch (error) {
-    console.error('API request failed', error);
+    console.error('API request failed', {
+      message: error?.message,
+      code: error?.code,
+      details: error?.details,
+    });
     return errorResponse('حدث خطأ داخلي. حاول مرة أخرى.', 500);
   }
 }
