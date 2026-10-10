@@ -210,7 +210,14 @@ const pathParts = (request) => new URL(request.url).pathname.replace(/^\/api\/?/
 export async function onRequest(context) {
   const { request, env } = context;
   if (request.method === 'OPTIONS') return empty(204);
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return errorResponse('Supabase server environment variables are missing.', 503);
+  const missingEnvironmentVariables = [
+    ['SUPABASE_URL', env.SUPABASE_URL],
+    ['SUPABASE_SERVICE_ROLE_KEY', env.SUPABASE_SERVICE_ROLE_KEY],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  if (missingEnvironmentVariables.length > 0) {
+    console.error(`API configuration is missing required environment variables: ${missingEnvironmentVariables.join(', ')}`);
+    return errorResponse(`Supabase server environment variables are missing: ${missingEnvironmentVariables.join(', ')}`, 503);
+  }
   const supabase = createSupabase(env);
   const session = await getSession(request, supabase);
   const method = request.method;

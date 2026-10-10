@@ -634,7 +634,8 @@ function Store() {
       .then((data) => {
         if (active) setProducts(Array.isArray(data) ? data : []);
       })
-      .catch(() => {
+      .catch((reason) => {
+        console.error('HomePage listProducts failed:', reason);
         if (active) setLoadError('تعذر تحميل المنتجات. تحقق من الاتصال ثم أعد المحاولة.');
       })
       .finally(() => {
@@ -2589,6 +2590,7 @@ function SiteSettingsAdmin() {
         setProductsLoaded(true);
       })
       .catch((reason) => {
+        console.error('AdminSettings listProducts failed:', reason);
         if (active) setProductsLoadError(supabaseErrorMessage(reason, 'تعذر تحميل المنتجات. لا يمكن إدارة الفئات بأمان حتى تنجح إعادة المحاولة.'));
       });
     return () => { active = false; };

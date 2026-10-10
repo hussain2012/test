@@ -99,10 +99,11 @@ async function apiRequest(path, method = 'GET', payload) {
     try {
       result = await response.json();
     } catch {
-      throw new Error('تعذر قراءة رد الخادم');
+      const contentType = response.headers.get('content-type') || 'unknown content type';
+      throw new Error(`API request ${method} ${path} returned a non-JSON response (HTTP ${response.status}, ${contentType})`);
     }
   }
-  if (!response.ok) throw new Error(result?.error || 'تعذر إكمال الطلب');
+  if (!response.ok) throw new Error(`API request ${method} ${path} failed (HTTP ${response.status}): ${result?.error || 'تعذر إكمال الطلب'}`);
   return result;
 }
 const productFormData = (payload) => {
