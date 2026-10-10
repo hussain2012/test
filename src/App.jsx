@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState, createContext, useContext } from 'react';
+import { useEffect, useRef, useState, useCallback, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
+import { discountApplicationPending } from './lib/orderValidation';
+import ImageCropDialog from './lib/ImageCropDialog';
 import {
   accountCount, adminProducts, analytics, cancelOrder, completeStoreSetup, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
   confirmResetStore, createOwnerAccount, createResetSecurityPin, defaultSettings, getAccountOrders, getCart, getProduct, getResetSecurityStatus, getSiteSettings,
@@ -1032,7 +1034,9 @@ function Checkout() {
 
   const delivery = Number(settings.deliveryFee ?? defaultSettings.deliveryFee);
   const discountAmount = discount ? (discount.type === 'percentage' ? subtotal * Math.min(100, Math.max(0, Number(discount.value || 0))) / 100 : Math.min(Number(discount.value || 0), subtotal)) : 0;
-  const total = subtotal - discountAmount + delivery;
+  const taxRate = Number(settings.taxRate ?? 0);
+  const taxAmount = Number(((subtotal - discountAmount) * taxRate / 100).toFixed(2));
+  const total = subtotal - discountAmount + taxAmount + delivery;
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -1075,8 +1079,8 @@ function Checkout() {
     event.preventDefault();
     if (isSubmitting) return;
     setError('');
-    if (form.discountCode.trim() && (!discount || discount.code?.toUpperCase() !== form.discountCode.trim().toUpperCase())) {
-      return setError('اضغط على «تطبيق» للتحقق من كود الخصم قبل إرسال الطلب.');
+    if (discountApplicationPending(form.discountCode, discount?.code)) {
+      return setError('طبّق كود الخصم أو امسحه قبل إكمال الطلب');
     }
     if (!user) return setError('لا يمكنك إكمال الطلب إلا بعد تسجيل الدخول');
     if (needsPassword) return setError('قبل إرسال الطلب، اذهب إلى الحساب وعيّن كلمة مرور أولاً.');
@@ -1093,7 +1097,9 @@ function Checkout() {
       address: form.address.trim(),
       nearestLandmark: form.nearestLandmark.trim(),
       phoneNumber: form.phoneNumber,
+      enteredDiscountCode: form.discountCode.trim(),
       discountCode: discount?.code || '',
+      finalTotal: Number(total.toFixed(2)),
     };
     const fingerprint = JSON.stringify(payload);
     if (orderRequest.current.fingerprint !== fingerprint) {
@@ -1173,7 +1179,7 @@ function Checkout() {
               {couponMessage && <p className="success-message" role="status">{couponMessage}</p>}
               {cartSyncError && <p className="error" role="alert">{cartSyncError}</p>}
               {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}{needsPassword && <><br /><Link to="/account">الذهاب إلى الحساب وتعيين كلمة المرور</Link></>}</p>}
-              <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading} aria-busy={isSubmitting}>
+              <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading || couponApplying || discountApplicationPending(form.discountCode, discount?.code)} aria-busy={isSubmitting}>
                 {settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (isSubmitting ? 'جارٍ إرسال الطلب...' : 'تأكيد وإرسال الطلب')}
               </button>
             </form>
@@ -1196,6 +1202,7 @@ function Checkout() {
               ))}
               <div className="totals">
                 <div><span>الخصم {discount ? `(${discount.type === 'percentage' ? `${discount.value}%` : money(discount.value)})` : ''}</span><strong>- {money(discountAmount)}</strong></div>
+                <div><span>الضريبة ({taxRate}%)</span><strong>{money(taxAmount)}</strong></div>
                 <div><span>التوصيل</span><strong>{money(delivery)}</strong></div>
                 <div className="total-row"><span>السعر الاجمالي</span><strong>{money(total)}</strong></div>
               </div>
@@ -1227,7 +1234,7 @@ function MyOrders() {
     }
     setLoading(true);
     setLoadError('');
-    getAccountOrders(user.id)
+    getAccountOrders()
       .then((data) => {
         if (active) setOrders(Array.isArray(data) ? data : []);
       })
@@ -1280,6 +1287,7 @@ function MyOrders() {
               <div className="account-order-totals">
                 <div><span>المجموع</span><strong>{money(order.subtotal)}</strong></div>
                 <div><span>الخصم {order.discountValue ? `(${order.discountType === 'percentage' ? `${order.discountValue}%` : money(order.discountValue)})` : ''}</span><strong>- {money(order.discountAmount)}</strong></div>
+                <div><span>الضريبة</span><strong>{money(order.taxAmount || 0)}</strong></div>
                 <div><span>التوصيل</span><strong>{money(order.deliveryFee)}</strong></div>
                 <div className="account-order-final"><span>الإجمالي</span><strong>{money(order.finalTotal)}</strong></div>
               </div>
@@ -1330,6 +1338,28 @@ function Login() {
     } catch {
       setError('تعذر إرسال رابط الدخول حالياً. حاول مرة أخرى.');
       return false;
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    setError('');
+    setMessage('');
+    const email = identifier.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('أدخل بريداً إلكترونياً صحيحاً لإعادة تعيين كلمة المرور');
+      return;
+    }
+    try {
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/account/password`,
+      });
+      if (authError) {
+        setError(authErrorMessage(authError, 'تعذر إرسال رابط إعادة التعيين. حاول مرة أخرى.'));
+        return;
+      }
+      setMessage('إذا كان البريد مرتبطاً بحساب، فسيصلك رابط إعادة تعيين كلمة المرور.');
+    } catch {
+      setError('تعذر إرسال رابط إعادة التعيين حالياً. حاول مرة أخرى.');
     }
   };
 
@@ -1405,7 +1435,10 @@ function Login() {
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</button>
-        {mode === 'login' && <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول إلى البريد</button>}
+        {mode === 'login' && <>
+          <button type="button" className="back" onClick={sendPasswordReset}>نسيت كلمة المرور؟ أرسل رابط إعادة التعيين</button>
+          <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول إلى البريد</button>
+        </>}
         {mode === 'register' ? (
           <>
             <p className="auth-switch-copy">لديك حساب؟ <button type="button" onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button></p>
@@ -1563,6 +1596,7 @@ function ProductsAdmin() {
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
   const [additionalImageFiles, setAdditionalImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState({ primary: '', additional: [] });
+  const [cropSelection, setCropSelection] = useState(null);
   const primaryImageInputRef = useRef(null);
   const additionalImageInputRef = useRef(null);
   const [editingId, setEditingId] = useState(null);
@@ -1570,6 +1604,35 @@ function ProductsAdmin() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const categoryItems = getStoreCategories(storeSettings.storeCategories, items);
+  const showImageCropError = useCallback((reason) => {
+    setError(reason?.message || 'تعذر تجهيز الصورة المحددة');
+    setCropSelection(null);
+  }, []);
+
+  const applyImageCrop = (croppedFile) => {
+    if (cropSelection?.kind === 'primary') {
+      setPrimaryImageFile(croppedFile);
+    } else if (cropSelection?.kind === 'additional') {
+      const currentIndex = cropSelection.index;
+      setAdditionalImageFiles((current) => current.map((file, index) => index === currentIndex ? croppedFile : file));
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < additionalImageFiles.length) {
+        setCropSelection({ kind: 'additional', index: nextIndex, file: additionalImageFiles[nextIndex] });
+        return;
+      }
+    }
+    setCropSelection(null);
+  };
+
+  const choosePrimaryImage = (file) => {
+    setPrimaryImageFile(file || null);
+    setCropSelection(file ? { kind: 'primary', file } : null);
+  };
+
+  const chooseAdditionalImages = (files) => {
+    setAdditionalImageFiles(files);
+    setCropSelection(files.length ? { kind: 'additional', index: 0, file: files[0] } : null);
+  };
 
   const load = async () => {
     try {
@@ -1612,6 +1675,7 @@ function ProductsAdmin() {
     setForm(emptyForm);
     setPrimaryImageFile(null);
     setAdditionalImageFiles([]);
+    setCropSelection(null);
     if (primaryImageInputRef.current) primaryImageInputRef.current.value = '';
     if (additionalImageInputRef.current) additionalImageInputRef.current.value = '';
     setEditingId(null);
@@ -1795,6 +1859,13 @@ function ProductsAdmin() {
 
   return (
     <>
+      {cropSelection && <ImageCropDialog
+        key={`${cropSelection.kind}-${cropSelection.index ?? 'main'}-${cropSelection.file.name}-${cropSelection.file.lastModified}`}
+        file={cropSelection.file}
+        onCancel={() => setCropSelection(null)}
+        onApply={applyImageCrop}
+        onError={showImageCropError}
+      />}
       <form className="admin-form product-editor" onSubmit={submit}>
         <header className="product-editor-heading"><div><h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2></div>{editingId && <button type="button" className="secondary-button" onClick={resetForm}>إلغاء التعديل</button>}</header>
 
@@ -1858,12 +1929,12 @@ function ProductsAdmin() {
         <section className="product-editor-section" aria-labelledby="product-images-title">
           <div className="product-editor-section-heading"><h3 id="product-images-title">صور المنتج</h3></div>
           <div className="product-editor-fields">
-            <label className="product-file-field">الصورة الرئيسية<input ref={primaryImageInputRef} type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
-            <label className="product-file-field">صور إضافية<input ref={additionalImageInputRef} type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
+            <label className="product-file-field">الصورة الرئيسية<input ref={primaryImageInputRef} type="file" accept="image/*" onChange={(event) => choosePrimaryImage(event.target.files?.[0] || null)} /></label>
+            <label className="product-file-field">صور إضافية<input ref={additionalImageInputRef} type="file" accept="image/*" multiple onChange={(event) => chooseAdditionalImages(Array.from(event.target.files || []))} /></label>
             <div className="product-image-previews" aria-live="polite">
-              {(imagePreviews.primary || form.imageUrl || form.productImages[0]) ? <figure className="product-image-preview"><img src={imagePreviews.primary || form.imageUrl || form.productImages[0]} alt="معاينة الصورة الرئيسية" /><button type="button" className="product-image-remove" aria-label="حذف الصورة الرئيسية" title="حذف الصورة الرئيسية" onClick={removePrimaryImage}>×</button><figcaption>الصورة الرئيسية</figcaption></figure> : <p className="product-image-preview-empty">لم يتم اختيار صورة رئيسية</p>}
+              {(imagePreviews.primary || form.imageUrl || form.productImages[0]) ? <figure className="product-image-preview"><img src={imagePreviews.primary || form.imageUrl || form.productImages[0]} alt="معاينة الصورة الرئيسية" /><button type="button" className="product-image-remove" aria-label="حذف الصورة الرئيسية" title="حذف الصورة الرئيسية" onClick={removePrimaryImage}>×</button><figcaption>الصورة الرئيسية</figcaption>{primaryImageFile && <button type="button" className="product-image-crop" onClick={() => setCropSelection({ kind: 'primary', file: primaryImageFile })}>تعديل الجزء الظاهر</button>}</figure> : <p className="product-image-preview-empty">لم يتم اختيار صورة رئيسية</p>}
               {form.productImages.filter((image) => image && (image !== (form.imageUrl || form.productImages[0]) || imagePreviews.primary)).map((image, index) => <figure className="product-image-preview" key={`saved-image-${image}`}><img src={image} alt={`صورة المنتج ${index + 2}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة المحفوظة ${index + 1}`} title="حذف الصورة" onClick={() => removeSavedImage(image)}>×</button><figcaption>صورة محفوظة</figcaption></figure>)}
-              {imagePreviews.additional.map((image, index) => <figure className="product-image-preview" key={`new-image-${index}`}><img src={image} alt={`معاينة الصورة الإضافية ${index + 1}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة الإضافية ${index + 1}`} title="حذف الصورة" onClick={() => removeAdditionalImageFile(index)}>×</button><figcaption>صورة إضافية</figcaption></figure>)}
+              {imagePreviews.additional.map((image, index) => <figure className="product-image-preview" key={`new-image-${index}`}><img src={image} alt={`معاينة الصورة الإضافية ${index + 1}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة الإضافية ${index + 1}`} title="حذف الصورة" onClick={() => removeAdditionalImageFile(index)}>×</button><figcaption>صورة إضافية</figcaption><button type="button" className="product-image-crop" onClick={() => setCropSelection({ kind: 'additional', index, file: additionalImageFiles[index] })}>تعديل الجزء الظاهر</button></figure>)}
             </div>
           </div>
         </section>
@@ -2033,6 +2104,7 @@ function OrdersAdmin() {
             <p><b>رقم هاتف</b>{order.phoneNumber}</p>
             <p><b>كود الخصم</b>{order.discountCode || 'لا يوجد'}</p>
             <p><b>الخصم</b>{money(order.discountAmount)}</p>
+            <p><b>الضريبة</b>{money(order.taxAmount || 0)}</p>
             <p><b>التوصيل</b>{money(order.deliveryFee)}</p>
             <p><b>الإجمالي النهائي</b><strong>{money(order.finalTotal)}</strong></p>
           </div>
@@ -2533,7 +2605,12 @@ function SiteSettingsAdmin() {
     setStatusError('');
     setSavingSettings(true);
     try {
-      const data = await saveSiteSettings({ ...nextSettings, deliveryFee });
+      const taxRate = Number(nextSettings.taxRate);
+      if (nextSettings.taxRate === '' || !Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+        setStatusError('أدخل نسبة ضريبة من صفر إلى 100');
+        return;
+      }
+      const data = await saveSiteSettings({ ...nextSettings, deliveryFee, taxRate });
       const savedSettings = { ...defaultSettings, ...data };
       lastSavedSettings.current = JSON.stringify(savedSettings);
       setSettings(savedSettings);
@@ -2759,6 +2836,7 @@ function SiteSettingsAdmin() {
         <div className="settings-section-heading"><span>04</span><div><h3 id="settings-delivery-title">التوصيل</h3></div></div>
         <div className="settings-fields">
           <label>سعر التوصيل لجميع المحافظات<input type="number" min="0" step="1" required value={settings.deliveryFee ?? defaultSettings.deliveryFee} onChange={(event) => setSettings({ ...settings, deliveryFee: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
+          <label>نسبة الضريبة (%)<input type="number" min="0" max="100" step="0.01" required value={settings.taxRate ?? 0} onChange={(event) => setSettings({ ...settings, taxRate: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
         </div>
       </section>
 

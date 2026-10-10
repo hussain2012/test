@@ -4,7 +4,6 @@ const asArray = (value) => Array.isArray(value) ? value : [];
 const asJsonArray = (value) => Array.isArray(value) ? value : (() => {
   try { const parsed = JSON.parse(value || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
 })();
-const ensureProductQuery = (query) => (query && typeof query.order === 'function' ? query : supabase.from('products').select('*'));
 const asProductRows = (value) => asArray(value).filter((row) => row && typeof row === 'object');
 const getBestSeller = (orders) => {
   const quantities = new Map();
@@ -83,33 +82,40 @@ const productView = (row) => {
 };
 const orderView = (row) => ({ ...row, items: asJsonArray(row?.items), isRead: Boolean(row?.isRead), accountOrderNumber: row?.accountOrderNumber || null });
 const throwIfError = ({ data, error }) => { if (error) throw error; return data; };
-const isMissingColumnError = (error) => {
-  const message = error?.message || '';
-  return error?.code === '42703' || /Could not find the '.*' column|column .* does not exist/i.test(message);
-};
-const queryProducts = async ({ includeAvailabilityMode = true } = {}) => {
-  try {
-    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
-    if (error && isMissingColumnError(error)) {
-      return ensureProductQuery(supabase.from('products').select('*'));
+async function apiRequest(path, method = 'GET', payload) {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  let body;
+  if (payload instanceof FormData) {
+    body = payload;
+  } else if (payload !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(payload);
+  }
+  const response = await fetch(path, { method, headers, body });
+  let result = null;
+  if (response.status !== 204) {
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error('تعذر قراءة رد الخادم');
     }
-    if (error) throw error;
-    return ensureProductQuery(includeAvailabilityMode ? supabase.from('products').select('*') : supabase.from('products').select('*'));
-  } catch (error) {
-    if (isMissingColumnError(error)) return ensureProductQuery(supabase.from('products').select('*'));
-    throw error;
   }
-};
-const productPayloadWithAvailability = async (payload) => {
-  try {
-    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
-    if (error && isMissingColumnError(error)) return payload;
-    if (error) throw error;
-    return { ...payload, availabilityMode: payload.availabilityMode };
-  } catch (error) {
-    if (isMissingColumnError(error)) return payload;
-    throw error;
+  if (!response.ok) throw new Error(result?.error || 'تعذر إكمال الطلب');
+  return result;
+}
+const productFormData = (payload) => {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null) continue;
+    if (key === 'productImages') {
+      form.append('existingProductImages', JSON.stringify(value));
+      continue;
+    }
+    form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
   }
+  return form;
 };
 const getFeaturedProductIds = (data) => {
   const fromCurrent = data?.featuredProductIds;
@@ -121,13 +127,14 @@ const getFeaturedProductIds = (data) => {
 
 export const defaultSettings = {
   storeName: '', tagline: '', logoUrl: '', heroTitle: '', heroDescription: '', heroImageUrl: '', heroButtonText: '',
-  featuredSectionTitle: '', featuredProductIds: null, storeCategories: null, deliveryFee: 5000,
+  featuredSectionTitle: '', featuredProductIds: null, storeCategories: null, deliveryFee: 5000, taxRate: 0,
   instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: '', aboutText: '',
   policyTitle: '', policyText: '', taglineFont: 'cairo', taglineColor: '#1B1813', maintenanceMode: false,
 };
 
 const normalizeSettings = (data) => {
   const deliveryFee = Number(data?.deliveryFee);
+  const taxRate = Number(data?.taxRate);
   return {
     ...defaultSettings,
     ...(data || {}),
@@ -137,6 +144,7 @@ const normalizeSettings = (data) => {
     featuredProductIds: getFeaturedProductIds(data),
     storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
     deliveryFee: Number.isFinite(deliveryFee) && deliveryFee >= 0 ? deliveryFee : defaultSettings.deliveryFee,
+    taxRate: Number.isFinite(taxRate) && taxRate >= 0 && taxRate <= 100 ? taxRate : 0,
     taglineFont: ['cairo', 'sans', 'serif'].includes(data?.taglineFont) ? data.taglineFont : defaultSettings.taglineFont,
     taglineColor: /^#[0-9a-fA-F]{6}$/.test(data?.taglineColor || '') ? data.taglineColor.toUpperCase() : defaultSettings.taglineColor,
     maintenanceMode: Boolean(data?.maintenanceMode),
@@ -153,18 +161,21 @@ export async function recordView(type, productId) {
   return throwIfError(await supabase.from('page_views').insert(payload).select().single());
 }
 export async function listProducts() {
-  const query = ensureProductQuery(await queryProducts());
-  const data = throwIfError(await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false }));
+  const data = await apiRequest('/api/products');
   return asProductRows(data).map(productView);
 }
 export async function getProduct(id) {
-  const query = ensureProductQuery(await queryProducts());
-  const data = throwIfError(await query.eq('id', id).maybeSingle());
+  const data = await apiRequest(`/api/products/${encodeURIComponent(id)}`).catch((error) => {
+    if (String(error?.message || '').includes('المنتج غير موجود')) return null;
+    throw error;
+  });
   return data && typeof data === 'object' ? productView(data) : null;
 }
 export async function getCart(userId) { const data = throwIfError(await supabase.from('account_carts').select('items').eq('accountId', userId).maybeSingle()); return asArray(data?.items); }
 export async function saveCart(userId, items) { return throwIfError(await supabase.from('account_carts').upsert({ accountId: userId, items: asArray(items), updatedAt: new Date().toISOString() }, { onConflict: 'accountId' })); }
-export async function validateDiscount(code) { return throwIfError(await supabase.from('discounts').select('*').eq('code', String(code).toUpperCase()).eq('active', true).maybeSingle()); }
+export async function validateDiscount(code) {
+  return apiRequest(`/api/discounts/validate/${encodeURIComponent(String(code).trim().toUpperCase())}`);
+}
 export async function saveCoupon(userId, discountId) { return throwIfError(await supabase.from('account_coupons').upsert({ accountId: userId, discountId }, { onConflict: 'accountId,discountId' })); }
 export async function createOrder(payload, userId) {
   return throwIfError(await supabase.rpc('create_order_with_stock', {
@@ -175,18 +186,25 @@ export async function createOrder(payload, userId) {
 export async function cancelOrder(orderId) {
   return throwIfError(await supabase.rpc('cancel_order_if_new', { p_order_id: orderId }));
 }
-export async function getAccountOrders(userId) { const data = throwIfError(await supabase.from('orders').select('*').eq('accountId', userId).order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
+export async function getAccountOrders() {
+  const data = await apiRequest('/api/account/orders');
+  return asArray(data).map(orderView);
+}
 
 export async function adminProducts() {
-  const query = ensureProductQuery(await queryProducts());
-  const data = throwIfError(await query.order('id', { ascending: false }));
+  const data = await apiRequest('/api/admin/products');
   return asProductRows(data).map((row) => ({
     ...productView(row),
     costPrice: Number(row.costPrice || 0),
     profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)),
   }));
 }
-const safeUploadName = (file) => String(file?.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
+const safeImageExtensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+const validateUploadImage = (file) => {
+  const extension = safeImageExtensions[file?.type];
+  if (!extension || file.size > 5 * 1024 * 1024) throw new Error('اختر صورة بصيغة مدعومة وحجم لا يتجاوز 5 ميغابايت');
+  return extension;
+};
 const generatedProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
 const productCodeColumn = (form, generateIfMissing = false) => {
   if (!Object.prototype.hasOwnProperty.call(form ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(form ?? {}, 'product_code')) {
@@ -195,8 +213,22 @@ const productCodeColumn = (form, generateIfMissing = false) => {
   const value = String(form?.productCode ?? form?.product_code ?? '').trim().toUpperCase();
   return { product_code: value || (generateIfMissing ? generatedProductCode() : null) };
 };
-async function uploadFiles(primaryImageFile, additionalImageFiles = []) { const urls = []; for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) { const path = `products/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); urls.push(supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl); } return urls; }
-export async function uploadCategoryImage(file) { const path = `categories/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl; }
+async function uploadFiles(primaryImageFile, additionalImageFiles = []) {
+  const urls = [];
+  for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) {
+    const extension = validateUploadImage(file);
+    const path = `products/${crypto.randomUUID()}.${extension}`;
+    throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type, upsert: false }));
+    urls.push(supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl);
+  }
+  return urls;
+}
+export async function uploadCategoryImage(file) {
+  const extension = validateUploadImage(file);
+  const path = `categories/${crypto.randomUUID()}.${extension}`;
+  throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type, upsert: false }));
+  return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl;
+}
 export async function moveProductsToCategory(currentCategory, nextCategory) { if (currentCategory === nextCategory) return; return throwIfError(await supabase.from('products').update({ category: nextCategory }).eq('category', currentCategory)); }
 export async function createProduct(form, primaryFile, additionalFiles) {
   const productForm = form ?? {};
@@ -214,6 +246,7 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     discountType: productForm.discountType === 'amount' ? 'amount' : 'percentage',
     discountValue: Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
     discountPercentage: productForm.discountType === 'amount' ? 0 : Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
+    availabilityMode,
     category: String(productForm.category || '').trim(),
     imageUrl: (primaryFile ? uploaded[0] : '') || productForm.imageUrl || images[0] || '',
     productImages: images ?? [],
@@ -223,7 +256,7 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     featured: Boolean(productForm.featured),
     isNew: Boolean(productForm.isNew),
   };
-  const data = throwIfError(await supabase.from('products').insert(await productPayloadWithAvailability({ ...payload, availabilityMode })).select().single());
+  const data = await apiRequest('/api/admin/products', 'POST', productFormData({ ...payload, availabilityMode }));
   return productView(data);
 }
 
@@ -267,32 +300,26 @@ export async function updateProduct(idOrForm, form, primaryFile, additionalFiles
     imageUrl: (primaryFile ? uploaded[0] : '') || actualForm?.imageUrl || productImages[0] || '',
     productImages,
   };
-  const payloadWithAvailability = await productPayloadWithAvailability(rawPayload);
-
-  const payload = typeof sanitizeProductPayload === 'function' 
-    ? sanitizeProductPayload(payloadWithAvailability) 
-    : { ...payloadWithAvailability };
+  const payload = typeof sanitizeProductPayload === 'function'
+    ? sanitizeProductPayload(rawPayload)
+    : { ...rawPayload };
 
   // حذف الـ id من الحمولة حتى لا يتعارض مع استعلام Supabase
   delete payload.id;
   delete payload.productCode;
 
   // 5. تنفيذ التحديث في Supabase
-  const { data, error } = await supabase
-    .from('products')
-    .update(payload)
-    .eq('id', Number(productId))
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
+  const data = await apiRequest(`/api/admin/products/${encodeURIComponent(productId)}`, 'PUT', productFormData(payload));
+  return productView(data);
 }
-export async function deleteProduct(id) { return throwIfError(await supabase.from('products').delete().eq('id', id)); }
-export async function listOrders() { const data = throwIfError(await supabase.from('orders').select('*').order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
-export async function updateOrder(id, updates) { return throwIfError(await supabase.from('orders').update(updates).eq('id', id)); }
-export async function unreadOrderCount() { const { count } = throwIfError(await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('isRead', false)); return count || 0; }
-export async function listDiscounts() { return asArray(throwIfError(await supabase.from('discounts').select('*').order('id', { ascending: false }))); }
+export async function deleteProduct(id) { return apiRequest(`/api/admin/products/${encodeURIComponent(id)}`, 'DELETE'); }
+export async function listOrders() { return asArray(await apiRequest('/api/orders')).map(orderView); }
+export async function updateOrder(id, updates) { return apiRequest(`/api/orders/${encodeURIComponent(id)}`, 'PATCH', updates); }
+export async function unreadOrderCount() {
+  const result = await apiRequest('/api/orders/unread-count');
+  return Number(result?.count || 0);
+}
+export async function listDiscounts() { return asArray(await apiRequest('/api/discounts')); }
 const discountPayload = (form) => {
   const type = form.type === 'fixed' ? 'fixed' : 'percentage';
   const value = Number(form.value);
@@ -301,9 +328,9 @@ const discountPayload = (form) => {
   }
   return { code: String(form.code).trim().toUpperCase(), type, value, active: form.active !== false };
 };
-export async function createDiscount(form) { return throwIfError(await supabase.from('discounts').insert(discountPayload(form)).select().single()); }
-export async function updateDiscount(id, form) { return throwIfError(await supabase.from('discounts').update(discountPayload(form)).eq('id', id).select().single()); }
-export async function deleteDiscount(id) { return throwIfError(await supabase.from('discounts').delete().eq('id', id)); }
+export async function createDiscount(form) { return apiRequest('/api/discounts', 'POST', discountPayload(form)); }
+export async function updateDiscount(id, form) { return apiRequest(`/api/discounts/${encodeURIComponent(id)}`, 'PUT', discountPayload(form)); }
+export async function deleteDiscount(id) { return apiRequest(`/api/discounts/${encodeURIComponent(id)}`, 'DELETE'); }
 export async function analytics() {
   const [{ count: homeViews }, { data: productViews, error: productViewsError }, orders] = await Promise.all([
     supabase.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'home'),

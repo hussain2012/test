@@ -2,11 +2,24 @@ import { createClient } from '@supabase/supabase-js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
-  headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
+  headers: {
+    'Content-Type': 'application/json; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  },
 });
 const empty = (status = 204) => new Response(null, {
   status,
-  headers: { 'Access-Control-Allow-Origin': '*' },
+  headers: {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  },
 });
 const errorResponse = (message, status = 500) => json({ error: message }, status);
 const bool = (value) => value === true || value === 'true' || value === 1 || value === '1';
@@ -53,6 +66,7 @@ const defaultSettings = {
   aboutTitle: '',
   aboutText: '',
   maintenanceMode: false,
+  taxRate: 0,
 };
 
 const createSupabase = (env) => createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -157,13 +171,22 @@ const normalizeOrder = (row) => ({
   items: Array.isArray(row.items) ? row.items : parseJson(row.items),
   isRead: Boolean(row.isRead), accountOrderNumber: row.accountOrderNumber || null,
 });
+const publicDiscountData = (row) => row ? ({
+  id: row.id,
+  code: row.code,
+  type: row.type,
+  value: number(row.value),
+  active: Boolean(row.active),
+}) : null;
 const uploadFormFiles = async (request, form, supabase) => {
   const uploaded = {};
+  const extensionByType = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
   for (const [key, value] of [...form.entries()]) {
     if (!value || typeof value === 'string' || !value.name) continue;
-    const fileName = String(value.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
-    const path = `uploads/${crypto.randomUUID()}-${fileName}`;
-    const { error } = await supabase.storage.from('uploads').upload(path, value, { contentType: value.type || 'application/octet-stream', upsert: false });
+    const extension = extensionByType[value.type];
+    if (!extension || value.size > 5 * 1024 * 1024) throw new Error('نوع الملف أو حجمه غير مدعوم');
+    const path = `uploads/${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from('uploads').upload(path, value, { contentType: value.type, upsert: false });
     if (error) throw error;
     const { data } = supabase.storage.from('uploads').getPublicUrl(path);
     uploaded[key] = data.publicUrl;
@@ -179,6 +202,7 @@ const getSettings = async (supabase) => {
     taglineFont: ['cairo', 'sans', 'serif'].includes(data?.taglineFont) ? data.taglineFont : defaultSettings.taglineFont,
     taglineColor: /^#[0-9a-fA-F]{6}$/.test(data?.taglineColor || '') ? data.taglineColor.toUpperCase() : defaultSettings.taglineColor,
     maintenanceMode: Boolean(data?.maintenanceMode),
+    taxRate: Number.isFinite(Number(data?.taxRate)) ? Math.min(100, Math.max(0, Number(data.taxRate))) : 0,
   };
 };
 const pathParts = (request) => new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
@@ -238,13 +262,14 @@ export async function onRequest(context) {
       const insertPayload = {
         name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice),
         discountType: body.discountType === 'amount' ? 'amount' : 'percentage', discountValue: number(body.discountValue, number(body.discountPercentage)), discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage)),
+        variants: parseJson(body.variants), availabilityMode,
         ...productCodeColumn(body, true),
         imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: String(body.category || '').trim(), stockQuantity,
         inStock: availabilityMode === 'ready', featured: bool(body.featured), isNew: bool(body.isNew),
       };
       const { data, error } = await supabase.from('products').insert(await productPayloadWithAvailability(supabase, { ...insertPayload, availabilityMode })).select().single();
       if (error) throw error;
-      return json(normalizeProduct(data), 201);
+      return json({ ...normalizeProduct(data), costPrice: number(data.costPrice), profit: Number((number(data.price) - number(data.costPrice)).toFixed(2)) }, 201);
     }
     if (parts[0] === 'admin' && parts[1] === 'products' && parts.length === 3 && ['PUT', 'DELETE'].includes(method)) {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
@@ -267,6 +292,8 @@ export async function onRequest(context) {
         : (stockQuantity <= 0 && existingAvailabilityMode === 'ready' ? 'unavailable' : existingAvailabilityMode);
       const updatePayload = {
         name: body.name ?? existing?.name, description: body.description ?? existing?.description, price: number(body.price, existing?.price), costPrice: number(body.costPrice, existing?.costPrice),
+        variants: body.variants === undefined ? existing?.variants : parseJson(body.variants),
+        availabilityMode,
         ...productCodeColumn(body),
         discountType: body.discountType === 'amount' ? 'amount' : (body.discountType || existing?.discountType || 'percentage'),
         discountValue: number(body.discountValue, number(body.discountPercentage, number(existing?.discountValue, number(existing?.discountPercentage)))),
@@ -298,13 +325,22 @@ export async function onRequest(context) {
       if (!session) return errorResponse('يجب تسجيل الدخول', 401);
       const { data, error } = await supabase.from('orders').select('*').eq('accountId', session.accountId).order('createdAt', { ascending: false });
       if (error) throw error;
-      return json((data || []).map(normalizeOrder));
+      return json((data || []).map((row) => {
+        const normalized = normalizeOrder(row);
+        return {
+          ...normalized,
+          items: normalized.items.map((item) => {
+            const { costPrice, ...safeItem } = item || {};
+            return safeItem;
+          }),
+        };
+      }));
     }
     if (route === 'account/coupons' && method === 'GET') {
       if (!session) return errorResponse('يجب تسجيل الدخول', 401);
       const { data, error } = await supabase.from('account_coupons').select('savedAt, discounts(*)').eq('accountId', session.accountId).order('savedAt', { ascending: false });
       if (error) throw error;
-      return json((data || []).map((row) => ({ ...row.discounts, active: Boolean(row.discounts?.active), savedAt: row.savedAt })));
+      return json((data || []).map((row) => ({ ...publicDiscountData(row.discounts), savedAt: row.savedAt })));
     }
     if (parts[0] === 'account' && parts[1] === 'coupons' && parts.length === 3 && method === 'POST') {
       if (!session) return errorResponse('يجب تسجيل الدخول', 401);
@@ -313,13 +349,13 @@ export async function onRequest(context) {
       if (!discount) return errorResponse('كود الخصم غير صالح أو غير فعال', 404);
       const { error } = await supabase.from('account_coupons').upsert({ accountId: session.accountId, discountId: discount.id }, { onConflict: 'accountId,discountId' });
       if (error) throw error;
-      return json({ ...discount, active: true, saved: true }, 201);
+      return json({ ...publicDiscountData(discount), saved: true }, 201);
     }
 
     if (parts[0] === 'discounts' && parts[1] === 'validate' && parts.length === 3 && method === 'GET') {
       const { data, error } = await supabase.from('discounts').select('*').eq('code', parts[2].toUpperCase()).eq('active', true).maybeSingle();
       if (error) throw error;
-      return json(data ? { ...data, active: true } : null);
+      return json(publicDiscountData(data));
     }
     if (route === 'discounts' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
@@ -373,11 +409,20 @@ export async function onRequest(context) {
     }
     if (parts[0] === 'orders' && parts.length === 2 && method === 'PATCH') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
-      const body = await parseBody(request); const updates = {};
-      if (body.status) updates.status = body.status;
-      if (body.isRead !== undefined) updates.isRead = bool(body.isRead);
-      const { error } = await supabase.from('orders').update(updates).eq('id', parts[1]);
-      if (error) throw error;
+      const body = await parseBody(request);
+      if (body.status !== undefined) {
+        if (!['processing', 'delivered', 'cancelled'].includes(body.status)) return errorResponse('حالة الطلب غير صحيحة', 400);
+        const { error } = await supabase.rpc('update_order_status', {
+          p_order_id: parts[1],
+          p_status: body.status,
+          p_actor_id: session.accountId,
+        });
+        if (error) return errorResponse(error.message, 400);
+      }
+      if (body.isRead !== undefined) {
+        const { error } = await supabase.from('orders').update({ isRead: bool(body.isRead) }).eq('id', parts[1]);
+        if (error) throw error;
+      }
       return json({ ok: true });
     }
 
@@ -629,6 +674,7 @@ export async function onRequest(context) {
     }
     return errorResponse('المسار غير موجود', 404);
   } catch (error) {
-    return errorResponse(error.message || 'حدث خطأ غير متوقع', 500);
+    console.error('API request failed', error);
+    return errorResponse('حدث خطأ داخلي. حاول مرة أخرى.', 500);
   }
 }
