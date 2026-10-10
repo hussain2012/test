@@ -81,13 +81,13 @@ const productQuery = async (supabase, { allowLegacyFallback = true } = {}) => {
     const { error } = await supabase.from('products').select('availabilityMode').limit(1);
     if (error && isMissingColumnError(error)) {
       if (!allowLegacyFallback) throw error;
-      return supabase.from('products').select('*');
+      return { query: supabase.from('products').select('*') };
     }
     if (error) throw error;
-    return supabase.from('products').select('*');
+    return { query: supabase.from('products').select('*') };
   } catch (error) {
     if (allowLegacyFallback && isMissingColumnError(error)) {
-      return supabase.from('products').select('*');
+      return { query: supabase.from('products').select('*') };
     }
     throw error;
   }
@@ -238,20 +238,20 @@ export async function onRequest(context) {
     }
 
     if (route === 'products' && method === 'GET') {
-      const query = await productQuery(supabase);
+      const { query } = await productQuery(supabase);
       const { data, error } = await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false });
       if (error) throw error;
       return json((data || []).filter(Boolean).map(normalizeProduct).filter(Boolean));
     }
     if (parts[0] === 'products' && parts.length === 2 && method === 'GET') {
-      const query = await productQuery(supabase);
+      const { query } = await productQuery(supabase);
       const { data, error } = await query.eq('id', parts[1]).maybeSingle();
       if (error) throw error;
       return data ? json(normalizeProduct(data)) : errorResponse('المنتج غير موجود', 404);
     }
     if (route === 'admin/products' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
-      const query = await productQuery(supabase);
+      const { query } = await productQuery(supabase);
       const { data, error } = await query.order('id', { ascending: false });
       if (error) throw error;
       return json((data || []).filter(Boolean).map((row) => ({ ...normalizeProduct(row), costPrice: number(row.costPrice), profit: Number((number(row.price) - number(row.costPrice)).toFixed(2)) })).filter(Boolean));
