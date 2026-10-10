@@ -28,8 +28,18 @@ export default async function handler(req, res) {
     }
 
     const requestUrl = new URL(req.url || '/', 'https://vercel.local');
+    const routePath = req.query?.path;
+    const routeParts = Array.isArray(routePath) ? routePath : routePath ? [routePath] : [];
+    const urlParts = requestUrl.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
+    const hasRoutePlaceholder = urlParts.length === 1 && ['[...path]', ':path*'].includes(urlParts[0]);
+    if (routeParts.length && (!urlParts.length || hasRoutePlaceholder)) {
+      requestUrl.pathname = `/api/${routeParts.map((part) => encodeURIComponent(String(part))).join('/')}`;
+    }
     const request = new Request(requestUrl, requestInit);
-    const response = await onRequest({ request, env: process.env });
+    const params = {
+      path: requestUrl.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(decodeURIComponent),
+    };
+    const response = await onRequest({ request, env: process.env, params });
 
     res.statusCode = response.status;
     response.headers.forEach((value, name) => res.setHeader(name, value));

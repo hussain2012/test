@@ -205,10 +205,15 @@ const getSettings = async (supabase) => {
     taxRate: Number.isFinite(Number(data?.taxRate)) ? Math.min(100, Math.max(0, Number(data.taxRate))) : 0,
   };
 };
-const pathParts = (request) => new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+const pathParts = (request, params) => {
+  const parts = new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+  if (parts.length) return parts;
+  const routePath = params?.path;
+  return (Array.isArray(routePath) ? routePath : routePath ? [routePath] : []).map(decodeURIComponent);
+};
 
 export async function onRequest(context) {
-  const { request, env } = context;
+  const { request, env, params } = context;
   if (request.method === 'OPTIONS') return empty(204);
   const missingEnvironmentVariables = [
     ['SUPABASE_URL', env.SUPABASE_URL],
@@ -221,7 +226,7 @@ export async function onRequest(context) {
   const supabase = createSupabase(env);
   const session = await getSession(request, supabase);
   const method = request.method;
-  const parts = pathParts(request);
+  const parts = pathParts(request, params);
   const route = parts.join('/');
   try {
     if (route === 'site-settings' && method === 'GET') return json(await getSettings(supabase));
