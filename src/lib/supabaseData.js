@@ -133,6 +133,13 @@ export const defaultSettings = {
   policyTitle: '', policyText: '', taglineFont: 'cairo', taglineColor: '#1B1813', maintenanceMode: false,
 };
 
+let siteSettingsCache = null;
+let productsCache = null;
+
+export const getCachedSiteSettings = () => siteSettingsCache;
+export const getCachedProducts = () => productsCache;
+const clearProductsCache = () => { productsCache = null; };
+
 const normalizeSettings = (data) => {
   const deliveryFee = Number(data?.deliveryFee);
   const taxRate = Number(data?.taxRate);
@@ -153,17 +160,21 @@ const normalizeSettings = (data) => {
 };
 
 export async function getSiteSettings() {
+  if (siteSettingsCache) return siteSettingsCache;
   const data = throwIfError(await supabase.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle());
-  return normalizeSettings(data);
+  siteSettingsCache = normalizeSettings(data);
+  return siteSettingsCache;
 }
 export async function recordView(type, productId) {
   const viewType = type === 'product' ? 'product' : 'home';
   const payload = viewType === 'product' && productId != null ? { type: viewType, productId } : { type: viewType };
   return apiRequest('/api/analytics/view', 'POST', payload);
 }
-export async function listProducts() {
+export async function listProducts({ forceRefresh = false } = {}) {
+  if (!forceRefresh && productsCache) return productsCache;
   const data = await apiRequest('/api/products');
-  return asProductRows(data).map(productView);
+  productsCache = asProductRows(data).map(productView);
+  return productsCache;
 }
 export async function getProduct(id) {
   const data = await apiRequest(`/api/products/${encodeURIComponent(id)}`).catch((error) => {
@@ -179,13 +190,17 @@ export async function validateDiscount(code) {
 }
 export async function saveCoupon(userId, discountId) { return throwIfError(await supabase.from('account_coupons').upsert({ accountId: userId, discountId }, { onConflict: 'accountId,discountId' })); }
 export async function createOrder(payload, userId) {
-  return throwIfError(await supabase.rpc('create_order_with_stock', {
+  const result = throwIfError(await supabase.rpc('create_order_with_stock', {
     p_account_id: userId,
     p_payload: payload,
   }));
+  clearProductsCache();
+  return result;
 }
 export async function cancelOrder(orderId) {
-  return throwIfError(await supabase.rpc('cancel_order_if_new', { p_order_id: orderId }));
+  const result = throwIfError(await supabase.rpc('cancel_order_if_new', { p_order_id: orderId }));
+  clearProductsCache();
+  return result;
 }
 export async function getAccountOrders() {
   const data = await apiRequest('/api/account/orders');
@@ -230,7 +245,12 @@ export async function uploadCategoryImage(file) {
   throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type, upsert: false }));
   return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl;
 }
-export async function moveProductsToCategory(currentCategory, nextCategory) { if (currentCategory === nextCategory) return; return throwIfError(await supabase.from('products').update({ category: nextCategory }).eq('category', currentCategory)); }
+export async function moveProductsToCategory(currentCategory, nextCategory) {
+  if (currentCategory === nextCategory) return;
+  const result = throwIfError(await supabase.from('products').update({ category: nextCategory }).eq('category', currentCategory));
+  clearProductsCache();
+  return result;
+}
 export async function createProduct(form, primaryFile, additionalFiles) {
   const productForm = form ?? {};
   const uploaded = await uploadFiles(primaryFile, additionalFiles);
@@ -258,6 +278,7 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     isNew: Boolean(productForm.isNew),
   };
   const data = await apiRequest('/api/admin/products', 'POST', productFormData({ ...payload, availabilityMode }));
+  clearProductsCache();
   return productView(data);
 }
 
@@ -311,9 +332,14 @@ export async function updateProduct(idOrForm, form, primaryFile, additionalFiles
 
   // 5. تنفيذ التحديث في Supabase
   const data = await apiRequest(`/api/admin/products/${encodeURIComponent(productId)}`, 'PUT', productFormData(payload));
+  clearProductsCache();
   return productView(data);
 }
-export async function deleteProduct(id) { return apiRequest(`/api/admin/products/${encodeURIComponent(id)}`, 'DELETE'); }
+export async function deleteProduct(id) {
+  const result = await apiRequest(`/api/admin/products/${encodeURIComponent(id)}`, 'DELETE');
+  clearProductsCache();
+  return result;
+}
 export async function listOrders() { return asArray(await apiRequest('/api/orders')).map(orderView); }
 export async function updateOrder(id, updates) { return apiRequest(`/api/orders/${encodeURIComponent(id)}`, 'PATCH', updates); }
 export async function unreadOrderCount() {
@@ -402,13 +428,14 @@ export async function saveSiteSettings(settings) {
     ? supabase.from('site_settings').update(payload).eq('id', current.id)
     : supabase.from('site_settings').insert(payload);
   const data = throwIfError(await query.select().single());
-  return {
+  siteSettingsCache = {
     ...defaultSettings,
     ...data,
     featuredProductIds: getFeaturedProductIds(data),
     storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
     deliveryFee: normalizeSettings(data).deliveryFee,
   };
+  return siteSettingsCache;
 }
 export async function completeStoreSetup(setup, productImage) {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -429,6 +456,8 @@ export async function completeStoreSetup(setup, productImage) {
     throw new Error('تعذر قراءة رد خادم إنشاء المتجر');
   }
   if (!response.ok) throw new Error(result?.error || 'تعذر إنشاء المتجر');
+  siteSettingsCache = null;
+  clearProductsCache();
   return result;
 }
 async function resetSecurityRequest(path, body) {

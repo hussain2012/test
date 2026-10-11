@@ -5,7 +5,7 @@ import { discountApplicationPending } from './lib/orderValidation';
 import ImageCropDialog from './lib/ImageCropDialog';
 import {
   accountCount, adminProducts, analytics, cancelOrder, completeStoreSetup, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
-  confirmResetStore, createOwnerAccount, createResetSecurityPin, defaultSettings, getAccountOrders, getCart, getProduct, getResetSecurityStatus, getSiteSettings,
+  confirmResetStore, createOwnerAccount, createResetSecurityPin, defaultSettings, getAccountOrders, getCachedProducts, getCachedSiteSettings, getCart, getProduct, getResetSecurityStatus, getSiteSettings,
   inviteAdmin, listAdmins, listDiscounts, listOrders, listProducts, moveProductsToCategory, recordView, removeAdmin, saveCart, saveCoupon,
   saveSiteSettings, updateDiscount, unreadOrderCount, updateOrder, updateProduct, uploadCategoryImage, validateDiscount, verifyResetSecurityPin,
 } from './lib/supabaseData';
@@ -299,18 +299,20 @@ function CartProvider({ children }) {
 }
 
 function useSiteSettings() {
-  const [settings, setSettings] = useState(defaultSettings);
+  const [settings, setSettings] = useState(() => getCachedSiteSettings() || defaultSettings);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => getCachedSiteSettings() === null);
 
   useEffect(() => {
     let active = true;
-    const loadingTimeout = window.setTimeout(() => {
-      if (active) {
-        setError('استغرق تحميل إعدادات المتجر وقتاً أطول من المتوقع. تحقق من الاتصال.');
-        setLoading(false);
-      }
-    }, 15000);
+    const loadingTimeout = getCachedSiteSettings() === null
+      ? window.setTimeout(() => {
+          if (active) {
+            setError('استغرق تحميل إعدادات المتجر وقتاً أطول من المتوقع. تحقق من الاتصال.');
+            setLoading(false);
+          }
+        }, 15000)
+      : null;
     getSiteSettings()
       .then((data) => {
         if (!active) return;
@@ -322,12 +324,12 @@ function useSiteSettings() {
         if (active) setError('تعذر تحميل إعدادات المتجر. تحقق من الاتصال ثم أعد تحميل الصفحة.');
       })
       .finally(() => {
-        window.clearTimeout(loadingTimeout);
+        if (loadingTimeout !== null) window.clearTimeout(loadingTimeout);
         if (active) setLoading(false);
       });
     return () => {
       active = false;
-      window.clearTimeout(loadingTimeout);
+      if (loadingTimeout !== null) window.clearTimeout(loadingTimeout);
     };
   }, []);
 
@@ -607,8 +609,8 @@ function StoreNav({ settings, settingsError = '' }) {
 
 function Store() {
   const { settings, error: settingsError, loading: settingsLoading } = useSiteSettings();
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState(() => getCachedProducts() || []);
+  const [loading, setLoading] = useState(() => getCachedProducts() === null);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState('');
@@ -622,7 +624,12 @@ function Store() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    const cachedProducts = getCachedProducts();
+    if (cachedProducts === null) setLoading(true);
+    else {
+      setProducts(cachedProducts);
+      setLoading(false);
+    }
     setLoadError('');
     const loadingTimeout = window.setTimeout(() => {
       if (active) {
@@ -630,7 +637,7 @@ function Store() {
         setLoading(false);
       }
     }, 15000);
-    listProducts()
+    listProducts({ forceRefresh: reloadKey > 0 })
       .then((data) => {
         if (active) setProducts(Array.isArray(data) ? data : []);
       })
