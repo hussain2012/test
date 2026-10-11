@@ -418,23 +418,8 @@ export async function createOwnerAccount(name, email, password) {
   return result;
 }
 export async function saveSiteSettings(settings) {
-  const current = await getSiteSettings();
-  const payload = { ...settings, id: undefined };
-  if (Object.prototype.hasOwnProperty.call(current || {}, 'featuredProducts') && !Object.prototype.hasOwnProperty.call(payload, 'featuredProducts')) {
-    payload.featuredProducts = payload.featuredProductIds ?? null;
-    delete payload.featuredProductIds;
-  }
-  const query = current.id
-    ? supabase.from('site_settings').update(payload).eq('id', current.id)
-    : supabase.from('site_settings').insert(payload);
-  const data = throwIfError(await query.select().single());
-  siteSettingsCache = {
-    ...defaultSettings,
-    ...data,
-    featuredProductIds: getFeaturedProductIds(data),
-    storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
-    deliveryFee: normalizeSettings(data).deliveryFee,
-  };
+  const data = await apiRequest('/api/admin/site-settings', 'POST', settings);
+  siteSettingsCache = normalizeSettings(data);
   return siteSettingsCache;
 }
 export async function completeStoreSetup(setup, productImage) {

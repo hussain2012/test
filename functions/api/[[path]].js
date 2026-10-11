@@ -580,19 +580,54 @@ export async function onRequest(context) {
     }
     if (route === 'admin/site-settings' && method === 'POST') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع تعديل الإعدادات', 403);
-      const form = await request.formData(); const body = Object.fromEntries([...form.entries()].filter(([key, value]) => typeof value === 'string')); const files = await uploadFormFiles(request, form, supabase); const previous = await getSettings(supabase);
+      const contentType = request.headers.get('content-type') || '';
+      const form = contentType.includes('multipart/form-data') ? await request.formData() : null;
+      const body = form
+        ? Object.fromEntries([...form.entries()].filter(([key, value]) => typeof value === 'string'))
+        : await parseBody(request);
+      const files = form ? await uploadFormFiles(request, form, supabase) : {};
+      const previous = await getSettings(supabase);
+      const deliveryFee = Number(body.deliveryFee ?? previous.deliveryFee);
+      const taxRate = Number(body.taxRate ?? previous.taxRate);
+      if (!Number.isFinite(deliveryFee) || deliveryFee < 0) return errorResponse('أدخل سعر توصيل صحيحًا لا يقل عن صفر', 400);
+      if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return errorResponse('أدخل نسبة ضريبة من صفر إلى 100', 400);
+      const parseJsonField = (value, fallback) => {
+        if (value === undefined || value === null) return fallback;
+        if (typeof value !== 'string') return value ?? fallback;
+        return JSON.parse(value);
+      };
+      let featuredProductIds;
+      let storeCategories;
+      try {
+        featuredProductIds = parseJsonField(body.featuredProductIds ?? body.featuredProducts, previous.featuredProductIds);
+        storeCategories = parseJsonField(body.storeCategories, previous.storeCategories);
+      } catch {
+        return errorResponse('بيانات الفئات أو المنتجات المميزة غير صالحة', 400);
+      }
+      if ((featuredProductIds !== null && !Array.isArray(featuredProductIds)) ||
+        (storeCategories !== null && !Array.isArray(storeCategories))) {
+        return errorResponse('بيانات الفئات أو المنتجات المميزة غير صالحة', 400);
+      }
       const settings = {
         ...previous,
         ...body,
+        featuredProductIds,
+        storeCategories,
+        deliveryFee,
+        taxRate,
         taglineFont: ['cairo', 'sans', 'serif'].includes(body.taglineFont) ? body.taglineFont : previous.taglineFont,
         taglineColor: /^#[0-9a-fA-F]{6}$/.test(body.taglineColor || '') ? body.taglineColor.toUpperCase() : previous.taglineColor,
         logoUrl: files.logoImage || body.logoUrl || previous.logoUrl,
         heroImageUrl: files.heroImage || body.heroImageUrl || previous.heroImageUrl,
-        maintenanceMode: bool(body.maintenanceMode),
+        maintenanceMode: body.maintenanceMode === undefined ? previous.maintenanceMode : bool(body.maintenanceMode),
       };
       delete settings.id;
-      const { error } = await supabase.from('site_settings').update(settings).eq('id', previous.id); if (error) throw error;
-      return json({ ...settings, id: previous.id });
+      const query = previous.id
+        ? supabase.from('site_settings').update(settings).eq('id', previous.id)
+        : supabase.from('site_settings').insert(settings);
+      const { data, error } = await query.select().single();
+      if (error) throw error;
+      return json({ ...settings, ...(data || {}), id: data?.id ?? previous.id });
     }
     if (route === 'admin/reset-security' && method === 'GET') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إدارة رمز الأمان', 403);
@@ -693,6 +728,9 @@ export async function onRequest(context) {
       code: error?.code,
       details: error?.details,
     });
+    if (['42P01', '42703', 'PGRST204', 'PGRST205'].includes(error?.code)) {
+      return errorResponse('مخطط قاعدة البيانات غير محدث. طبّق scripts/repair-admin-settings-schema.sql في Supabase ثم أعد المحاولة.', 503);
+    }
     return errorResponse('حدث خطأ داخلي. حاول مرة أخرى.', 500);
   }
 }
