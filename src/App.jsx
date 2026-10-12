@@ -164,7 +164,6 @@ function AuthProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
-      window.dispatchEvent(new Event('account-session-changed'));
       if (!nextSession || event === 'SIGNED_OUT') {
         loadProfile(null);
         return;
@@ -191,7 +190,9 @@ const useCart = () => useContext(CartContext);
 
 function CartProvider({ children }) {
   const { session } = useAuth();
+  const accountId = session?.user?.id || null;
   const [loadedAccountId, setLoadedAccountId] = useState(null);
+  const [cartLoadFailedForAccountId, setCartLoadFailedForAccountId] = useState(null);
   const [cartSyncError, setCartSyncError] = useState('');
   const [cartReloadKey, setCartReloadKey] = useState(0);
   const cartLoadRequest = useRef(0);
@@ -210,29 +211,32 @@ function CartProvider({ children }) {
     const loadAccountCart = async () => {
       const requestId = ++cartLoadRequest.current;
       cartSaveRequest.current += 1;
-      if (!session) {
+      if (!accountId) {
         setLoadedAccountId(null);
+        setCartLoadFailedForAccountId(null);
         setCartSyncError('');
         return;
       }
       setLoadedAccountId(null);
+      setCartLoadFailedForAccountId(null);
       setCartSyncError('');
       try {
-        const items = await getCart(session.user.id);
+        const items = await getCart(accountId);
         if (requestId !== cartLoadRequest.current) return;
         setCart(Array.isArray(items) ? items : []);
-        setLoadedAccountId(session.user.id);
+        setLoadedAccountId(accountId);
       } catch {
-        if (requestId === cartLoadRequest.current) setCartSyncError('تعذر تحميل سلة الحساب. أعد تحميل الصفحة قبل متابعة المزامنة.');
+        if (requestId === cartLoadRequest.current) {
+          setCartLoadFailedForAccountId(accountId);
+          setCartSyncError('تعذر تحميل سلة الحساب. تحقق من الاتصال ثم أعد المحاولة.');
+        }
       }
     };
     loadAccountCart();
-    window.addEventListener('account-session-changed', loadAccountCart);
     return () => {
       cartLoadRequest.current += 1;
-      window.removeEventListener('account-session-changed', loadAccountCart);
     };
-  }, [session, cartReloadKey]);
+  }, [accountId, cartReloadKey]);
 
   useEffect(() => {
     try {
@@ -240,10 +244,9 @@ function CartProvider({ children }) {
     } catch {
       setCartSyncError('تعذر حفظ السلة على هذا الجهاز.');
     }
-    if (!session || loadedAccountId !== session.user.id) return;
+    if (!accountId || loadedAccountId !== accountId) return;
 
     const requestId = ++cartSaveRequest.current;
-    const accountId = session.user.id;
     cartSaveQueue.current = cartSaveQueue.current
       .then(() => saveCart(accountId, cart))
       .then(() => {
@@ -252,9 +255,9 @@ function CartProvider({ children }) {
       .catch(() => {
         if (requestId === cartSaveRequest.current) setCartSyncError('تعذر مزامنة السلة مع حسابك. تحقق من الاتصال ثم أعد تحميل الصفحة.');
       });
-  }, [cart, session, loadedAccountId]);
+  }, [cart, accountId, loadedAccountId]);
 
-  const cartLoading = Boolean(session && loadedAccountId !== session.user.id);
+  const cartLoading = Boolean(accountId && loadedAccountId !== accountId && cartLoadFailedForAccountId !== accountId);
   const addItem = (product, quantity = 1) => {
     const sellingPrice = Number(product.selectedPrice ?? product.discountedPrice ?? product.price ?? 0);
     const productKey = variantKey(product.selectedVariants);
@@ -819,10 +822,12 @@ function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState('');
   const [selectedVariants, setSelectedVariants] = useState({});
   const [similarProducts, setSimilarProducts] = useState([]);
-  const [isProductSaved, setIsProductSaved] = useState(false);
+  const [isProductSaved, setIsProductSaved] = useState(null);
+  const [favoriteSaving, setFavoriteSaving] = useState(false);
   const [productActionMessage, setProductActionMessage] = useState('');
 
   useEffect(() => {
+    setIsProductSaved(null);
     recordView('product', id).catch((reason) => console.error('تعذر تسجيل زيارة المنتج', reason));
 
     setLoading(true);
@@ -868,7 +873,7 @@ function ProductDetailPage() {
     : Infinity;
   const maxSelectableQuantity = readyForStock ? remainingStock : Infinity;
   const displayedQuantity = readyForStock ? Math.min(quantity, maxSelectableQuantity) : quantity;
-  const isProductFavorite = isProductSaved || (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
+  const isProductFavorite = isProductSaved ?? (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
 
   const chooseVariantOption = (variant, label) => {
     setSelectedVariants((current) => ({ ...current, [variant.name]: label }));
@@ -879,18 +884,24 @@ function ProductDetailPage() {
       navigate('/login', { state: { returnTo: `/product/${product.id}` } });
       return;
     }
+    if (favoriteSaving) return;
     setProductActionMessage('');
     const currentProducts = Array.isArray(user.user_metadata?.saved_products) ? user.user_metadata.saved_products : [];
-    const alreadySaved = currentProducts.some((item) => String(item.id) === String(product.id));
+    const alreadySaved = Boolean(isProductFavorite);
     const nextProducts = alreadySaved
       ? currentProducts.filter((item) => String(item.id) !== String(product.id))
       : [...currentProducts, { id: product.id, name: product.name, imageUrl: product.imageUrl, price: finalPrice }];
-    const { error: authError } = await supabase.auth.updateUser({ data: { saved_products: nextProducts } });
-    if (authError) {
-      setProductActionMessage('تعذر تحديث المفضلة. حاول مرة أخرى.');
-      return;
-    }
     setIsProductSaved(!alreadySaved);
+    setFavoriteSaving(true);
+    try {
+      const { error: authError } = await supabase.auth.updateUser({ data: { saved_products: nextProducts } });
+      if (authError) throw authError;
+    } catch {
+      setIsProductSaved(alreadySaved);
+      setProductActionMessage('تعذر تحديث المفضلة. حاول مرة أخرى.');
+    } finally {
+      setFavoriteSaving(false);
+    }
   };
 
   const shareProduct = async () => {
@@ -924,7 +935,7 @@ function ProductDetailPage() {
               <div className="product-detail-actions">
                 <button type="button" className="product-image-action back-product" onClick={goBack} aria-label="رجوع خطوة للوراء" title="رجوع خطوة للوراء"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
                 <div className="product-detail-action-group">
-                  <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><svg viewBox="0 0 24 24" fill={isProductFavorite ? 'currentColor' : 'none'} aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1 7.8 7.8 7.8-7.8 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z" /></svg></button>
+                  <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} disabled={favoriteSaving} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><svg viewBox="0 0 24 24" fill={isProductFavorite ? 'currentColor' : 'none'} aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1 7.8 7.8 7.8-7.8 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z" /></svg></button>
                   <button type="button" className="product-image-action share-product" onClick={shareProduct} aria-label="مشاركة رابط المنتج" title="مشاركة رابط المنتج"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5" /></svg></button>
                 </div>
               </div>
@@ -988,7 +999,7 @@ function ProductDetailPage() {
                 <button type="button" aria-label="زيادة الكمية" disabled={readyForStock && displayedQuantity >= maxSelectableQuantity} onClick={() => setQuantity((value) => readyForStock ? Math.min(Math.min(value, maxSelectableQuantity) + 1, maxSelectableQuantity) : value + 1)}>+</button>
               </div>
               <div className="detail-purchase-summary"><small>{product.name}</small><strong>{money(finalPrice)}</strong></div>
-              <AddToCartButton product={{ ...product, selectedVariants, selectedPrice: finalPrice }} quantity={displayedQuantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || (readyForStock && maxSelectableQuantity < 1) || !variantsComplete} className="primary block" label="أضف إلى السلة" disabledLabel={settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : (readyForStock && maxSelectableQuantity < 1 ? 'لا توجد كمية متبقية' : 'غير متوفر'))} />
+              <AddToCartButton product={{ ...product, selectedVariants, selectedPrice: finalPrice }} quantity={displayedQuantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || (readyForStock && maxSelectableQuantity < 1) || !variantsComplete} className="primary block product-purchase-button" label="أضف إلى السلة" disabledLabel={settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : (readyForStock && maxSelectableQuantity < 1 ? 'لا توجد كمية متبقية' : 'غير متوفر'))} />
             </div>
           </div>
         </div>
@@ -1154,11 +1165,11 @@ function Checkout() {
           <h1>إتمام الطلب</h1>
           <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
         </div>
+        {cartSyncError && <p className="error" role="alert">{cartSyncError} <button type="button" className="secondary-button" onClick={retryCartLoad}>إعادة المحاولة</button></p>}
 
         {cartLoading ? (
           <div className="empty" role="status">
-            {cartSyncError || 'جاري تحميل سلة حسابك...'}
-            {cartSyncError && <button type="button" className="secondary-button" onClick={retryCartLoad}>إعادة المحاولة</button>}
+            جاري تحميل سلة حسابك...
           </div>
         ) : !cart.length ? (
           <div className="empty">السلة فارغة حالياً. <Link to="/">تصفح المنتجات</Link></div>
@@ -1185,7 +1196,6 @@ function Checkout() {
                 <button type="button" onClick={applyDiscount} disabled={couponApplying}>{couponApplying ? 'جارٍ التحقق...' : 'تطبيق'}</button>
               </div>
               {couponMessage && <p className="success-message" role="status">{couponMessage}</p>}
-              {cartSyncError && <p className="error" role="alert">{cartSyncError}</p>}
               {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}{needsPassword && <><br /><Link to="/account">الذهاب إلى الحساب وتعيين كلمة المرور</Link></>}</p>}
               <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading || couponApplying || discountApplicationPending(form.discountCode, discount?.code)} aria-busy={isSubmitting}>
                 {settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (isSubmitting ? 'جارٍ إرسال الطلب...' : 'تأكيد وإرسال الطلب')}

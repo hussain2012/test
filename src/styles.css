@@ -216,6 +216,9 @@ button { cursor: pointer; }
 
 .primary:hover { background: var(--dark-secondary); }
 
+.product-purchase-button { background: var(--dark-surface); }
+.product-purchase-button:hover { background: var(--dark-secondary); }
+
 .primary.block { width: 100%; }
 
 .mini-button {
@@ -2738,7 +2741,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
   .detail-purchase-summary { display: grid; gap: 4px; min-width: 0; direction: rtl; text-align: right; }
   .detail-purchase-summary small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
   .detail-purchase-summary strong { color: var(--text); font-size: 16px; }
-  .detail-purchase-row .primary.block { width: min(100%, 148px); min-height: 46px; justify-self: end; padding: 8px 12px; border-radius: 999px; background: var(--primary); color: var(--soft-gold); font-size: 15px; }
+  .detail-purchase-row .primary.block { width: min(100%, 148px); min-height: 46px; justify-self: end; padding: 8px 12px; border-radius: 999px; background: var(--dark-surface); color: var(--soft-gold); font-size: 15px; }
   .similar-products { margin-top: 52px; padding-top: 24px; }
   .similar-heading h2 { font-size: 24px; }
   .checkout { padding: 32px 14px 64px; }
