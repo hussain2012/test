@@ -38,10 +38,13 @@ test('Vercel catch-all routes multi-segment API paths to the API handler', async
   const originalFetch = globalThis.fetch;
   const originalSupabaseUrl = process.env.SUPABASE_URL;
   const originalServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const productReadRequests = [];
   process.env.SUPABASE_URL = 'https://routing-test.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'routing-test-key';
   globalThis.fetch = async (url) => {
-    const isInsert = new URL(url).pathname === '/rest/v1/page_views';
+    const requestUrl = new URL(url);
+    const isInsert = requestUrl.pathname === '/rest/v1/page_views';
+    if (requestUrl.pathname === '/rest/v1/products') productReadRequests.push(requestUrl.pathname);
     return new Response(JSON.stringify([]), {
       status: isInsert ? 201 : 200,
       headers: { 'Content-Type': 'application/json' },
@@ -62,6 +65,7 @@ test('Vercel catch-all routes multi-segment API paths to the API handler', async
     assert.equal(responses[3].status, 404);
     assert.match(responses[3].contentType, /application\/json/);
     assert.equal(JSON.parse(responses[3].body).error, 'المنتج غير موجود');
+    assert.equal(productReadRequests.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalSupabaseUrl === undefined) delete process.env.SUPABASE_URL;

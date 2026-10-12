@@ -76,22 +76,7 @@ const isMissingColumnError = (error) => {
   const message = error?.message || '';
   return error?.code === '42703' || /Could not find the '.*' column|column .* does not exist/i.test(message);
 };
-const productQuery = async (supabase, { allowLegacyFallback = true } = {}) => {
-  try {
-    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
-    if (error && isMissingColumnError(error)) {
-      if (!allowLegacyFallback) throw error;
-      return { query: supabase.from('products').select('*') };
-    }
-    if (error) throw error;
-    return { query: supabase.from('products').select('*') };
-  } catch (error) {
-    if (allowLegacyFallback && isMissingColumnError(error)) {
-      return { query: supabase.from('products').select('*') };
-    }
-    throw error;
-  }
-};
+const productQuery = async (supabase) => ({ query: supabase.from('products').select('*') });
 const productPayloadWithAvailability = async (supabase, payload) => {
   try {
     const { error } = await supabase.from('products').select('availabilityMode').limit(1);
