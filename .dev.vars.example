@@ -1,0 +1,5 @@
+# Cloudflare Pages Functions local development values.
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Vite browser values are loaded from .env, not from this server-only file.
