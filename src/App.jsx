@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ﻿import { useEffect, useRef, useState, createContext, useContext } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
 import { supabase } from './lib/supabaseClient';
@@ -6,6 +7,18 @@ import {
   defaultSettings, getAccountOrders, getCart, getProduct, getSiteSettings, inviteAdmin, listAdmins, listDiscounts,
   listOrders, listProducts, moveProductsToCategory, recordView, removeAdmin, resetStore as resetStoreData, saveCart, saveCoupon,
   saveSiteSettings, updateDiscount, unreadOrderCount, updateOrder, updateProduct, uploadCategoryImage, validateDiscount,
+=======
+import { useEffect, useRef, useState, useCallback, createContext, useContext } from 'react';
+import { Routes, Route, Link, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
+import { supabase } from './lib/supabaseClient';
+import { discountApplicationPending } from './lib/orderValidation';
+import ImageCropDialog from './lib/ImageCropDialog';
+import {
+  accountCount, adminProducts, analytics, cancelOrder, completeStoreSetup, createDiscount, createOrder, createProduct, deleteDiscount, deleteProduct,
+  confirmResetStore, createOwnerAccount, createResetSecurityPin, defaultSettings, getAccountOrders, getCachedProducts, getCachedSiteSettings, getCart, getProduct, getResetSecurityStatus, getSiteSettings,
+  inviteAdmin, listAdmins, listDiscounts, listOrders, listProducts, moveProductsToCategory, recordView, removeAdmin, saveCart, saveCoupon,
+  saveSiteSettings, updateDiscount, unreadOrderCount, updateOrder, updateProduct, uploadCategoryImage, validateDiscount, verifyResetSecurityPin,
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 } from './lib/supabaseData';
 
 const mediaUrl = (value) => {
@@ -162,7 +175,10 @@ function AuthProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+<<<<<<< HEAD
       window.dispatchEvent(new Event('account-session-changed'));
+=======
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       if (!nextSession || event === 'SIGNED_OUT') {
         loadProfile(null);
         return;
@@ -189,7 +205,13 @@ const useCart = () => useContext(CartContext);
 
 function CartProvider({ children }) {
   const { session } = useAuth();
+<<<<<<< HEAD
   const [loadedAccountId, setLoadedAccountId] = useState(null);
+=======
+  const accountId = session?.user?.id || null;
+  const [loadedAccountId, setLoadedAccountId] = useState(null);
+  const [cartLoadFailedForAccountId, setCartLoadFailedForAccountId] = useState(null);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const [cartSyncError, setCartSyncError] = useState('');
   const [cartReloadKey, setCartReloadKey] = useState(0);
   const cartLoadRequest = useRef(0);
@@ -208,12 +230,19 @@ function CartProvider({ children }) {
     const loadAccountCart = async () => {
       const requestId = ++cartLoadRequest.current;
       cartSaveRequest.current += 1;
+<<<<<<< HEAD
       if (!session) {
         setLoadedAccountId(null);
+=======
+      if (!accountId) {
+        setLoadedAccountId(null);
+        setCartLoadFailedForAccountId(null);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         setCartSyncError('');
         return;
       }
       setLoadedAccountId(null);
+<<<<<<< HEAD
       setCartSyncError('');
       try {
         const items = await getCart(session.user.id);
@@ -231,6 +260,27 @@ function CartProvider({ children }) {
       window.removeEventListener('account-session-changed', loadAccountCart);
     };
   }, [session, cartReloadKey]);
+=======
+      setCartLoadFailedForAccountId(null);
+      setCartSyncError('');
+      try {
+        const items = await getCart(accountId);
+        if (requestId !== cartLoadRequest.current) return;
+        setCart(Array.isArray(items) ? items : []);
+        setLoadedAccountId(accountId);
+      } catch {
+        if (requestId === cartLoadRequest.current) {
+          setCartLoadFailedForAccountId(accountId);
+          setCartSyncError('تعذر تحميل سلة الحساب. تحقق من الاتصال ثم أعد المحاولة.');
+        }
+      }
+    };
+    loadAccountCart();
+    return () => {
+      cartLoadRequest.current += 1;
+    };
+  }, [accountId, cartReloadKey]);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   useEffect(() => {
     try {
@@ -238,10 +288,16 @@ function CartProvider({ children }) {
     } catch {
       setCartSyncError('تعذر حفظ السلة على هذا الجهاز.');
     }
+<<<<<<< HEAD
     if (!session || loadedAccountId !== session.user.id) return;
 
     const requestId = ++cartSaveRequest.current;
     const accountId = session.user.id;
+=======
+    if (!accountId || loadedAccountId !== accountId) return;
+
+    const requestId = ++cartSaveRequest.current;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     cartSaveQueue.current = cartSaveQueue.current
       .then(() => saveCart(accountId, cart))
       .then(() => {
@@ -250,9 +306,15 @@ function CartProvider({ children }) {
       .catch(() => {
         if (requestId === cartSaveRequest.current) setCartSyncError('تعذر مزامنة السلة مع حسابك. تحقق من الاتصال ثم أعد تحميل الصفحة.');
       });
+<<<<<<< HEAD
   }, [cart, session, loadedAccountId]);
 
   const cartLoading = Boolean(session && loadedAccountId !== session.user.id);
+=======
+  }, [cart, accountId, loadedAccountId]);
+
+  const cartLoading = Boolean(accountId && loadedAccountId !== accountId && cartLoadFailedForAccountId !== accountId);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const addItem = (product, quantity = 1) => {
     const sellingPrice = Number(product.selectedPrice ?? product.discountedPrice ?? product.price ?? 0);
     const productKey = variantKey(product.selectedVariants);
@@ -297,16 +359,34 @@ function CartProvider({ children }) {
 }
 
 function useSiteSettings() {
+<<<<<<< HEAD
   const [settings, setSettings] = useState(defaultSettings);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
+=======
+  const [settings, setSettings] = useState(() => getCachedSiteSettings() || defaultSettings);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(() => getCachedSiteSettings() === null);
+
+  useEffect(() => {
+    let active = true;
+    const loadingTimeout = getCachedSiteSettings() === null
+      ? window.setTimeout(() => {
+          if (active) {
+            setError('استغرق تحميل إعدادات المتجر وقتاً أطول من المتوقع. تحقق من الاتصال.');
+            setLoading(false);
+          }
+        }, 15000)
+      : null;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     getSiteSettings()
       .then((data) => {
         if (!active) return;
         const nextSettings = { ...defaultSettings, ...(data || {}) };
         setSettings(nextSettings);
+<<<<<<< HEAD
       })
       .catch(() => {
         if (active) setError('تعذر تحميل إعدادات المتجر. تحقق من الاتصال ثم أعد تحميل الصفحة.');
@@ -315,6 +395,24 @@ function useSiteSettings() {
   }, []);
 
   return { settings, error };
+=======
+        setError('');
+      })
+      .catch(() => {
+        if (active) setError('تعذر تحميل إعدادات المتجر. تحقق من الاتصال ثم أعد تحميل الصفحة.');
+      })
+      .finally(() => {
+        if (loadingTimeout !== null) window.clearTimeout(loadingTimeout);
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      if (loadingTimeout !== null) window.clearTimeout(loadingTimeout);
+    };
+  }, []);
+
+  return { settings, error, loading };
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 }
 
 function ProductImage({ src, alt, className = '' }) {
@@ -397,6 +495,10 @@ function AppContent() {
         <Route path="/account/policy" element={<AccountPage />} />
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/login" element={<Login />} />
+<<<<<<< HEAD
+=======
+        {import.meta.env.DEV && <Route path="/_preview/setup-store" element={<div className="admin-shell admin-setup-shell"><section className="admin-content"><StoreSetup preview /></section></div>} />}
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         <Route path="/admin/*" element={<Admin />} />
         <Route path="*" element={<Store />} />
       </Routes>
@@ -408,6 +510,10 @@ function BottomNav() {
   const { count } = useCart();
   const { user, profile } = useAuth();
   const location = useLocation();
+<<<<<<< HEAD
+=======
+  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/_preview')) return null;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const items = [
     { label: 'الرئيسية', to: '/', icon: 'home', active: location.pathname === '/' },
     ...(profile?.role === 'admin' ? [{ label: 'لوحة الإدارة', to: '/admin', icon: 'grid', active: location.pathname.startsWith('/admin') }] : []),
@@ -568,7 +674,14 @@ function StoreNav({ settings, settingsError = '' }) {
       <header className="nav">
         <Link to="/" className="brand store-wordmark">
           <span>{storeName}</span>
+<<<<<<< HEAD
           {settings.tagline && <small>{settings.tagline}</small>}
+=======
+          {settings.tagline && <small style={{
+            color: settings.taglineColor || defaultSettings.taglineColor,
+            fontFamily: settings.taglineFont === 'serif' ? 'Georgia, serif' : settings.taglineFont === 'sans' ? 'Arial, sans-serif' : '"Cairo", sans-serif',
+          }}>{settings.tagline}</small>}
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         </Link>
         <nav>
           {!user && <Link to="/login">تسجيل الدخول</Link>}
@@ -584,9 +697,15 @@ function StoreNav({ settings, settingsError = '' }) {
 }
 
 function Store() {
+<<<<<<< HEAD
   const { settings, error: settingsError } = useSiteSettings();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+=======
+  const { settings, error: settingsError, loading: settingsLoading } = useSiteSettings();
+  const [products, setProducts] = useState(() => getCachedProducts() || []);
+  const [loading, setLoading] = useState(() => getCachedProducts() === null);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState('');
@@ -600,6 +719,7 @@ function Store() {
 
   useEffect(() => {
     let active = true;
+<<<<<<< HEAD
     setLoading(true);
     setLoadError('');
     listProducts()
@@ -613,6 +733,37 @@ function Store() {
         if (active) setLoading(false);
       });
     return () => { active = false; };
+=======
+    const cachedProducts = getCachedProducts();
+    if (cachedProducts === null) setLoading(true);
+    else {
+      setProducts(cachedProducts);
+      setLoading(false);
+    }
+    setLoadError('');
+    const loadingTimeout = window.setTimeout(() => {
+      if (active) {
+        setLoadError('استغرق تحميل المنتجات وقتاً أطول من المتوقع. تحقق من الاتصال ثم أعد المحاولة.');
+        setLoading(false);
+      }
+    }, 15000);
+    listProducts({ forceRefresh: reloadKey > 0 })
+      .then((data) => {
+        if (active) setProducts(Array.isArray(data) ? data : []);
+      })
+      .catch((reason) => {
+        console.error('HomePage listProducts failed:', reason);
+        if (active) setLoadError('تعذر تحميل المنتجات. تحقق من الاتصال ثم أعد المحاولة.');
+      })
+      .finally(() => {
+        window.clearTimeout(loadingTimeout);
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      window.clearTimeout(loadingTimeout);
+    };
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   }, [reloadKey]);
 
   const safeProducts = Array.isArray(products) ? products : [];
@@ -654,6 +805,13 @@ function Store() {
     setCurrentPage((page) => Math.min(page, totalPages));
   }, [totalPages]);
 
+<<<<<<< HEAD
+=======
+  if (loading || settingsLoading) {
+    return <main className="store-startup-loading" role="status">جارٍ تجهيز المتجر...</main>;
+  }
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   return (
     <>
       <StoreNav settings={settings} settingsError={settingsError} />
@@ -775,10 +933,19 @@ function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState('');
   const [selectedVariants, setSelectedVariants] = useState({});
   const [similarProducts, setSimilarProducts] = useState([]);
+<<<<<<< HEAD
   const [isProductSaved, setIsProductSaved] = useState(false);
   const [productActionMessage, setProductActionMessage] = useState('');
 
   useEffect(() => {
+=======
+  const [isProductSaved, setIsProductSaved] = useState(null);
+  const [favoriteSaving, setFavoriteSaving] = useState(false);
+  const [productActionMessage, setProductActionMessage] = useState('');
+
+  useEffect(() => {
+    setIsProductSaved(null);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     recordView('product', id).catch((reason) => console.error('تعذر تسجيل زيارة المنتج', reason));
 
     setLoading(true);
@@ -824,7 +991,11 @@ function ProductDetailPage() {
     : Infinity;
   const maxSelectableQuantity = readyForStock ? remainingStock : Infinity;
   const displayedQuantity = readyForStock ? Math.min(quantity, maxSelectableQuantity) : quantity;
+<<<<<<< HEAD
   const isProductFavorite = isProductSaved || (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
+=======
+  const isProductFavorite = isProductSaved ?? (Array.isArray(user?.user_metadata?.saved_products) && user.user_metadata.saved_products.some((item) => String(item.id) === String(product.id)));
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   const chooseVariantOption = (variant, label) => {
     setSelectedVariants((current) => ({ ...current, [variant.name]: label }));
@@ -835,6 +1006,7 @@ function ProductDetailPage() {
       navigate('/login', { state: { returnTo: `/product/${product.id}` } });
       return;
     }
+<<<<<<< HEAD
     setProductActionMessage('');
     const currentProducts = Array.isArray(user.user_metadata?.saved_products) ? user.user_metadata.saved_products : [];
     const alreadySaved = currentProducts.some((item) => String(item.id) === String(product.id));
@@ -847,6 +1019,26 @@ function ProductDetailPage() {
       return;
     }
     setIsProductSaved(!alreadySaved);
+=======
+    if (favoriteSaving) return;
+    setProductActionMessage('');
+    const currentProducts = Array.isArray(user.user_metadata?.saved_products) ? user.user_metadata.saved_products : [];
+    const alreadySaved = Boolean(isProductFavorite);
+    const nextProducts = alreadySaved
+      ? currentProducts.filter((item) => String(item.id) !== String(product.id))
+      : [...currentProducts, { id: product.id, name: product.name, imageUrl: product.imageUrl, price: finalPrice }];
+    setIsProductSaved(!alreadySaved);
+    setFavoriteSaving(true);
+    try {
+      const { error: authError } = await supabase.auth.updateUser({ data: { saved_products: nextProducts } });
+      if (authError) throw authError;
+    } catch {
+      setIsProductSaved(alreadySaved);
+      setProductActionMessage('تعذر تحديث المفضلة. حاول مرة أخرى.');
+    } finally {
+      setFavoriteSaving(false);
+    }
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   };
 
   const shareProduct = async () => {
@@ -880,7 +1072,11 @@ function ProductDetailPage() {
               <div className="product-detail-actions">
                 <button type="button" className="product-image-action back-product" onClick={goBack} aria-label="رجوع خطوة للوراء" title="رجوع خطوة للوراء"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg></button>
                 <div className="product-detail-action-group">
+<<<<<<< HEAD
                   <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><svg viewBox="0 0 24 24" fill={isProductFavorite ? 'currentColor' : 'none'} aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1 7.8 7.8 7.8-7.8 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z" /></svg></button>
+=======
+                  <button type="button" className={`product-image-action favorite-product ${isProductFavorite ? 'active' : ''}`} onClick={toggleProductFavorite} disabled={favoriteSaving} aria-label={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'} title={isProductFavorite ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}><svg viewBox="0 0 24 24" fill={isProductFavorite ? 'currentColor' : 'none'} aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1 7.8 7.8 7.8-7.8 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z" /></svg></button>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
                   <button type="button" className="product-image-action share-product" onClick={shareProduct} aria-label="مشاركة رابط المنتج" title="مشاركة رابط المنتج"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M4 15v5h16v-5" /></svg></button>
                 </div>
               </div>
@@ -944,7 +1140,11 @@ function ProductDetailPage() {
                 <button type="button" aria-label="زيادة الكمية" disabled={readyForStock && displayedQuantity >= maxSelectableQuantity} onClick={() => setQuantity((value) => readyForStock ? Math.min(Math.min(value, maxSelectableQuantity) + 1, maxSelectableQuantity) : value + 1)}>+</button>
               </div>
               <div className="detail-purchase-summary"><small>{product.name}</small><strong>{money(finalPrice)}</strong></div>
+<<<<<<< HEAD
               <AddToCartButton product={{ ...product, selectedVariants, selectedPrice: finalPrice }} quantity={displayedQuantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || (readyForStock && maxSelectableQuantity < 1) || !variantsComplete} className="primary block" label="أضف إلى السلة" disabledLabel={settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : (readyForStock && maxSelectableQuantity < 1 ? 'لا توجد كمية متبقية' : 'غير متوفر'))} />
+=======
+              <AddToCartButton product={{ ...product, selectedVariants, selectedPrice: finalPrice }} quantity={displayedQuantity} disabled={settings.maintenanceMode || productAvailabilityMode(product) === 'unavailable' || (readyForStock && maxSelectableQuantity < 1) || !variantsComplete} className="primary block product-purchase-button" label="أضف إلى السلة" disabledLabel={settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (!variantsComplete ? 'اختر الخيارات أولاً' : (readyForStock && maxSelectableQuantity < 1 ? 'لا توجد كمية متبقية' : 'غير متوفر'))} />
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
             </div>
           </div>
         </div>
@@ -998,7 +1198,13 @@ function Checkout() {
 
   const delivery = Number(settings.deliveryFee ?? defaultSettings.deliveryFee);
   const discountAmount = discount ? (discount.type === 'percentage' ? subtotal * Math.min(100, Math.max(0, Number(discount.value || 0))) / 100 : Math.min(Number(discount.value || 0), subtotal)) : 0;
+<<<<<<< HEAD
   const total = subtotal - discountAmount + delivery;
+=======
+  const taxRate = Number(settings.taxRate ?? 0);
+  const taxAmount = Number(((subtotal - discountAmount) * taxRate / 100).toFixed(2));
+  const total = subtotal - discountAmount + taxAmount + delivery;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -1041,6 +1247,12 @@ function Checkout() {
     event.preventDefault();
     if (isSubmitting) return;
     setError('');
+<<<<<<< HEAD
+=======
+    if (discountApplicationPending(form.discountCode, discount?.code)) {
+      return setError('طبّق كود الخصم أو امسحه قبل إكمال الطلب');
+    }
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     if (!user) return setError('لا يمكنك إكمال الطلب إلا بعد تسجيل الدخول');
     if (needsPassword) return setError('قبل إرسال الطلب، اذهب إلى الحساب وعيّن كلمة مرور أولاً.');
     if (settings.maintenanceMode) return setError('الطلبات متوقفة مؤقتاً بسبب الصيانة');
@@ -1056,7 +1268,13 @@ function Checkout() {
       address: form.address.trim(),
       nearestLandmark: form.nearestLandmark.trim(),
       phoneNumber: form.phoneNumber,
+<<<<<<< HEAD
       discountCode: discount?.code || '',
+=======
+      enteredDiscountCode: form.discountCode.trim(),
+      discountCode: discount?.code || '',
+      finalTotal: Number(total.toFixed(2)),
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     };
     const fingerprint = JSON.stringify(payload);
     if (orderRequest.current.fingerprint !== fingerprint) {
@@ -1103,11 +1321,19 @@ function Checkout() {
           <h1>إتمام الطلب</h1>
           <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
         </div>
+<<<<<<< HEAD
 
         {cartLoading ? (
           <div className="empty" role="status">
             {cartSyncError || 'جاري تحميل سلة حسابك...'}
             {cartSyncError && <button type="button" className="secondary-button" onClick={retryCartLoad}>إعادة المحاولة</button>}
+=======
+        {cartSyncError && <p className="error" role="alert">{cartSyncError} <button type="button" className="secondary-button" onClick={retryCartLoad}>إعادة المحاولة</button></p>}
+
+        {cartLoading ? (
+          <div className="empty" role="status">
+            جاري تحميل سلة حسابك...
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
           </div>
         ) : !cart.length ? (
           <div className="empty">السلة فارغة حالياً. <Link to="/">تصفح المنتجات</Link></div>
@@ -1134,9 +1360,14 @@ function Checkout() {
                 <button type="button" onClick={applyDiscount} disabled={couponApplying}>{couponApplying ? 'جارٍ التحقق...' : 'تطبيق'}</button>
               </div>
               {couponMessage && <p className="success-message" role="status">{couponMessage}</p>}
+<<<<<<< HEAD
               {cartSyncError && <p className="error" role="alert">{cartSyncError}</p>}
               {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}{needsPassword && <><br /><Link to="/account">الذهاب إلى الحساب وتعيين كلمة المرور</Link></>}</p>}
               <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading} aria-busy={isSubmitting}>
+=======
+              {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}{needsPassword && <><br /><Link to="/account">الذهاب إلى الحساب وتعيين كلمة المرور</Link></>}</p>}
+              <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading || couponApplying || discountApplicationPending(form.discountCode, discount?.code)} aria-busy={isSubmitting}>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
                 {settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (isSubmitting ? 'جارٍ إرسال الطلب...' : 'تأكيد وإرسال الطلب')}
               </button>
             </form>
@@ -1159,6 +1390,10 @@ function Checkout() {
               ))}
               <div className="totals">
                 <div><span>الخصم {discount ? `(${discount.type === 'percentage' ? `${discount.value}%` : money(discount.value)})` : ''}</span><strong>- {money(discountAmount)}</strong></div>
+<<<<<<< HEAD
+=======
+                <div><span>الضريبة ({taxRate}%)</span><strong>{money(taxAmount)}</strong></div>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
                 <div><span>التوصيل</span><strong>{money(delivery)}</strong></div>
                 <div className="total-row"><span>السعر الاجمالي</span><strong>{money(total)}</strong></div>
               </div>
@@ -1177,6 +1412,12 @@ function MyOrders() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+<<<<<<< HEAD
+=======
+  const [cancelingOrderId, setCancelingOrderId] = useState(null);
+  const [orderActionError, setOrderActionError] = useState('');
+  const [orderActionMessage, setOrderActionMessage] = useState('');
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   useEffect(() => {
     let active = true;
@@ -1187,7 +1428,11 @@ function MyOrders() {
     }
     setLoading(true);
     setLoadError('');
+<<<<<<< HEAD
     getAccountOrders(user.id)
+=======
+    getAccountOrders()
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       .then((data) => {
         if (active) setOrders(Array.isArray(data) ? data : []);
       })
@@ -1201,6 +1446,29 @@ function MyOrders() {
   }, [user, reloadKey]);
 
   const statusLabels = { new: 'جديد', processing: 'قيد التجهيز', delivered: 'تم التوصيل', cancelled: 'ملغي' };
+<<<<<<< HEAD
+=======
+  const handleCancelOrder = async (order) => {
+    if (order.status !== 'new' || !window.confirm(`هل أنت متأكد من إلغاء الطلب رقم #${order.accountOrderNumber || order.id}؟`)) return;
+    setOrderActionError('');
+    setOrderActionMessage('');
+    setCancelingOrderId(order.id);
+    try {
+      const cancelled = await cancelOrder(order.id);
+      if (!cancelled) {
+        setOrderActionError('لا يمكن إلغاء الطلب بعد بدء تجهيزه أو توصيله.');
+        setReloadKey((value) => value + 1);
+        return;
+      }
+      setOrders((current) => current.map((item) => item.id === order.id ? { ...item, status: 'cancelled' } : item));
+      setOrderActionMessage('تم إلغاء الطلب.');
+    } catch {
+      setOrderActionError('تعذر إلغاء الطلب. تحقق من الاتصال ثم حاول مرة أخرى.');
+    } finally {
+      setCancelingOrderId(null);
+    }
+  };
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   if (!user) return <Navigate to="/login" replace state={{ returnTo: '/my-orders' }} />;
 
   return (
@@ -1210,14 +1478,27 @@ function MyOrders() {
         <p className="eyebrow">حسابي</p>
         <h1>طلباتي</h1>
         <Link to="/" className="back-link">الرجوع إلى المتجر</Link>
+<<<<<<< HEAD
         {loading ? <div className="empty">جاري تحميل الطلبات...</div> : loadError ? <div className="empty" role="alert">{loadError}<button type="button" className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>إعادة المحاولة</button></div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
           <div className="account-order-list">
             {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
               <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleDateString('ar-IQ')}</small></div><span className="account-order-status">{statusLabels[order.status] || order.status}</span></div>
+=======
+        {orderActionError && <p className="error" role="alert">{orderActionError}</p>}
+        {orderActionMessage && <p className="success-message" role="status">{orderActionMessage}</p>}
+        {loading ? <div className="empty">جاري تحميل الطلبات...</div> : loadError ? <div className="empty" role="alert">{loadError}<button type="button" className="secondary-button" onClick={() => setReloadKey((value) => value + 1)}>إعادة المحاولة</button></div> : !orders.length ? <div className="empty">لا توجد طلبات</div> : (
+          <div className="account-order-list">
+            {(Array.isArray(orders) ? orders : []).map((order) => <article className={`account-order status-${order.status}`} key={order.id}>
+              <div className="account-order-heading"><div><strong>طلب #{order.accountOrderNumber || order.id}</strong><small>{new Date(order.createdAt).toLocaleDateString('ar-IQ')}</small></div><div className="account-order-actions"><span className="account-order-status">{statusLabels[order.status] || order.status}</span>{order.status === 'new' && <button type="button" className="secondary-button account-order-cancel" disabled={cancelingOrderId !== null} onClick={() => handleCancelOrder(order)}>{cancelingOrderId === order.id ? 'جارٍ الإلغاء...' : 'إلغاء الطلب'}</button>}</div></div>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
               <div className="account-order-items">{(Array.isArray(order.items) ? order.items : []).map((item) => <div key={`${order.id}-${item.productId}`}><span>{item.name} × {item.quantity}{selectedVariantText(item.selectedVariants) && <small>{selectedVariantText(item.selectedVariants)}</small>}</span><strong>{money(Number(item.price || 0) * Number(item.quantity || 0))}</strong></div>)}</div>
               <div className="account-order-totals">
                 <div><span>المجموع</span><strong>{money(order.subtotal)}</strong></div>
                 <div><span>الخصم {order.discountValue ? `(${order.discountType === 'percentage' ? `${order.discountValue}%` : money(order.discountValue)})` : ''}</span><strong>- {money(order.discountAmount)}</strong></div>
+<<<<<<< HEAD
+=======
+                <div><span>الضريبة</span><strong>{money(order.taxAmount || 0)}</strong></div>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
                 <div><span>التوصيل</span><strong>{money(order.deliveryFee)}</strong></div>
                 <div className="account-order-final"><span>الإجمالي</span><strong>{money(order.finalTotal)}</strong></div>
               </div>
@@ -1263,7 +1544,11 @@ function Login() {
         setError(authErrorMessage(authError, 'تعذر إرسال رابط الدخول. حاول مرة أخرى.'));
         return false;
       }
+<<<<<<< HEAD
       setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني، يرجى الضغط عليه لإكمال التسجيل.');
+=======
+      setMessage('تم إرسال رابط الدخول إلى بريدك الإلكتروني. افتحه للدخول إلى حسابك.');
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       return true;
     } catch {
       setError('تعذر إرسال رابط الدخول حالياً. حاول مرة أخرى.');
@@ -1271,6 +1556,31 @@ function Login() {
     }
   };
 
+<<<<<<< HEAD
+=======
+  const sendPasswordReset = async () => {
+    setError('');
+    setMessage('');
+    const email = identifier.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('أدخل بريداً إلكترونياً صحيحاً لإعادة تعيين كلمة المرور');
+      return;
+    }
+    try {
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/account/password`,
+      });
+      if (authError) {
+        setError(authErrorMessage(authError, 'تعذر إرسال رابط إعادة التعيين. حاول مرة أخرى.'));
+        return;
+      }
+      setMessage('إذا كان البريد مرتبطاً بحساب، فسيصلك رابط إعادة تعيين كلمة المرور.');
+    } catch {
+      setError('تعذر إرسال رابط إعادة التعيين حالياً. حاول مرة أخرى.');
+    }
+  };
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const submit = async (event) => {
     event.preventDefault();
     setError('');
@@ -1343,7 +1653,14 @@ function Login() {
         {error && <p className="error">{error}</p>}
         {message && <p className="success-message">{message}</p>}
         <button type="submit" className="primary full">{mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}</button>
+<<<<<<< HEAD
         {mode === 'login' && error && <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول جديد إلى البريد</button>}
+=======
+        {mode === 'login' && <>
+          <button type="button" className="back" onClick={sendPasswordReset}>نسيت كلمة المرور؟ أرسل رابط إعادة التعيين</button>
+          <button type="button" className="back" onClick={sendMagicLink}>إرسال رابط دخول إلى البريد</button>
+        </>}
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         {mode === 'register' ? (
           <>
             <p className="auth-switch-copy">لديك حساب؟ <button type="button" onClick={() => { setMode('login'); setError(''); setMessage(''); }}>تسجيل الدخول</button></p>
@@ -1387,11 +1704,20 @@ function Admin() {
     discounts: 'أكواد الخصم',
     settings: 'إعدادات المتجر',
     admins: 'المشرفون',
+<<<<<<< HEAD
   };
 
   return (
     <div className="admin-shell">
       <aside className="admin-side">
+=======
+    'setup-store': 'أنشئ متجرك',
+  };
+
+  return (
+    <div className={`admin-shell ${page === 'setup-store' ? 'admin-setup-shell' : ''}`}>
+      {page !== 'setup-store' && <aside className="admin-side">
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         <Link to="/" className="brand">المتجر<small>لوحة التحكم</small></Link>
         <Link className={page === 'overview' ? 'active' : ''} to="/admin">نظرة عامة</Link>
         <Link className={page === 'products' ? 'active' : ''} to="/admin/products">المنتجات</Link>
@@ -1401,18 +1727,31 @@ function Admin() {
         <Link className={page === 'admins' ? 'active' : ''} to="/admin/admins">المشرفون</Link>
         <button type="button" className="logout" onClick={async () => { if (await signOut(setLogoutError)) navigate('/'); }}>تسجيل الخروج</button>
         {logoutError && <p className="error">{logoutError}</p>}
+<<<<<<< HEAD
       </aside>
 
       <section className="admin-content">
         <div className="admin-top">
+=======
+      </aside>}
+
+      <section className="admin-content">
+        {page !== 'setup-store' && <div className="admin-top">
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
           <div>
             <p className="eyebrow"></p>
             <h1>{titleMap[page] || 'لوحة الإدارة'}</h1>
           </div>
           <Link to="/" className="view-store">عرض المتجر ↗</Link>
         </div>
+<<<<<<< HEAD
 
         {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : page === 'admins' ? <AdminsAdmin /> : <Overview />}
+=======
+        }
+
+        {page === 'products' ? <ProductsAdmin /> : page === 'orders' ? <OrdersAdmin /> : page === 'discounts' ? <DiscountsAdmin /> : page === 'settings' ? <SiteSettingsAdmin /> : page === 'admins' ? <AdminsAdmin /> : page === 'setup-store' ? <StoreSetup /> : <Overview />}
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       </section>
     </div>
   );
@@ -1499,6 +1838,10 @@ function ProductsAdmin() {
   const [primaryImageFile, setPrimaryImageFile] = useState(null);
   const [additionalImageFiles, setAdditionalImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState({ primary: '', additional: [] });
+<<<<<<< HEAD
+=======
+  const [cropSelection, setCropSelection] = useState(null);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const primaryImageInputRef = useRef(null);
   const additionalImageInputRef = useRef(null);
   const [editingId, setEditingId] = useState(null);
@@ -1506,6 +1849,38 @@ function ProductsAdmin() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const categoryItems = getStoreCategories(storeSettings.storeCategories, items);
+<<<<<<< HEAD
+=======
+  const showImageCropError = useCallback((reason) => {
+    setError(reason?.message || 'تعذر تجهيز الصورة المحددة');
+    setCropSelection(null);
+  }, []);
+
+  const applyImageCrop = (croppedFile) => {
+    if (cropSelection?.kind === 'primary') {
+      setPrimaryImageFile(croppedFile);
+    } else if (cropSelection?.kind === 'additional') {
+      const currentIndex = cropSelection.index;
+      setAdditionalImageFiles((current) => current.map((file, index) => index === currentIndex ? croppedFile : file));
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < additionalImageFiles.length) {
+        setCropSelection({ kind: 'additional', index: nextIndex, file: additionalImageFiles[nextIndex] });
+        return;
+      }
+    }
+    setCropSelection(null);
+  };
+
+  const choosePrimaryImage = (file) => {
+    setPrimaryImageFile(file || null);
+    setCropSelection(file ? { kind: 'primary', file } : null);
+  };
+
+  const chooseAdditionalImages = (files) => {
+    setAdditionalImageFiles(files);
+    setCropSelection(files.length ? { kind: 'additional', index: 0, file: files[0] } : null);
+  };
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   const load = async () => {
     try {
@@ -1546,9 +1921,15 @@ function ProductsAdmin() {
 
   const resetForm = () => {
     setForm(emptyForm);
+<<<<<<< HEAD
     setCategoryMode('existing');
     setPrimaryImageFile(null);
     setAdditionalImageFiles([]);
+=======
+    setPrimaryImageFile(null);
+    setAdditionalImageFiles([]);
+    setCropSelection(null);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     if (primaryImageInputRef.current) primaryImageInputRef.current.value = '';
     if (additionalImageInputRef.current) additionalImageInputRef.current.value = '';
     setEditingId(null);
@@ -1732,6 +2113,16 @@ function ProductsAdmin() {
 
   return (
     <>
+<<<<<<< HEAD
+=======
+      {cropSelection && <ImageCropDialog
+        key={`${cropSelection.kind}-${cropSelection.index ?? 'main'}-${cropSelection.file.name}-${cropSelection.file.lastModified}`}
+        file={cropSelection.file}
+        onCancel={() => setCropSelection(null)}
+        onApply={applyImageCrop}
+        onError={showImageCropError}
+      />}
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       <form className="admin-form product-editor" onSubmit={submit}>
         <header className="product-editor-heading"><div><h2>{editingId ? 'تعديل المنتج' : 'إضافة منتج'}</h2></div>{editingId && <button type="button" className="secondary-button" onClick={resetForm}>إلغاء التعديل</button>}</header>
 
@@ -1795,12 +2186,21 @@ function ProductsAdmin() {
         <section className="product-editor-section" aria-labelledby="product-images-title">
           <div className="product-editor-section-heading"><h3 id="product-images-title">صور المنتج</h3></div>
           <div className="product-editor-fields">
+<<<<<<< HEAD
             <label className="product-file-field">الصورة الرئيسية<input ref={primaryImageInputRef} type="file" accept="image/*" onChange={(event) => setPrimaryImageFile(event.target.files?.[0] || null)} /></label>
             <label className="product-file-field">صور إضافية<input ref={additionalImageInputRef} type="file" accept="image/*" multiple onChange={(event) => setAdditionalImageFiles(Array.from(event.target.files || []))} /></label>
             <div className="product-image-previews" aria-live="polite">
               {(imagePreviews.primary || form.imageUrl || form.productImages[0]) ? <figure className="product-image-preview"><img src={imagePreviews.primary || form.imageUrl || form.productImages[0]} alt="معاينة الصورة الرئيسية" /><button type="button" className="product-image-remove" aria-label="حذف الصورة الرئيسية" title="حذف الصورة الرئيسية" onClick={removePrimaryImage}>×</button><figcaption>الصورة الرئيسية</figcaption></figure> : <p className="product-image-preview-empty">لم يتم اختيار صورة رئيسية</p>}
               {form.productImages.filter((image) => image && (image !== (form.imageUrl || form.productImages[0]) || imagePreviews.primary)).map((image, index) => <figure className="product-image-preview" key={`saved-image-${image}`}><img src={image} alt={`صورة المنتج ${index + 2}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة المحفوظة ${index + 1}`} title="حذف الصورة" onClick={() => removeSavedImage(image)}>×</button><figcaption>صورة محفوظة</figcaption></figure>)}
               {imagePreviews.additional.map((image, index) => <figure className="product-image-preview" key={`new-image-${index}`}><img src={image} alt={`معاينة الصورة الإضافية ${index + 1}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة الإضافية ${index + 1}`} title="حذف الصورة" onClick={() => removeAdditionalImageFile(index)}>×</button><figcaption>صورة إضافية</figcaption></figure>)}
+=======
+            <label className="product-file-field">الصورة الرئيسية<input ref={primaryImageInputRef} type="file" accept="image/*" onChange={(event) => choosePrimaryImage(event.target.files?.[0] || null)} /></label>
+            <label className="product-file-field">صور إضافية<input ref={additionalImageInputRef} type="file" accept="image/*" multiple onChange={(event) => chooseAdditionalImages(Array.from(event.target.files || []))} /></label>
+            <div className="product-image-previews" aria-live="polite">
+              {(imagePreviews.primary || form.imageUrl || form.productImages[0]) ? <figure className="product-image-preview"><img src={imagePreviews.primary || form.imageUrl || form.productImages[0]} alt="معاينة الصورة الرئيسية" /><button type="button" className="product-image-remove" aria-label="حذف الصورة الرئيسية" title="حذف الصورة الرئيسية" onClick={removePrimaryImage}>×</button><figcaption>الصورة الرئيسية</figcaption>{primaryImageFile && <button type="button" className="product-image-crop" onClick={() => setCropSelection({ kind: 'primary', file: primaryImageFile })}>تعديل الجزء الظاهر</button>}</figure> : <p className="product-image-preview-empty">لم يتم اختيار صورة رئيسية</p>}
+              {form.productImages.filter((image) => image && (image !== (form.imageUrl || form.productImages[0]) || imagePreviews.primary)).map((image, index) => <figure className="product-image-preview" key={`saved-image-${image}`}><img src={image} alt={`صورة المنتج ${index + 2}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة المحفوظة ${index + 1}`} title="حذف الصورة" onClick={() => removeSavedImage(image)}>×</button><figcaption>صورة محفوظة</figcaption></figure>)}
+              {imagePreviews.additional.map((image, index) => <figure className="product-image-preview" key={`new-image-${index}`}><img src={image} alt={`معاينة الصورة الإضافية ${index + 1}`} /><button type="button" className="product-image-remove" aria-label={`حذف الصورة الإضافية ${index + 1}`} title="حذف الصورة" onClick={() => removeAdditionalImageFile(index)}>×</button><figcaption>صورة إضافية</figcaption><button type="button" className="product-image-crop" onClick={() => setCropSelection({ kind: 'additional', index, file: additionalImageFiles[index] })}>تعديل الجزء الظاهر</button></figure>)}
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
             </div>
           </div>
         </section>
@@ -1912,6 +2312,14 @@ function OrdersAdmin() {
   }, []);
 
   const changeOrderStatus = async (id, status) => {
+<<<<<<< HEAD
+=======
+    const order = orders.find((item) => item.id === id);
+    if (status === 'cancelled' && order?.status !== 'new') {
+      setError('لا يمكن إلغاء طلب قيد التجهيز أو تم توصيله.');
+      return;
+    }
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     setError('');
     setUpdatingOrderId(id);
     try {
@@ -1953,7 +2361,11 @@ function OrdersAdmin() {
               <option value="new">جديد</option>
               <option value="processing">قيد التجهيز</option>
               <option value="delivered">تم التوصيل</option>
+<<<<<<< HEAD
               <option value="cancelled">ملغي</option>
+=======
+              <option value="cancelled" disabled={!['new', 'cancelled'].includes(order.status)}>ملغي</option>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
             </select>
           </div>
 
@@ -1965,6 +2377,10 @@ function OrdersAdmin() {
             <p><b>رقم هاتف</b>{order.phoneNumber}</p>
             <p><b>كود الخصم</b>{order.discountCode || 'لا يوجد'}</p>
             <p><b>الخصم</b>{money(order.discountAmount)}</p>
+<<<<<<< HEAD
+=======
+            <p><b>الضريبة</b>{money(order.taxAmount || 0)}</p>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
             <p><b>التوصيل</b>{money(order.deliveryFee)}</p>
             <p><b>الإجمالي النهائي</b><strong>{money(order.finalTotal)}</strong></p>
           </div>
@@ -2149,7 +2565,232 @@ function AdminsAdmin() {
   );
 }
 
+<<<<<<< HEAD
 function SiteSettingsAdmin() {
+=======
+function StoreSetup({ preview = false }) {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(0);
+  const [storeName, setStoreName] = useState('');
+  const [tagline, setTagline] = useState('');
+  const [taglineFont, setTaglineFont] = useState('cairo');
+  const taglineColor = '#102F29';
+  const [aboutText, setAboutText] = useState('');
+  const [policyText, setPolicyText] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [adminName, setAdminName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [productName, setProductName] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+  const [productPrice, setProductPrice] = useState('');
+  const [productQuantity, setProductQuantity] = useState('');
+  const [productImage, setProductImage] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const steps = ['هوية المتجر', 'من نحن وسياساتنا', 'إضافة مالك', 'إضافة مشرف', 'إضافة أول منتج'];
+  const colors = [
+    { value: '#102F29', label: 'فحمي' },
+    { value: '#D8AB4E', label: 'ذهبي' },
+    { value: '#607C2D', label: 'أخضر' },
+    { value: '#795039', label: 'بني' },
+  ];
+
+  const validateStep = (step) => {
+    if (step === 0 && (!storeName.trim() || !tagline.trim())) return 'أدخل اسم المتجر والشعار النصي للمتابعة.';
+    if (step === 1 && (!aboutText.trim() || !policyText.trim())) return 'أدخل نص «من نحن» وسياسات المتجر للمتابعة.';
+    if (step === 2 &&
+      (!ownerName.trim() || ownerName.trim().length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim()) || ownerPassword.trim().length < 8)) {
+      return 'أدخل الاسم الكريم وبريداً إلكترونياً صحيحاً وكلمة مرور لا تقل عن 8 أحرف للمتابعة.';
+    }
+    if (step === 3 && (adminName.trim() || adminEmail.trim()) &&
+      (!adminName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail.trim()))) {
+      return 'لإضافة مشرف، أدخل الاسم والبريد الإلكتروني الصحيح، أو تخط هذه الخطوة.';
+    }
+    if (step === 4 && (productName.trim() || productDescription.trim() || productPrice !== '' || productQuantity !== '' || productImage)) {
+      const price = Number(productPrice);
+      const quantity = Number(productQuantity);
+      if (!productName.trim() || !productDescription.trim() || !Number.isFinite(price) || price <= 0 ||
+        productQuantity === '' || !Number.isInteger(quantity) || quantity < 0) {
+        return 'لإضافة المنتج، أدخل اسمه ووصفه وسعراً أكبر من صفر وكمية صحيحة لا تقل عن صفر، أو تخط هذه الخطوة.';
+      }
+      if (productImage && (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(productImage.type) || productImage.size > 5 * 1024 * 1024)) {
+        return 'اختر صورة صالحة لا يتجاوز حجمها 5 ميغابايت.';
+      }
+    }
+    return '';
+  };
+
+  const goToNextStep = () => {
+    const validationError = validateStep(currentStep);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError('');
+    setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
+  };
+
+  const skipStep = () => {
+    setError('');
+    if (currentStep === 2) {
+      setOwnerName('');
+      setOwnerEmail('');
+      setOwnerPassword('');
+    }
+    if (currentStep === 3) {
+      setAdminName('');
+      setAdminEmail('');
+    }
+    if (currentStep === 4) {
+      setProductName('');
+      setProductDescription('');
+      setProductPrice('');
+      setProductQuantity('');
+      setProductImage(null);
+    }
+    setCurrentStep((step) => Math.min(step + 1, steps.length - 1));
+  };
+
+  const createStore = async (event) => {
+    event.preventDefault();
+    setError('');
+    for (let step = 0; step < steps.length; step += 1) {
+      const validationError = validateStep(step);
+      if (validationError) {
+        setError(validationError);
+        setCurrentStep(step);
+        return;
+      }
+    }
+    if (preview) {
+      setSuccessMessage('هذه معاينة فقط؛ لم يتم حفظ أي بيانات.');
+      return;
+    }
+    if (profile?.isOwner !== true) {
+      setError('إنشاء المتجر متاح لمالك المتجر فقط.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await completeStoreSetup({
+        storeName: storeName.trim(),
+        tagline: tagline.trim(),
+        taglineFont,
+        taglineColor,
+        aboutText: aboutText.trim(),
+        policyText: policyText.trim(),
+        admin: adminName.trim() ? {
+          name: adminName.trim(),
+          email: adminEmail.trim().toLowerCase(),
+        } : null,
+        product: productName.trim() ? {
+          name: productName.trim(),
+          description: productDescription.trim(),
+          price: Number(productPrice),
+          stockQuantity: Number(productQuantity),
+        } : null,
+      }, productName.trim() ? productImage : null);
+      if (ownerEmail.trim() && ownerPassword.trim()) {
+        try {
+          await createOwnerAccount(ownerName.trim(), ownerEmail.trim().toLowerCase(), ownerPassword);
+        } catch (reason) {
+          setSuccessMessage(`تم إنشاء المتجر، لكن تعذر إنشاء حساب المالك أو نقل الملكية. بقيت الملكية للحساب الحالي. ${reason.message || ''}`);
+          window.setTimeout(() => navigate('/', { replace: true }), 4000);
+          return;
+        }
+      }
+      setSuccessMessage('تم إنشاء المتجر بنجاح. جارٍ فتح متجرك...');
+      window.setTimeout(() => navigate('/', { replace: true }), 1100);
+    } catch (reason) {
+      setError(reason?.message || 'تعذر إنشاء المتجر. تحقق من اتصال الخادم وقاعدة البيانات ثم حاول مجدداً.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStepSubmit = (event) => {
+    event.preventDefault();
+    if (currentStep === steps.length - 1) createStore(event);
+    else goToNextStep();
+  };
+
+  return (
+    <form className="admin-form store-setup-form" onSubmit={handleStepSubmit}>
+      <header className="setup-intro">
+        <h2>أنشئ متجرك</h2>
+        <p>أكمل الخطوات التالية لتجهيز متجرك وإطلاقه.</p>
+      </header>
+      <nav className="setup-stepper" aria-label="خطوات إنشاء المتجر" style={{ '--setup-progress': `${(currentStep / (steps.length - 1)) * 100}%` }}>
+        {steps.map((step, index) => <button
+          type="button"
+          className={`setup-stepper-item ${index === currentStep ? 'active' : ''} ${index < currentStep ? 'complete' : ''}`}
+          key={step}
+          aria-current={index === currentStep ? 'step' : undefined}
+          aria-label={`${index + 1}. ${step}`}
+          disabled={saving || Boolean(successMessage) || index > currentStep}
+          onClick={() => { setError(''); setCurrentStep(index); }}
+        >
+          <span>{index < currentStep ? '✓' : index + 1}</span>
+          <small>{step}</small>
+        </button>)}
+      </nav>
+      <section className="setup-step-panel" aria-live="polite">
+        <h3>{steps[currentStep]}</h3>
+        {currentStep === 0 && <div className="setup-step-fields">
+          <label>اسم المتجر<input autoFocus value={storeName} onChange={(event) => setStoreName(event.target.value)} maxLength={120} /></label>
+          <label>الشعار النصي<input required value={tagline} onChange={(event) => setTagline(event.target.value)} maxLength={160} /></label>
+        </div>}
+        {currentStep === 1 && <div className="setup-step-fields">
+          <button type="button" className="secondary-button setup-template-button" onClick={() => {
+            setAboutText('نحن متجر محلي نهتم بتقديم منتجات مختارة بعناية، ونسعى إلى توفير تجربة تسوق سهلة وخدمة موثوقة لزبائننا.');
+            setPolicyText('الاسترجاع والاستبدال: يمكن طلب الاستبدال أو الاسترجاع خلال 7 أيام من استلام الطلب، بشرط بقاء المنتج بحالته الأصلية.\n\nالشحن والتوصيل: تُجهز الطلبات بأسرع وقت، وتُحدد أجرة ومدة التوصيل عند تأكيد الطلب.\n\nالخصوصية: نستخدم بياناتكم لإتمام الطلب والتواصل بشأنه فقط، ولا نشاركها مع أطراف أخرى.');
+          }}>استخدم نصاً جاهزاً</button>
+          <label>من نحن<textarea autoFocus value={aboutText} onChange={(event) => setAboutText(event.target.value)} maxLength={5000} /></label>
+          <label>سياساتنا<textarea value={policyText} onChange={(event) => setPolicyText(event.target.value)} maxLength={5000} /></label>
+        </div>}
+        {currentStep === 2 && <div className="setup-step-fields">
+          <label>الاسم الكريم<input autoFocus required autoComplete="name" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} maxLength={120} /></label>
+          <label>البريد الإلكتروني<input required type="email" autoComplete="email" dir="ltr" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} /></label>
+          <label>كلمة المرور<input required type="password" autoComplete="new-password" minLength={8} maxLength={128} dir="ltr" value={ownerPassword} onChange={(event) => setOwnerPassword(event.target.value)} /></label>
+        </div>}
+        {currentStep === 3 && <div className="setup-step-fields">
+          <p>سيحصل المشرف على صلاحيات لوحة التحكم كاملة، ويمكنه الدخول باستخدام رابط يُرسل إلى بريده الإلكتروني دون كلمة مرور.</p>
+          <label>الاسم الكريم<input autoFocus value={adminName} onChange={(event) => setAdminName(event.target.value)} maxLength={120} /></label>
+          <label>البريد الإلكتروني<input type="email" autoComplete="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} dir="ltr" /></label>
+        </div>}
+        {currentStep === 4 && <div className="setup-step-fields">
+          <p>يمكنك إضافة أول منتج الآن أو تخطي هذه الخطوة وإضافته لاحقاً.</p>
+          <label>اسم المنتج<input autoFocus value={productName} onChange={(event) => setProductName(event.target.value)} maxLength={160} /></label>
+          <label>وصف المنتج<textarea value={productDescription} onChange={(event) => setProductDescription(event.target.value)} maxLength={5000} /></label>
+          <div className="setup-inline-fields">
+            <label>السعر<input type="number" min="0.01" step="0.01" value={productPrice} onChange={(event) => setProductPrice(event.target.value)} /></label>
+            <label>الكمية<input type="number" min="0" step="1" value={productQuantity} onChange={(event) => setProductQuantity(event.target.value)} /></label>
+          </div>
+          <label>صورة المنتج (اختياري)<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(event) => setProductImage(event.target.files?.[0] || null)} /></label>
+        </div>}
+        {error && <p className="error" role="alert">{error}</p>}
+        {successMessage && <p className="success-message" role="status">{successMessage}</p>}
+        <div className="setup-actions">
+          {currentStep > 0 && <button type="button" className="secondary-button" disabled={saving} onClick={() => { setError(''); setCurrentStep((step) => step - 1); }}>السابق</button>}
+          {currentStep >= 3 && currentStep <= 4 && <button type="button" className="setup-skip-button" disabled={saving} onClick={skipStep}>تخطي</button>}
+          {currentStep === steps.length - 1
+            ? <button type="submit" className="primary" disabled={saving || Boolean(successMessage)}>{saving ? 'جارٍ إنشاء المتجر...' : preview ? 'معاينة البيانات' : 'إنشاء المتجر'}</button>
+            : <button type="button" className="primary" disabled={saving} onClick={goToNextStep}>متابعة</button>}
+        </div>
+      </section>
+    </form>
+  );
+}
+
+function SiteSettingsAdmin() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const [settings, setSettings] = useState(defaultSettings);
   const [products, setProducts] = useState([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -2161,6 +2802,17 @@ function SiteSettingsAdmin() {
   const [productsReloadKey, setProductsReloadKey] = useState(0);
   const [savingSettings, setSavingSettings] = useState(false);
   const [resetting, setResetting] = useState(false);
+<<<<<<< HEAD
+=======
+  const [securityLoading, setSecurityLoading] = useState(true);
+  const [securityConfigured, setSecurityConfigured] = useState(false);
+  const [securityError, setSecurityError] = useState('');
+  const [securityPin, setSecurityPin] = useState('');
+  const [securityPinConfirm, setSecurityPinConfirm] = useState('');
+  const [resetDialog, setResetDialog] = useState('');
+  const [resetPin, setResetPin] = useState('');
+  const [resetToken, setResetToken] = useState('');
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryNameDrafts, setCategoryNameDrafts] = useState({});
   const [uploadingCategoryId, setUploadingCategoryId] = useState('');
@@ -2171,6 +2823,28 @@ function SiteSettingsAdmin() {
 
   useEffect(() => {
     let active = true;
+<<<<<<< HEAD
+=======
+    if (profile?.isOwner !== true) {
+      setSecurityLoading(false);
+      return () => { active = false; };
+    }
+    getResetSecurityStatus()
+      .then(({ configured }) => {
+        if (active) setSecurityConfigured(Boolean(configured));
+      })
+      .catch((reason) => {
+        if (active) setSecurityError(reason.message || 'تعذر التحقق من إعداد رمز الأمان');
+      })
+      .finally(() => {
+        if (active) setSecurityLoading(false);
+      });
+    return () => { active = false; };
+  }, [profile?.isOwner]);
+
+  useEffect(() => {
+    let active = true;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     setSettingsLoading(true);
     setSettingsLoadError('');
     getSiteSettings()
@@ -2201,6 +2875,10 @@ function SiteSettingsAdmin() {
         setProductsLoaded(true);
       })
       .catch((reason) => {
+<<<<<<< HEAD
+=======
+        console.error('AdminSettings listProducts failed:', reason);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         if (active) setProductsLoadError(supabaseErrorMessage(reason, 'تعذر تحميل المنتجات. لا يمكن إدارة الفئات بأمان حتى تنجح إعادة المحاولة.'));
       });
     return () => { active = false; };
@@ -2217,7 +2895,16 @@ function SiteSettingsAdmin() {
     setStatusError('');
     setSavingSettings(true);
     try {
+<<<<<<< HEAD
       const data = await saveSiteSettings({ ...nextSettings, deliveryFee });
+=======
+      const taxRate = Number(nextSettings.taxRate);
+      if (nextSettings.taxRate === '' || !Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+        setStatusError('أدخل نسبة ضريبة من صفر إلى 100');
+        return;
+      }
+      const data = await saveSiteSettings({ ...nextSettings, deliveryFee, taxRate });
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       const savedSettings = { ...defaultSettings, ...data };
       lastSavedSettings.current = JSON.stringify(savedSettings);
       setSettings(savedSettings);
@@ -2325,6 +3012,7 @@ function SiteSettingsAdmin() {
     }
   };
 
+<<<<<<< HEAD
   const resetStore = async () => {
     if (resetting) return;
     const confirmed = window.confirm('هل أنت متأكد؟ سيؤدي هذا إلى حذف المنتجات والطلبات والإحصائيات والخصومات وكل بيانات المتجر، مع الاحتفاظ بحسابات المديرين.');
@@ -2347,6 +3035,56 @@ function SiteSettingsAdmin() {
     setSettingsLoaded(false);
     setSettingsReloadKey((value) => value + 1);
     setProductsReloadKey((value) => value + 1);
+=======
+  const saveSecurityPin = async () => {
+    setSecurityError('');
+    if (securityPin.length < 6 || securityPin.length > 128) {
+      setSecurityError('يجب أن يتكون رمز الأمان من 6 خانات على الأقل.');
+      return;
+    }
+    if (securityPin !== securityPinConfirm) {
+      setSecurityError('تأكيد رمز الأمان غير مطابق.');
+      return;
+    }
+    try {
+      await createResetSecurityPin(securityPin);
+      setSecurityConfigured(true);
+      setSecurityPin('');
+      setSecurityPinConfirm('');
+      setStatusMessage('تم إنشاء رمز الأمان وحفظه بصورة مشفرة.');
+    } catch (reason) {
+      setSecurityError(reason.message || 'تعذر إنشاء رمز الأمان');
+    }
+  };
+
+  const verifyResetPin = async () => {
+    setSecurityError('');
+    try {
+      const result = await verifyResetSecurityPin(resetPin);
+      setResetToken(result.resetToken);
+      setResetPin('');
+      setResetDialog('final');
+    } catch (reason) {
+      setSecurityError(reason.message || 'تعذر التحقق من رمز الأمان');
+    }
+  };
+
+  const resetStore = async () => {
+    if (resetting || !resetToken) return;
+    setStatusMessage('');
+    setStatusError('');
+    setResetting(true);
+    try {
+      await confirmResetStore(resetToken);
+      navigate('/admin/setup-store', { replace: true });
+    } catch (reason) {
+      setSecurityError(reason.message || 'تعذر إعادة ضبط المتجر');
+      setResetDialog('verify');
+      setResetToken('');
+    } finally {
+      setResetting(false);
+    }
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   };
 
   return (
@@ -2362,8 +3100,22 @@ function SiteSettingsAdmin() {
         <div className="settings-fields">
           <label>اسم المتجر<input value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
           <label>الشعار النصي<input value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} /></label>
+<<<<<<< HEAD
           <label>عنوان الواجهة<input value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} /></label>
           <label>وصف الواجهة<textarea value={settings.heroDescription} onChange={(event) => setSettings({ ...settings, heroDescription: event.target.value })} /></label>
+=======
+          <label>خط الشعار
+            <select value={settings.taglineFont} onChange={(event) => setSettings({ ...settings, taglineFont: event.target.value })}>
+              <option value="cairo">كايرو</option><option value="sans">نسخي بسيط</option><option value="serif">كلاسيكي</option>
+            </select>
+          </label>
+          <label>لون الشعار
+            <select value={settings.taglineColor} onChange={(event) => setSettings({ ...settings, taglineColor: event.target.value })}>
+              <option value="#102F29">فحمي</option><option value="#D8AB4E">ذهبي</option><option value="#607C2D">أخضر</option><option value="#795039">بني</option>
+            </select>
+          </label>
+          <label>عنوان الواجهة<input value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} /></label>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         </div>
       </section>
 
@@ -2408,6 +3160,10 @@ function SiteSettingsAdmin() {
         <div className="settings-section-heading"><span>04</span><div><h3 id="settings-delivery-title">التوصيل</h3></div></div>
         <div className="settings-fields">
           <label>سعر التوصيل لجميع المحافظات<input type="number" min="0" step="1" required value={settings.deliveryFee ?? defaultSettings.deliveryFee} onChange={(event) => setSettings({ ...settings, deliveryFee: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
+<<<<<<< HEAD
+=======
+          <label>نسبة الضريبة (%)<input type="number" min="0" max="100" step="0.01" required value={settings.taxRate ?? 0} onChange={(event) => setSettings({ ...settings, taxRate: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         </div>
       </section>
 
@@ -2434,14 +3190,61 @@ function SiteSettingsAdmin() {
       <section className="settings-section settings-operations" aria-labelledby="settings-operations-title">
         <div className="settings-section-heading"><span>07</span><div><h3 id="settings-operations-title">حالة المتجر</h3></div></div>
         <label className="maintenance-control"><input type="checkbox" checked={Boolean(settings.maintenanceMode)} onChange={(event) => setSettings({ ...settings, maintenanceMode: event.target.checked })} /><span><strong>وضع الصيانة</strong><small>يسمح بالتصفح ويوقف إضافة المنتجات وإرسال الطلبات.</small></span></label>
+<<<<<<< HEAD
         <button type="button" className="danger" disabled={resetting} onClick={resetStore}>{resetting ? 'جارٍ إعادة الضبط...' : 'إعادة ضبط المتجر'}</button>
       </section>
       </fieldset>
 
+=======
+      </section>
+      </fieldset>
+
+      {profile?.isOwner === true && <section className="settings-section reset-security-section" aria-labelledby="reset-security-title">
+        <div className="settings-section-heading"><span>08</span><div><h3 id="reset-security-title">{securityConfigured ? 'أمان إعادة الضبط' : 'إنشاء رمز الأمان'}</h3></div></div>
+        <div className="reset-security-panel">
+          {securityLoading ? <p role="status">جارٍ التحقق من إعدادات الأمان...</p> : securityConfigured ? <p>تم إعداد رمز الأمان.</p> : <div className="reset-pin-fields">
+            <p>أنشئ رمز الأمان قبل إعادة ضبط المتجر. لن يُحفظ الرمز كنص عادي.</p>
+            <label>إنشاء رمز الأمان<input type="password" autoComplete="new-password" minLength={6} maxLength={128} value={securityPin} onChange={(event) => setSecurityPin(event.target.value)} /></label>
+            <label>تأكيد رمز الأمان<input type="password" autoComplete="new-password" minLength={6} maxLength={128} value={securityPinConfirm} onChange={(event) => setSecurityPinConfirm(event.target.value)} /></label>
+            <button type="button" className="secondary-button" disabled={securityLoading || resetting} onClick={saveSecurityPin}>حفظ رمز الأمان</button>
+          </div>}
+          {securityError && !resetDialog && <p className="error" role="alert">{securityError}</p>}
+          <button type="button" className="danger" disabled={resetting || securityLoading || !securityConfigured} onClick={() => { setSecurityError(''); setResetDialog('warning'); }}>
+            {resetting ? 'جارٍ إعادة الضبط...' : securityConfigured ? 'إعادة ضبط المصنع' : 'أنشئ رمز الأمان أولاً'}
+          </button>
+        </div>
+      </section>}
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       <div className="settings-actions"><button type="submit" className="primary" disabled={!settingsLoaded || savingSettings || resetting}>{savingSettings ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}</button>
       {statusMessage && <p className="success-message">{statusMessage}</p>}
       {statusError && <p className="error">{statusError}</p>}
       </div>
+<<<<<<< HEAD
+=======
+      {resetDialog && <div className="reset-modal-backdrop">
+        <section className="reset-modal" role="dialog" aria-modal="true" aria-labelledby="reset-dialog-title" dir="rtl">
+          {resetDialog === 'warning' && <>
+            <h2 id="reset-dialog-title">تحذير</h2>
+            <p>تحذير: هذا الإجراء يخص المطور فقط، وسيؤدي إلى حذف جميع بيانات المتجر نهائياً.</p>
+            <div className="reset-modal-actions"><button type="button" className="secondary-button" onClick={() => setResetDialog('')}>إلغاء</button><button type="button" className="danger" onClick={() => { setSecurityError(''); setResetDialog('verify'); }}>متابعة</button></div>
+          </>}
+          {resetDialog === 'verify' && <>
+            <h2 id="reset-dialog-title">التحقق من رمز الأمان</h2>
+            <p>أدخل رمز الأمان للمتابعة إلى التأكيد الأخير.</p>
+            <label>رمز الأمان<input type="password" autoComplete="current-password" maxLength={128} value={resetPin} onChange={(event) => setResetPin(event.target.value)} /></label>
+            {securityError && <p className="error" role="alert">{securityError}</p>}
+            <div className="reset-modal-actions"><button type="button" className="secondary-button" onClick={() => { setResetDialog(''); setResetPin(''); setSecurityError(''); }}>إلغاء</button><button type="button" className="primary" disabled={!resetPin || resetting} onClick={verifyResetPin}>تحقق</button></div>
+          </>}
+          {resetDialog === 'final' && <>
+            <h2 id="reset-dialog-title">التأكيد الأخير</h2>
+            <p>سيتم حذف بيانات المتجر نهائياً ولا يمكن التراجع عن هذا الإجراء. هل تريد المتابعة؟</p>
+            {securityError && <p className="error" role="alert">{securityError}</p>}
+            <div className="reset-modal-actions"><button type="button" className="secondary-button" disabled={resetting} onClick={() => { setResetDialog(''); setResetToken(''); setSecurityError(''); }}>إلغاء</button><button type="button" className="danger" disabled={resetting} onClick={resetStore}>{resetting ? 'جارٍ الحذف...' : 'حذف نهائياً'}</button></div>
+          </>}
+        </section>
+      </div>}
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     </form>
   );
 }

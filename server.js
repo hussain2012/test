@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿import 'dotenv/config';
+=======
+import 'dotenv/config';
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
@@ -12,6 +16,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = 3000;
 const generateProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
+<<<<<<< HEAD
+=======
+const imageExtensions = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const supabaseUrl = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const supabaseKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const supabaseServer = supabaseUrl && supabaseKey
@@ -19,6 +27,7 @@ const supabaseServer = supabaseUrl && supabaseKey
   : null;
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
+<<<<<<< HEAD
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadDir,
@@ -28,6 +37,28 @@ const upload = multer({
     },
   }),
 });
+=======
+const uploadStorage = multer.diskStorage({
+  destination: uploadDir,
+  filename: (req, file, callback) => callback(null, `${crypto.randomUUID()}${imageExtensions[file.mimetype] || '.bin'}`),
+});
+const upload = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 5 * 1024 * 1024, fieldSize: 1024 * 1024, fields: 100, files: 10 },
+  fileFilter: (req, file, callback) => callback(
+    imageExtensions[file.mimetype] ? null : new Error('نوع صورة المنتج غير مدعوم'),
+    Boolean(imageExtensions[file.mimetype]),
+  ),
+});
+const setupStoreUpload = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 5 * 1024 * 1024, fieldSize: 1024 * 1024, fields: 1, files: 1 },
+  fileFilter: (req, file, callback) => callback(
+    ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype) ? null : new Error('نوع صورة المنتج غير مدعوم'),
+    ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype),
+  ),
+}).single('productImage');
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const productUpload = upload.fields([
   { name: 'primaryImage', maxCount: 1 },
   { name: 'productImages', maxCount: 10 },
@@ -41,6 +72,26 @@ const isOwnerRequest = (req) => {
   const session = getSession(req);
   return session?.role === 'admin' && session?.isOwner === true;
 };
+<<<<<<< HEAD
+=======
+const securityPinHash = async (pin, salt) => {
+  const key = await globalThis.crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await globalThis.crypto.subtle.deriveBits({
+    name: 'PBKDF2',
+    salt: Uint8Array.from(salt.match(/.{2}/g), (byte) => Number.parseInt(byte, 16)),
+    iterations: 600000,
+    hash: 'SHA-256',
+  }, key, 256);
+  return [...new Uint8Array(bits)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+const equalHashes = (first, second) => {
+  if (first.length !== second.length) return false;
+  let difference = 0;
+  for (let index = 0; index < first.length; index += 1) difference |= first.charCodeAt(index) ^ second.charCodeAt(index);
+  return difference === 0;
+};
+const hashResetToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const parseItems = (value) => {
   if (Array.isArray(value)) return value;
   try {
@@ -67,6 +118,11 @@ const getBestSeller = (orders) => {
 const defaultSiteSettings = {
   storeName: '',
   tagline: '',
+<<<<<<< HEAD
+=======
+  taglineFont: 'cairo',
+  taglineColor: '#102F29',
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   logoUrl: '',
   heroTitle: '',
   heroDescription: '',
@@ -81,10 +137,27 @@ const defaultSiteSettings = {
   policyTitle: '',
   policyText: '',
   maintenanceMode: false,
+<<<<<<< HEAD
 };
 
 app.use(cors());
 app.use(express.json());
+=======
+  taxRate: 0,
+};
+
+const allowedOrigins = new Set(String(process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(',').map((origin) => origin.trim()).filter(Boolean));
+app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)) }));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  if (process.env.NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  next();
+});
+app.use(express.json({ limit: '1mb' }));
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 app.use('/uploads', express.static(uploadDir));
 app.use(async (req, res, next) => {
   const authorization = String(req.headers.authorization || '');
@@ -122,6 +195,11 @@ app.use((req, res, next) => {
 const normalizeSiteSettings = (row) => ({
     ...defaultSiteSettings,
     ...row,
+<<<<<<< HEAD
+=======
+    taglineFont: ['cairo', 'sans', 'serif'].includes(row.taglineFont) ? row.taglineFont : defaultSiteSettings.taglineFont,
+    taglineColor: /^#[0-9a-fA-F]{6}$/.test(row.taglineColor || '') ? row.taglineColor.toUpperCase() : defaultSiteSettings.taglineColor,
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     instagramUrl: row.instagramUrl || '',
     tiktokUrl: row.tiktokUrl || '',
     facebookUrl: row.facebookUrl || '',
@@ -131,6 +209,10 @@ const normalizeSiteSettings = (row) => ({
     policyTitle: row.policyTitle || defaultSiteSettings.policyTitle,
     policyText: row.policyText || defaultSiteSettings.policyText,
     maintenanceMode: Boolean(row.maintenanceMode),
+<<<<<<< HEAD
+=======
+    taxRate: Number.isFinite(Number(row.taxRate)) ? Math.min(100, Math.max(0, Number(row.taxRate))) : 0,
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 const getSiteSettings = async () => {
@@ -175,6 +257,16 @@ const parseImageList = (value) => {
     return [];
   }
 };
+<<<<<<< HEAD
+=======
+const publicDiscountData = (row) => row ? ({
+  id: row.id,
+  code: row.code,
+  type: row.type,
+  value: Number(row.value),
+  active: Boolean(row.active),
+}) : null;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
 const publicProductData = (row) => ({
   id: row.id,
@@ -182,7 +274,13 @@ const publicProductData = (row) => ({
   description: row.description,
   productCode: String(row?.product_code ?? row?.productCode ?? '').trim().toUpperCase(),
   price: Number(row.price || 0),
+<<<<<<< HEAD
   discountPercentage: Number(row.discountPercentage || 0),
+=======
+  discountType: row.discountType === 'amount' ? 'amount' : 'percentage',
+  discountValue: Number(row.discountValue ?? row.discountPercentage ?? 0),
+  discountPercentage: row.discountType === 'amount' ? 0 : Number(row.discountValue ?? row.discountPercentage ?? 0),
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   discountedPrice: getDiscountedPrice(row),
   imageUrl: row.imageUrl || '',
   productImages: getProductImages(row),
@@ -265,6 +363,92 @@ app.delete('/api/admin/admins/:identifier', async (req, res) => {
   res.status(204).end();
 });
 
+<<<<<<< HEAD
+=======
+app.post('/api/admin/owners', async (req, res) => {
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إنشاء حساب مالك جديد' });
+  if (!requireSupabase(res)) return;
+
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!name || name.length > 120) {
+    return res.status(400).json({ error: 'أدخل الاسم الكريم بما لا يزيد عن 120 حرفاً' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'أدخل بريداً إلكترونياً صحيحاً' });
+  }
+  if (password.length < 8 || password.length > 128) {
+    return res.status(400).json({ error: 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل وبحد أقصى 128 حرفاً' });
+  }
+
+  let createdOwnerId = null;
+  const removeCreatedOwner = async () => {
+    if (!createdOwnerId) return '';
+    try {
+      const { error } = await supabaseServer.auth.admin.deleteUser(createdOwnerId);
+      return error?.message || '';
+    } catch (error) {
+      return error?.message || 'تعذر حذف الحساب الجديد';
+    }
+  };
+
+  try {
+    const { data, error } = await supabaseServer.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: name, displayName: name },
+    });
+    if (error) {
+      const alreadyExists = /already|registered|exists/i.test(error.message);
+      return res.status(alreadyExists ? 409 : 400).json({
+        error: alreadyExists ? 'هذا البريد الإلكتروني مستخدم مسبقاً' : error.message,
+      });
+    }
+    if (!data.user) return res.status(500).json({ error: 'لم يتمكن الخادم من إنشاء حساب المالك' });
+    createdOwnerId = data.user.id;
+
+    const { data: promotedOwner, error: promoteError } = await supabaseServer
+      .from('profiles')
+      .update({ role: 'admin', isOwner: true, displayName: name })
+      .eq('id', createdOwnerId)
+      .select('id')
+      .maybeSingle();
+    if (promoteError || !promotedOwner) {
+      const cleanupError = await removeCreatedOwner();
+      const message = promoteError?.message || 'تعذر إعداد صلاحيات حساب المالك الجديد';
+      return res.status(500).json({
+        error: cleanupError ? `${message}؛ وتعذر حذف الحساب الجديد: ${cleanupError}` : message,
+      });
+    }
+
+    const { data: previousOwner, error: transferError } = await supabaseServer
+      .from('profiles')
+      .update({ isOwner: false })
+      .eq('id', getSession(req).accountId)
+      .eq('isOwner', true)
+      .select('id')
+      .maybeSingle();
+    if (transferError || !previousOwner) {
+      const cleanupError = await removeCreatedOwner();
+      const message = transferError?.message || 'تعذر نقل الملكية من الحساب الحالي';
+      return res.status(500).json({
+        error: cleanupError ? `${message}؛ وتعذر حذف الحساب الجديد: ${cleanupError}` : message,
+      });
+    }
+
+    res.status(201).json({ ok: true, identifier: email });
+  } catch (error) {
+    const cleanupError = await removeCreatedOwner();
+    const message = error?.message || 'تعذر إنشاء حساب المالك';
+    return res.status(500).json({
+      error: cleanupError ? `${message}؛ وتعذر حذف الحساب الجديد: ${cleanupError}` : message,
+    });
+  }
+});
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 app.post('/api/admin/transfer-ownership', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يمكنه تحويل الملكية' });
   if (!requireSupabase(res)) return;
@@ -321,7 +505,11 @@ app.get('/api/account/coupons', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { data, error } = await supabaseServer.from('account_coupons').select('savedAt, discounts(*)').eq('accountId', session.accountId).order('savedAt', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
+<<<<<<< HEAD
   res.json((data || []).map((row) => ({ ...row.discounts, active: Boolean(row.discounts?.active), savedAt: row.savedAt })));
+=======
+  res.json((data || []).map((row) => ({ ...publicDiscountData(row.discounts), savedAt: row.savedAt })));
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.post('/api/account/coupons/:code', async (req, res) => {
@@ -333,7 +521,11 @@ app.post('/api/account/coupons/:code', async (req, res) => {
   if (!coupon) return res.status(404).json({ error: 'كود الخصم غير صالح أو غير فعال' });
   const { error: saveError } = await supabaseServer.from('account_coupons').upsert({ accountId: session.accountId, discountId: coupon.id }, { onConflict: 'accountId,discountId' });
   if (saveError) return res.status(400).json({ error: saveError.message });
+<<<<<<< HEAD
   res.status(201).json({ ...coupon, active: Boolean(coupon.active), saved: true });
+=======
+  res.status(201).json({ ...publicDiscountData(coupon), saved: true });
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.get('/api/site-settings', async (req, res) => {
@@ -347,7 +539,12 @@ app.get('/api/site-settings', async (req, res) => {
 app.post('/api/analytics/view', async (req, res) => {
   if (!requireSupabase(res)) return;
   const type = req.body?.type === 'product' ? 'product' : 'home';
+<<<<<<< HEAD
   const { error } = await supabaseServer.from('page_views').insert({ type });
+=======
+  const payload = type === 'product' && req.body?.productId != null ? { type, productId: req.body.productId } : { type };
+  const { error } = await supabaseServer.from('page_views').insert(payload);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ ok: true, type });
 });
@@ -385,7 +582,11 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   if (!requireSupabase(res)) return;
   const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, featured, isNew } = req.body;
+<<<<<<< HEAD
   if (!name || !description || !price) return res.status(400).json({ error: 'يرجى إكمال بيانات المنتج' });
+=======
+  if (!name || !description || !Number.isFinite(Number(price)) || Number(price) <= 0) return res.status(400).json({ error: 'يرجى إدخال سعر صحيح وإكمال بيانات المنتج' });
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   const uploadedImages = (req.files?.productImages ?? []).map(uploadedImageUrl);
   const images = [...parseImageList(req.body?.existingProductImages), ...uploadedImages];
@@ -396,7 +597,15 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
     description,
     price: Number(price),
     costPrice: Number(costPrice || 0),
+<<<<<<< HEAD
     discountPercentage: Number(discountPercentage || 0),
+=======
+    discountType: req.body.discountType === 'amount' ? 'amount' : 'percentage',
+    discountValue: Number(req.body.discountValue ?? discountPercentage ?? 0),
+    discountPercentage: Number(discountPercentage || 0),
+    availabilityMode: ['ready', 'preorder', 'unavailable'].includes(req.body.availabilityMode) ? req.body.availabilityMode : (Number(stockQuantity ?? 10) > 0 ? 'ready' : 'unavailable'),
+    variants: parseItems(req.body.variants),
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     product_code: generateProductCode(),
     imageUrl: primaryImage,
     productImages: images ?? [],
@@ -422,7 +631,15 @@ app.put('/api/admin/products/:id', productUpload, async (req, res) => {
     description: req.body.description ?? existingProduct.description,
     price: Number(req.body.price ?? existingProduct.price),
     costPrice: Number(req.body.costPrice ?? existingProduct.costPrice ?? 0),
+<<<<<<< HEAD
     discountPercentage: Number(req.body.discountPercentage ?? existingProduct.discountPercentage ?? 0),
+=======
+    discountType: req.body.discountType === 'amount' ? 'amount' : (req.body.discountType || existingProduct.discountType || 'percentage'),
+    discountValue: Number(req.body.discountValue ?? req.body.discountPercentage ?? existingProduct.discountValue ?? existingProduct.discountPercentage ?? 0),
+    discountPercentage: Number(req.body.discountPercentage ?? existingProduct.discountPercentage ?? 0),
+    availabilityMode: ['ready', 'preorder', 'unavailable'].includes(req.body.availabilityMode) ? req.body.availabilityMode : existingProduct.availabilityMode,
+    variants: req.body.variants !== undefined ? parseItems(req.body.variants) : existingProduct.variants,
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     ...((req.body.productCode !== undefined || req.body.product_code !== undefined)
       ? { product_code: String(req.body.productCode ?? req.body.product_code ?? '').trim().toUpperCase() || null }
       : {}),
@@ -486,7 +703,11 @@ app.get('/api/discounts/validate/:code', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { data, error } = await supabaseServer.from('discounts').select('*').eq('code', String(req.params.code).toUpperCase()).eq('active', true).maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
+<<<<<<< HEAD
   res.json(data ? { ...data, active: Boolean(data.active) } : null);
+=======
+  res.json(publicDiscountData(data));
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.get('/api/orders', async (req, res) => {
@@ -537,19 +758,49 @@ app.get('/api/account/orders', async (req, res) => {
   res.json((orders || []).map((order) => {
     const normalized = normalizeOrderRow(order);
     const discount = discountMap.get(order.discountCode);
+<<<<<<< HEAD
     return { ...normalized, discountType: discount?.type || null, discountValue: discount?.value || 0 };
+=======
+    return {
+      ...normalized,
+      items: normalized.items.map((item) => {
+        const { costPrice, ...safeItem } = item || {};
+        return safeItem;
+      }),
+      discountType: discount?.type || null,
+      discountValue: discount?.value || 0,
+    };
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   }));
 });
 
 app.patch('/api/orders/:id', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   if (!requireSupabase(res)) return;
+<<<<<<< HEAD
   const updates = {};
   if (req.body.status) updates.status = req.body.status;
   if (req.body.isRead !== undefined) updates.isRead = Boolean(req.body.isRead);
   if (!Object.keys(updates).length) return res.json({ ok: true });
   const { error } = await supabaseServer.from('orders').update(updates).eq('id', req.params.id);
   if (error) return res.status(400).json({ error: error.message });
+=======
+  if (req.body.status !== undefined) {
+    if (!['processing', 'delivered', 'cancelled'].includes(req.body.status)) {
+      return res.status(400).json({ error: 'حالة الطلب غير صحيحة' });
+    }
+    const { error } = await supabaseServer.rpc('update_order_status', {
+      p_order_id: req.params.id,
+      p_status: req.body.status,
+      p_actor_id: getSession(req).accountId,
+    });
+    if (error) return res.status(400).json({ error: error.message });
+  }
+  if (req.body.isRead !== undefined) {
+    const { error } = await supabaseServer.from('orders').update({ isRead: Boolean(req.body.isRead) }).eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+  }
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   res.json({ ok: true });
 });
 
@@ -621,6 +872,7 @@ app.get('/api/admin/site-settings', async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 app.post('/api/admin/reset-store', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إعادة ضبطه' });
   if (!requireSupabase(res)) return;
@@ -628,6 +880,196 @@ app.post('/api/admin/reset-store', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   res.json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
+=======
+app.post('/api/admin/setup-store', (req, res, next) => {
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إنشاء المتجر' });
+  if (!requireSupabase(res)) return;
+  setupStoreUpload(req, res, (error) => {
+    if (error) return res.status(400).json({ error: error.message });
+    next();
+  });
+}, async (req, res) => {
+  let createdAdminId = null;
+  let imagePath = null;
+  const cleanupErrors = [];
+  try {
+    let setup;
+    try {
+      setup = JSON.parse(req.body?.setup || '');
+    } catch {
+      return res.status(400).json({ error: 'بيانات إنشاء المتجر غير صالحة' });
+    }
+    const allowedFonts = ['cairo', 'sans', 'serif'];
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const storeName = String(setup?.storeName || '').trim();
+    const tagline = String(setup?.tagline || '').trim();
+    const aboutText = String(setup?.aboutText || '').trim();
+    const policyText = String(setup?.policyText || '').trim();
+    if (!storeName || storeName.length > 120 || !tagline || tagline.length > 160 ||
+      !aboutText || aboutText.length > 5000 || !policyText || policyText.length > 5000 ||
+      !allowedFonts.includes(setup?.taglineFont) || !/^#[0-9a-fA-F]{6}$/.test(setup?.taglineColor || '')) {
+      return res.status(400).json({ error: 'تحقق من اسم المتجر والشعار ونصوص التعريف والسياسات' });
+    }
+
+    const admin = setup.admin || null;
+    if (admin && (!String(admin.name || '').trim() || String(admin.name).trim().length > 120 ||
+      !emailPattern.test(String(admin.email || '').trim()))) {
+      return res.status(400).json({ error: 'بيانات المشرف غير مكتملة أو غير صالحة' });
+    }
+
+    const product = setup.product || null;
+    if (product && (!String(product.name || '').trim() || String(product.name).trim().length > 160 ||
+      !String(product.description || '').trim() || String(product.description).trim().length > 5000 ||
+      !Number.isFinite(Number(product.price)) || Number(product.price) <= 0 ||
+      String(product.stockQuantity ?? '').trim() === '' ||
+      !Number.isInteger(Number(product.stockQuantity)) || Number(product.stockQuantity) < 0)) {
+      return res.status(400).json({ error: 'بيانات المنتج الأول غير مكتملة أو غير صالحة' });
+    }
+    if (req.file && !product) return res.status(400).json({ error: 'لا يمكن رفع صورة من دون إضافة منتج' });
+
+    if (admin) {
+      const { data, error } = await supabaseServer.auth.admin.createUser({
+        email: String(admin.email).trim().toLowerCase(),
+        email_confirm: true,
+        user_metadata: { full_name: String(admin.name).trim() },
+      });
+      if (error) {
+        const status = /already|registered|exists/i.test(error.message) ? 409 : 400;
+        return res.status(status).json({ error: /already|registered|exists/i.test(error.message) ? 'هذا البريد الإلكتروني مستخدم مسبقاً' : error.message });
+      }
+      createdAdminId = data.user.id;
+    }
+
+    let imageUrl = '';
+    if (req.file && product) {
+      const extensionByType = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+      imagePath = `store-products/${crypto.randomUUID()}.${extensionByType[req.file.mimetype]}`;
+      const { error } = await supabaseServer.storage.from('uploads').upload(
+        imagePath,
+        await fs.promises.readFile(req.file.path),
+        { contentType: req.file.mimetype, upsert: false },
+      );
+      if (error) throw error;
+      imageUrl = supabaseServer.storage.from('uploads').getPublicUrl(imagePath).data.publicUrl;
+    }
+
+    const { error } = await supabaseServer.rpc('complete_store_setup', {
+      p_owner_id: getSession(req).accountId,
+      p_settings: { storeName, tagline, taglineFont: setup.taglineFont, taglineColor: setup.taglineColor, aboutText, policyText },
+      p_product: product ? {
+        name: String(product.name).trim(),
+        description: String(product.description).trim(),
+        price: Number(product.price),
+        stockQuantity: Number(product.stockQuantity),
+        imageUrl,
+      } : null,
+      p_admin_id: createdAdminId,
+      p_admin_name: admin ? String(admin.name).trim() : null,
+    });
+    if (error) throw error;
+    res.status(201).json({ ok: true, message: 'تم إنشاء المتجر بنجاح' });
+  } catch (error) {
+    if (imagePath) {
+      try {
+        const { error: storageError } = await supabaseServer.storage.from('uploads').remove([imagePath]);
+        if (storageError) cleanupErrors.push(storageError.message);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError.message);
+      }
+    }
+    if (createdAdminId) {
+      try {
+        const { error: authError } = await supabaseServer.auth.admin.deleteUser(createdAdminId);
+        if (authError) cleanupErrors.push(authError.message);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError.message);
+      }
+    }
+    const message = cleanupErrors.length
+      ? `${error.message} تعذر التراجع عن بعض الموارد: ${cleanupErrors.join('؛ ')}`
+      : error.message;
+    return res.status(500).json({ error: message });
+  } finally {
+    if (req.file?.path) {
+      try {
+        await fs.promises.unlink(req.file.path);
+      } catch (error) {
+        if (error.code !== 'ENOENT') console.error('Failed to remove temporary store setup image:', error.message);
+      }
+    }
+  }
+});
+
+app.get('/api/admin/reset-security', async (req, res) => {
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إدارة رمز الأمان' });
+  if (!requireSupabase(res)) return;
+  const { data, error } = await supabaseServer.from('store_security').select('id').eq('id', 1).maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ configured: Boolean(data) });
+});
+
+app.post('/api/admin/reset-security', async (req, res) => {
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إنشاء رمز الأمان' });
+  if (!requireSupabase(res)) return;
+  const pin = typeof req.body?.pin === 'string' ? req.body.pin : '';
+  if (pin.length < 6 || pin.length > 128) return res.status(400).json({ error: 'يجب أن يتكون رمز الأمان من 6 خانات على الأقل وبحد أقصى 128 خانة' });
+  const { data: existing, error: selectError } = await supabaseServer.from('store_security').select('id').eq('id', 1).maybeSingle();
+  if (selectError) return res.status(500).json({ error: selectError.message });
+  if (existing) return res.status(409).json({ error: 'تم إنشاء رمز الأمان مسبقاً' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  const pinHash = await securityPinHash(pin, salt);
+  const { error } = await supabaseServer.from('store_security').insert({ id: 1, pin_hash: pinHash, pin_salt: salt });
+  if (error) return res.status(error.code === '23505' ? 409 : 500).json({ error: error.code === '23505' ? 'تم إنشاء رمز الأمان مسبقاً' : error.message });
+  res.status(201).json({ configured: true });
+});
+
+app.post('/api/admin/reset-security/verify', async (req, res) => {
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إعادة ضبطه' });
+  if (!requireSupabase(res)) return;
+  const pin = typeof req.body?.pin === 'string' ? req.body.pin : '';
+  if (!pin || pin.length > 128) return res.status(400).json({ error: 'أدخل رمز الأمان' });
+  const { data: security, error } = await supabaseServer.from('store_security').select('pin_hash, pin_salt, locked_until').eq('id', 1).maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!security) return res.status(409).json({ error: 'أنشئ رمز الأمان أولاً' });
+  if (security.locked_until && new Date(security.locked_until).getTime() > Date.now()) {
+    const minutes = Math.ceil((new Date(security.locked_until).getTime() - Date.now()) / 60000);
+    return res.status(429).json({ error: `تم قفل المحاولات مؤقتاً. حاول بعد ${minutes} دقيقة.` });
+  }
+  const candidateHash = await securityPinHash(pin, security.pin_salt);
+  const matched = equalHashes(candidateHash, security.pin_hash);
+  const { data: attempt, error: attemptError } = await supabaseServer.rpc('record_reset_pin_attempt', { p_success: matched });
+  if (attemptError) return res.status(500).json({ error: attemptError.message });
+  if (!attempt.ok) {
+    const minutes = Math.max(1, Math.ceil((new Date(attempt.lockedUntil).getTime() - Date.now()) / 60000));
+    return res.status(429).json({ error: `تم قفل المحاولات مؤقتاً. حاول بعد ${minutes} دقيقة.` });
+  }
+  if (!matched) return res.status(401).json({ error: `رمز الأمان غير صحيح. المحاولات المتبقية: ${5 - attempt.failedAttempts}` });
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  const { error: tokenError } = await supabaseServer.from('store_security').update({
+    reset_token_hash: hashResetToken(token),
+    reset_token_expires_at: expiresAt,
+  }).eq('id', 1);
+  if (tokenError) return res.status(500).json({ error: tokenError.message });
+  res.json({ resetToken: token, expiresAt });
+});
+
+app.post('/api/admin/reset-security/confirm', async (req, res) => {
+  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إعادة ضبطه' });
+  if (!requireSupabase(res)) return;
+  const token = typeof req.body?.resetToken === 'string' ? req.body.resetToken : '';
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ error: 'انتهت صلاحية التأكيد. تحقق من الرمز مرة أخرى.' });
+  const { data: consumed, error: consumeError } = await supabaseServer.rpc('consume_store_reset_token', { p_token_hash: hashResetToken(token) });
+  if (consumeError) return res.status(500).json({ error: consumeError.message });
+  if (!consumed) return res.status(401).json({ error: 'انتهت صلاحية التأكيد. تحقق من الرمز مرة أخرى.' });
+  const { error } = await supabaseServer.rpc('reset_store', { p_owner_id: getSession(req).accountId });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, message: 'تمت إعادة ضبط المتجر' });
+});
+
+app.post('/api/admin/reset-store', async (req, res) => {
+  return res.status(410).json({ error: 'يجب التحقق من رمز الأمان قبل إعادة ضبط المتجر' });
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCount: 1 }, { name: 'heroImage', maxCount: 1 }]), async (req, res) => {
@@ -645,6 +1087,11 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
   const settings = {
     storeName: req.body.storeName || previous.storeName,
     tagline: req.body.tagline || previous.tagline,
+<<<<<<< HEAD
+=======
+    taglineFont: ['cairo', 'sans', 'serif'].includes(req.body.taglineFont) ? req.body.taglineFont : previous.taglineFont,
+    taglineColor: /^#[0-9a-fA-F]{6}$/.test(req.body.taglineColor || '') ? req.body.taglineColor.toUpperCase() : previous.taglineColor,
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     logoUrl,
     heroTitle: req.body.heroTitle || previous.heroTitle,
     heroDescription: req.body.heroDescription || previous.heroDescription,
@@ -670,4 +1117,14 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
   res.json({ ...defaultSiteSettings, ...settings, maintenanceMode: Boolean(settings.maintenanceMode) });
 });
 
+<<<<<<< HEAD
+=======
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  console.error('API request failed', error);
+  const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 500 ? error.status : 500;
+  res.status(status).json({ error: status === 500 ? 'حدث خطأ داخلي. حاول مرة أخرى.' : error.message });
+});
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 app.listen(port, () => console.log(`الخادم يعمل على http://localhost:${port}`));

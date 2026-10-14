@@ -131,9 +131,28 @@ create table if not exists public.discounts (
   code text unique not null,
   type text not null,
   value numeric(12,2) not null,
+<<<<<<< HEAD
   active boolean not null default true
 );
 
+=======
+  active boolean not null default true,
+  "expiresAt" timestamptz,
+  "maxUses" integer,
+  "usageCount" integer not null default 0,
+  "restrictedUserId" uuid references public.profiles(id) on delete cascade,
+  "productIds" jsonb not null default '[]'::jsonb,
+  "canCombine" boolean not null default true
+);
+
+alter table public.discounts add column if not exists "expiresAt" timestamptz;
+alter table public.discounts add column if not exists "maxUses" integer;
+alter table public.discounts add column if not exists "usageCount" integer not null default 0;
+alter table public.discounts add column if not exists "restrictedUserId" uuid references public.profiles(id) on delete cascade;
+alter table public.discounts add column if not exists "productIds" jsonb not null default '[]'::jsonb;
+alter table public.discounts add column if not exists "canCombine" boolean not null default true;
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'discounts_percentage_limit') then
@@ -155,17 +174,77 @@ create table if not exists public.orders (
   "discountCode" text,
   "discountAmount" numeric(12,2) not null,
   "deliveryFee" numeric(12,2) not null,
+<<<<<<< HEAD
+=======
+  "taxAmount" numeric(12,2) not null default 0,
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   "finalTotal" numeric(12,2) not null,
   "accountId" uuid references public.profiles(id) on delete set null,
   "accountOrderNumber" integer,
   "requestKey" text,
+<<<<<<< HEAD
   status text not null default 'processing',
+=======
+  status text not null default 'new',
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   "isRead" boolean not null default false,
   "createdAt" timestamptz not null default now()
 );
 
 alter table public.orders add column if not exists "requestKey" text;
+<<<<<<< HEAD
 alter table public.orders alter column status set default 'processing';
+=======
+alter table public.orders add column if not exists "taxAmount" numeric(12,2) not null default 0;
+alter table public.orders alter column status set default 'new';
+create or replace function public.prevent_late_order_cancellation()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if (to_jsonb(new) - 'status' - 'isRead') is distinct from (to_jsonb(old) - 'status' - 'isRead') then
+    raise exception 'لا يمكن تعديل الطلب بعد تأكيده';
+  end if;
+  if new.status is distinct from old.status and not (
+    (old.status = 'new' and new.status in ('processing', 'cancelled'))
+    or (old.status = 'processing' and new.status = 'delivered')
+  ) then
+    raise exception 'تغيير حالة الطلب غير مسموح';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists orders_prevent_late_cancellation on public.orders;
+create trigger orders_prevent_late_cancellation
+before update on public.orders
+for each row execute function public.prevent_late_order_cancellation();
+
+create or replace function public.audit_order_status_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor_id uuid;
+begin
+  if new.status is distinct from old.status then
+    v_actor_id := coalesce(
+      auth.uid(),
+      nullif(current_setting('app.order_actor_id', true), '')::uuid
+    );
+    insert into public.order_status_audit (order_id, previous_status, new_status, changed_by)
+    values (new.id, old.status, new.status, v_actor_id);
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists orders_status_audit on public.orders;
+create trigger orders_status_audit
+after update of status on public.orders
+for each row execute function public.audit_order_status_change();
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 create unique index if not exists orders_account_request_key_idx
   on public.orders ("accountId", "requestKey")
   where "accountId" is not null and "requestKey" is not null;
@@ -183,6 +262,10 @@ create table if not exists public.site_settings (
   "featuredProductIds" jsonb,
   "storeCategories" jsonb,
   "deliveryFee" numeric(12,2) not null default 5000,
+<<<<<<< HEAD
+=======
+  "taxRate" numeric(5,2) not null default 0,
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   "maintenanceMode" boolean default false,
   "instagramUrl" text,
   "tiktokUrl" text,
@@ -198,7 +281,14 @@ alter table public.site_settings add column if not exists "featuredSectionTitle"
 alter table public.site_settings add column if not exists "featuredProductIds" jsonb;
 alter table public.site_settings add column if not exists "storeCategories" jsonb;
 alter table public.site_settings add column if not exists "deliveryFee" numeric(12,2) not null default 5000;
+<<<<<<< HEAD
 alter table public.site_settings alter column "deliveryFee" set default 5000;
+=======
+alter table public.site_settings add column if not exists "taxRate" numeric(5,2) not null default 0;
+alter table public.site_settings alter column "deliveryFee" set default 5000;
+alter table public.site_settings add column if not exists "taglineFont" text not null default 'cairo';
+alter table public.site_settings add column if not exists "taglineColor" text not null default '#1B1813';
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
 create table if not exists public.page_views (
   id bigint generated by default as identity primary key,
@@ -262,14 +352,23 @@ using (id = auth.uid() or public.is_owner()) with check (id = auth.uid() or publ
 
 drop policy if exists products_public_read on public.products;
 create policy products_public_read on public.products for select to anon, authenticated using (true);
+<<<<<<< HEAD
 
+=======
+revoke select on public.products from anon, authenticated;
+grant select (category) on public.products to authenticated;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 drop policy if exists products_admin_write on public.products;
 create policy products_admin_write on public.products for all to authenticated
 using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists discounts_public_active_read on public.discounts;
+<<<<<<< HEAD
 create policy discounts_public_active_read on public.discounts for select to anon, authenticated
 using (active = true);
+=======
+revoke select on public.discounts from anon, authenticated;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
 drop policy if exists discounts_admin_all on public.discounts;
 create policy discounts_admin_all on public.discounts for all to authenticated
@@ -278,18 +377,42 @@ using (public.is_admin()) with check (public.is_admin());
 drop policy if exists orders_select_own_or_admin on public.orders;
 create policy orders_select_own_or_admin on public.orders for select to authenticated
 using ("accountId" = auth.uid() or public.is_admin());
+<<<<<<< HEAD
 
 drop policy if exists orders_insert_own_or_admin on public.orders;
 create policy orders_insert_own_or_admin on public.orders for insert to authenticated
 with check ("accountId" = auth.uid() or public.is_admin());
+=======
+revoke select on public.orders from anon, authenticated;
+drop policy if exists orders_insert_own_or_admin on public.orders;
+revoke insert on public.orders from anon, authenticated;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
 drop policy if exists orders_update_admin on public.orders;
 create policy orders_update_admin on public.orders for update to authenticated
 using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists orders_delete_admin on public.orders;
+<<<<<<< HEAD
 create policy orders_delete_admin on public.orders for delete to authenticated
 using (public.is_admin());
+=======
+revoke delete on public.orders from anon, authenticated;
+
+create table if not exists public.order_status_audit (
+  id bigint generated by default as identity primary key,
+  order_id bigint not null references public.orders(id) on delete cascade,
+  previous_status text not null,
+  new_status text not null,
+  changed_by uuid references public.profiles(id) on delete set null,
+  changed_at timestamptz not null default now()
+);
+alter table public.order_status_audit enable row level security;
+drop policy if exists order_status_audit_admin_read on public.order_status_audit;
+create policy order_status_audit_admin_read on public.order_status_audit for select to authenticated
+using (public.is_admin());
+revoke insert, update, delete on public.order_status_audit from anon, authenticated;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
 drop policy if exists site_settings_public_read on public.site_settings;
 create policy site_settings_public_read on public.site_settings for select to anon, authenticated using (true);
@@ -374,12 +497,22 @@ declare
   v_subtotal numeric := 0;
   v_discount_amount numeric := 0;
   v_delivery_fee numeric;
+<<<<<<< HEAD
+=======
+  v_tax_rate numeric := 0;
+  v_tax_amount numeric := 0;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   v_final_total numeric;
   v_discount_code text;
   v_mode text;
   v_remaining integer;
   v_order_number integer;
   v_maintenance_mode boolean;
+<<<<<<< HEAD
+=======
+  v_entered_discount_code text;
+  v_product_discounted boolean := false;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 begin
   if p_account_id is null
      or (coalesce(auth.role(), '') <> 'service_role'
@@ -395,6 +528,21 @@ begin
      or jsonb_array_length(coalesce(p_payload->'items', '[]'::jsonb)) = 0 then
     raise exception 'السلة فارغة';
   end if;
+<<<<<<< HEAD
+=======
+  if jsonb_array_length(p_payload->'items') > 50 then
+    raise exception 'عدد المنتجات في الطلب تجاوز الحد المسموح';
+  end if;
+
+  v_entered_discount_code := upper(btrim(coalesce(p_payload->>'enteredDiscountCode', p_payload->>'discountCode', '')));
+  v_discount_code := upper(btrim(coalesce(p_payload->>'discountCode', '')));
+  if v_entered_discount_code <> '' and v_entered_discount_code <> v_discount_code then
+    raise exception 'طبّق كود الخصم أو امسحه قبل إكمال الطلب';
+  end if;
+  if coalesce(p_payload->>'finalTotal', '') !~ '^[0-9]+([.][0-9]{1,2})?$' then
+    raise exception 'المجموع المرسل غير صحيح. حدّث السلة ثم أعد المحاولة';
+  end if;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   perform 1 from public.profiles where id = p_account_id for update;
   if not found then
@@ -430,8 +578,14 @@ begin
     from jsonb_array_elements(p_payload->'items') with ordinality
     order by ordinality
   loop
+<<<<<<< HEAD
     if coalesce(v_entry.value->>'productId', '') !~ '^[0-9]+$'
        or coalesce(v_entry.value->>'quantity', '') !~ '^[1-9][0-9]*$' then
+=======
+    if coalesce(v_entry.value->>'productId', '') !~ '^[0-9]{1,18}$'
+       or coalesce(v_entry.value->>'quantity', '') !~ '^[1-9][0-9]{0,2}$'
+       or (v_entry.value->>'quantity')::numeric > 100 then
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       raise exception 'كمية المنتج غير صحيحة';
     end if;
     v_product_id := (v_entry.value->>'productId')::bigint;
@@ -441,6 +595,12 @@ begin
     if not found then
       raise exception 'أحد المنتجات لم يعد متوفراً';
     end if;
+<<<<<<< HEAD
+=======
+    if v_product.price is null or v_product.price <= 0 then
+      raise exception 'سعر أحد المنتجات غير صالح';
+    end if;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
     v_mode := coalesce(
       v_product."availabilityMode",
@@ -487,7 +647,14 @@ begin
       if not found then
         raise exception 'أحد خيارات المنتج لم يعد متاحاً';
       end if;
+<<<<<<< HEAD
       v_choice_price := greatest(0, coalesce(nullif(v_choice->>'price', '')::numeric, 0));
+=======
+      if nullif(v_choice->>'price', '') is not null and (v_choice->>'price')::numeric < 0 then
+        raise exception 'سعر خيار المنتج غير صالح';
+      end if;
+      v_choice_price := coalesce(nullif(v_choice->>'price', '')::numeric, 0);
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
       if v_choice_price > 0 then
         v_base_price := v_choice_price;
@@ -507,10 +674,22 @@ begin
 
     if v_product."discountType" = 'amount' then
       v_base_price := greatest(0, v_base_price - greatest(0, coalesce(v_product."discountValue", 0)));
+<<<<<<< HEAD
     else
       v_base_price := v_base_price * (1 - least(100, greatest(0, coalesce(v_product."discountValue", v_product."discountPercentage", 0))) / 100);
     end if;
     v_unit_price := round(v_base_price, 2);
+=======
+      v_product_discounted := v_product_discounted or coalesce(v_product."discountValue", 0) > 0;
+    else
+      v_base_price := v_base_price * (1 - least(100, greatest(0, coalesce(v_product."discountValue", v_product."discountPercentage", 0))) / 100);
+      v_product_discounted := v_product_discounted or coalesce(v_product."discountValue", v_product."discountPercentage", 0) > 0;
+    end if;
+    v_unit_price := round(v_base_price, 2);
+    if v_unit_price <= 0 then
+      raise exception 'السعر النهائي لأحد المنتجات غير صالح';
+    end if;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     v_subtotal := v_subtotal + v_unit_price * v_quantity;
     v_order_items := v_order_items || jsonb_build_array(jsonb_build_object(
       'productId', v_product.id,
@@ -525,6 +704,7 @@ begin
     ));
   end loop;
 
+<<<<<<< HEAD
   v_discount_code := upper(btrim(coalesce(p_payload->>'discountCode', '')));
   if v_discount_code <> '' then
     select * into v_discount from public.discounts
@@ -532,6 +712,37 @@ begin
     if not found then
       raise exception 'كود الخصم غير صالح أو غير فعال';
     end if;
+=======
+  if v_discount_code <> '' then
+    select * into v_discount from public.discounts
+    where upper(code) = v_discount_code
+    for update;
+    if not found then
+      raise exception 'كود الخصم غير صالح أو غير فعال';
+    end if;
+    if not v_discount.active then
+      raise exception 'كود الخصم غير صالح أو غير فعال';
+    end if;
+    if v_discount."expiresAt" is not null and v_discount."expiresAt" <= now() then
+      raise exception 'انتهت صلاحية كود الخصم';
+    end if;
+    if v_discount."maxUses" is not null and v_discount."usageCount" >= v_discount."maxUses" then
+      raise exception 'تم استنفاد مرات استخدام كود الخصم';
+    end if;
+    if v_discount."restrictedUserId" is not null and v_discount."restrictedUserId" <> p_account_id then
+      raise exception 'كود الخصم غير متاح لهذا الحساب';
+    end if;
+    if jsonb_array_length(coalesce(v_discount."productIds", '[]'::jsonb)) > 0
+       and exists (
+         select 1 from jsonb_array_elements(p_payload->'items') as requested(item)
+         where not coalesce(v_discount."productIds" @> jsonb_build_array((requested.item->>'productId')::bigint), false)
+       ) then
+      raise exception 'كود الخصم غير متاح لأحد المنتجات في السلة';
+    end if;
+    if not v_discount."canCombine" and v_product_discounted then
+      raise exception 'لا يمكن جمع كود الخصم مع خصم المنتج';
+    end if;
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     if v_discount.value < 0
        or (v_discount.type = 'percentage' and v_discount.value > 100)
        or v_discount.type not in ('percentage', 'fixed') then
@@ -541,6 +752,7 @@ begin
       when v_discount.type = 'percentage' then round(v_subtotal * v_discount.value / 100, 2)
       else least(v_subtotal, v_discount.value)
     end;
+<<<<<<< HEAD
   end if;
 
   select greatest(0, coalesce((select "deliveryFee" from public.site_settings order by id desc limit 1), 5000))
@@ -550,12 +762,43 @@ begin
   insert into public.orders (
     items, "customerName", province, address, "nearestLandmark", "phoneNumber",
     subtotal, "discountCode", "discountAmount", "deliveryFee", "finalTotal",
+=======
+    update public.discounts
+    set "usageCount" = "usageCount" + 1
+    where id = v_discount.id;
+  end if;
+
+  select greatest(0, coalesce(settings."deliveryFee", 5000)),
+         greatest(0, least(100, coalesce(settings."taxRate", 0)))
+  into v_delivery_fee, v_tax_rate
+  from (select "deliveryFee", "taxRate" from public.site_settings order by id desc limit 1) as settings;
+  if not found then
+    v_delivery_fee := 5000;
+    v_tax_rate := 0;
+  end if;
+  v_tax_amount := round((v_subtotal - v_discount_amount) * v_tax_rate / 100, 2);
+  v_final_total := v_subtotal - v_discount_amount + v_tax_amount + v_delivery_fee;
+  if v_final_total < 0 then
+    raise exception 'لا يمكن أن يكون المجموع النهائي أقل من صفر';
+  end if;
+  if round((p_payload->>'finalTotal')::numeric, 2) <> round(v_final_total, 2) then
+    raise exception 'المجموع تغير منذ عرض السلة. حدّث السلة ثم أعد إرسال الطلب';
+  end if;
+
+  insert into public.orders (
+    items, "customerName", province, address, "nearestLandmark", "phoneNumber",
+    subtotal, "discountCode", "discountAmount", "deliveryFee", "taxAmount", "finalTotal",
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     "accountId", "accountOrderNumber", "requestKey", status, "createdAt"
   ) values (
     v_order_items, btrim(p_payload->>'customerName'), btrim(p_payload->>'province'),
     btrim(p_payload->>'address'), btrim(p_payload->>'nearestLandmark'),
     p_payload->>'phoneNumber', v_subtotal, v_discount_code, v_discount_amount,
+<<<<<<< HEAD
     v_delivery_fee, v_final_total, p_account_id, v_order_number, v_request_key, 'processing', now()
+=======
+    v_delivery_fee, v_tax_amount, v_final_total, p_account_id, v_order_number, v_request_key, 'new', now()
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   );
   return v_order_number;
 end;
@@ -566,6 +809,68 @@ revoke all on function public.create_order_with_stock(uuid, jsonb) from anon;
 grant execute on function public.create_order_with_stock(uuid, jsonb) to authenticated;
 grant execute on function public.create_order_with_stock(uuid, jsonb) to service_role;
 
+<<<<<<< HEAD
+=======
+create or replace function public.update_order_status(p_order_id bigint, p_status text, p_actor_id uuid default null)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor_id uuid;
+begin
+  if coalesce(auth.role(), '') = 'service_role' then
+    v_actor_id := p_actor_id;
+  else
+    v_actor_id := auth.uid();
+    if p_actor_id is not null and p_actor_id <> v_actor_id then
+      raise exception 'غير مصرح';
+    end if;
+  end if;
+  if v_actor_id is null or not exists (
+    select 1 from public.profiles where id = v_actor_id and role = 'admin'
+  ) then
+    raise exception 'غير مصرح';
+  end if;
+
+  perform set_config('app.order_actor_id', v_actor_id::text, true);
+  update public.orders set status = p_status where id = p_order_id;
+  if not found then
+    raise exception 'الطلب غير موجود';
+  end if;
+end;
+$$;
+revoke all on function public.update_order_status(bigint, text, uuid) from public;
+grant execute on function public.update_order_status(bigint, text, uuid) to authenticated, service_role;
+
+create or replace function public.cancel_order_if_new(p_order_id bigint)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_account_id uuid := auth.uid();
+begin
+  if v_account_id is null then
+    raise exception 'يجب تسجيل الدخول لإلغاء الطلب';
+  end if;
+
+  update public.orders
+  set status = 'cancelled'
+  where id = p_order_id
+    and "accountId" = v_account_id
+    and status = 'new';
+  return found;
+end;
+$$;
+
+revoke all on function public.cancel_order_if_new(bigint) from public;
+revoke all on function public.cancel_order_if_new(bigint) from anon;
+grant execute on function public.cancel_order_if_new(bigint) to authenticated;
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 create or replace function public.reset_store(p_owner_id uuid default null)
 returns void
 language plpgsql
@@ -609,7 +914,227 @@ $$;
 
 revoke all on function public.reset_store(uuid) from public;
 revoke all on function public.reset_store(uuid) from anon;
+<<<<<<< HEAD
 grant execute on function public.reset_store(uuid) to authenticated;
 grant execute on function public.reset_store(uuid) to service_role;
 
+=======
+revoke all on function public.reset_store(uuid) from authenticated;
+grant execute on function public.reset_store(uuid) to service_role;
+
+create table if not exists public.store_security (
+  id smallint primary key check (id = 1),
+  pin_hash text not null,
+  pin_salt text not null,
+  failed_attempts integer not null default 0 check (failed_attempts >= 0),
+  locked_until timestamptz,
+  reset_token_hash text,
+  reset_token_expires_at timestamptz
+);
+
+alter table public.store_security enable row level security;
+revoke all on table public.store_security from public, anon, authenticated;
+grant select, insert, update on table public.store_security to service_role;
+
+create or replace function public.record_reset_pin_attempt(p_success boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_security public.store_security%rowtype;
+begin
+  if coalesce(auth.role(), '') <> 'service_role'
+     and (auth.uid() is null or not public.is_owner()) then
+    raise exception 'غير مصرح';
+  end if;
+
+  select * into v_security from public.store_security where id = 1 for update;
+  if not found then
+    raise exception 'لم يتم إنشاء رمز الأمان';
+  end if;
+
+  if v_security.locked_until is not null and v_security.locked_until > now() then
+    return jsonb_build_object('ok', false, 'lockedUntil', v_security.locked_until);
+  end if;
+
+  if p_success then
+    update public.store_security
+    set failed_attempts = 0, locked_until = null
+    where id = 1;
+    return jsonb_build_object('ok', true, 'failedAttempts', 0);
+  end if;
+
+  if v_security.locked_until is not null then
+    v_security.failed_attempts := 0;
+  end if;
+  v_security.failed_attempts := v_security.failed_attempts + 1;
+  if v_security.failed_attempts >= 5 then
+    v_security.locked_until := now() + interval '15 minutes';
+  else
+    v_security.locked_until := null;
+  end if;
+  update public.store_security
+  set failed_attempts = v_security.failed_attempts, locked_until = v_security.locked_until
+  where id = 1;
+
+  return jsonb_build_object(
+    'ok', v_security.failed_attempts < 5,
+    'failedAttempts', v_security.failed_attempts,
+    'lockedUntil', v_security.locked_until
+  );
+end;
+$$;
+
+create or replace function public.consume_store_reset_token(p_token_hash text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_security public.store_security%rowtype;
+begin
+  if coalesce(auth.role(), '') <> 'service_role'
+     and (auth.uid() is null or not public.is_owner()) then
+    raise exception 'غير مصرح';
+  end if;
+
+  select * into v_security from public.store_security where id = 1 for update;
+  if not found
+     or v_security.reset_token_hash is distinct from p_token_hash
+     or v_security.reset_token_expires_at is null
+     or v_security.reset_token_expires_at <= now() then
+    return false;
+  end if;
+
+  update public.store_security
+  set reset_token_hash = null, reset_token_expires_at = null
+  where id = 1;
+  return true;
+end;
+$$;
+
+revoke all on function public.record_reset_pin_attempt(boolean) from public, anon, authenticated;
+grant execute on function public.record_reset_pin_attempt(boolean) to service_role;
+revoke all on function public.consume_store_reset_token(text) from public, anon, authenticated;
+grant execute on function public.consume_store_reset_token(text) to service_role;
+
+create or replace function public.complete_store_setup(
+  p_owner_id uuid,
+  p_settings jsonb,
+  p_product jsonb default null,
+  p_admin_id uuid default null,
+  p_admin_name text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_settings_id bigint;
+begin
+  if coalesce(auth.role(), '') = 'service_role' then
+    if not exists (
+      select 1 from public.profiles
+      where id = p_owner_id and role = 'admin' and "isOwner" = true
+    ) then
+      raise exception 'فقط مالك المتجر يستطيع إنشاء المتجر';
+    end if;
+  elsif auth.uid() is null
+     or auth.uid() <> p_owner_id
+     or not public.is_owner() then
+    raise exception 'فقط مالك المتجر يستطيع إنشاء المتجر';
+  end if;
+
+  perform 1 from public.site_settings for update;
+  if exists (
+    select 1 from public.site_settings
+    where length(btrim(coalesce("storeName", ''))) > 0
+       or length(btrim(coalesce(tagline, ''))) > 0
+  ) or exists (select 1 from public.products) then
+    raise exception 'المتجر مُعد مسبقاً';
+  end if;
+
+  if p_settings is null
+     or length(btrim(coalesce(p_settings ->> 'storeName', ''))) = 0
+     or length(btrim(coalesce(p_settings ->> 'tagline', ''))) = 0
+     or length(btrim(coalesce(p_settings ->> 'aboutText', ''))) = 0
+     or length(btrim(coalesce(p_settings ->> 'policyText', ''))) = 0
+     or coalesce(p_settings ->> 'taglineFont', '') not in ('cairo', 'sans', 'serif')
+     or coalesce(p_settings ->> 'taglineColor', '') !~* '^#[0-9a-f]{6}$' then
+    raise exception 'بيانات المتجر غير مكتملة أو غير صالحة';
+  end if;
+
+  if p_product is not null and (
+    length(btrim(coalesce(p_product ->> 'name', ''))) = 0
+    or length(btrim(coalesce(p_product ->> 'description', ''))) = 0
+    or coalesce((p_product ->> 'price')::numeric, 0) <= 0
+    or coalesce((p_product ->> 'stockQuantity')::integer, -1) < 0
+  ) then
+    raise exception 'بيانات المنتج الأول غير صالحة';
+  end if;
+
+  update public.site_settings
+  set "storeName" = btrim(p_settings ->> 'storeName'),
+      tagline = btrim(p_settings ->> 'tagline'),
+      "taglineFont" = p_settings ->> 'taglineFont',
+      "taglineColor" = p_settings ->> 'taglineColor',
+      "aboutTitle" = 'من نحن',
+      "aboutText" = btrim(p_settings ->> 'aboutText'),
+      "policyTitle" = 'سياساتنا',
+      "policyText" = btrim(p_settings ->> 'policyText'),
+      "maintenanceMode" = false
+  where id = (select id from public.site_settings order by id desc limit 1)
+  returning id into v_settings_id;
+
+  if v_settings_id is null then
+    insert into public.site_settings (
+      "storeName", tagline, "taglineFont", "taglineColor", "aboutTitle", "aboutText",
+      "policyTitle", "policyText", "maintenanceMode"
+    ) values (
+      btrim(p_settings ->> 'storeName'), btrim(p_settings ->> 'tagline'),
+      p_settings ->> 'taglineFont', p_settings ->> 'taglineColor',
+      'من نحن', btrim(p_settings ->> 'aboutText'),
+      'سياساتنا', btrim(p_settings ->> 'policyText'), false
+    );
+  end if;
+
+  if p_admin_id is not null then
+    update public.profiles
+    set role = 'admin', "isOwner" = false, "displayName" = btrim(p_admin_name)
+    where id = p_admin_id and "isOwner" = false;
+    if not found then
+      raise exception 'تعذر إعداد حساب المشرف الجديد';
+    end if;
+  end if;
+
+  if p_product is not null then
+    insert into public.products (
+      name, description, price, "imageUrl", "productImages", "stockQuantity",
+      "inStock", "availabilityMode", featured, "isNew"
+    ) values (
+      btrim(p_product ->> 'name'),
+      btrim(p_product ->> 'description'),
+      (p_product ->> 'price')::numeric,
+      nullif(p_product ->> 'imageUrl', ''),
+      case when nullif(p_product ->> 'imageUrl', '') is null
+        then '[]'::jsonb else jsonb_build_array(p_product ->> 'imageUrl') end,
+      (p_product ->> 'stockQuantity')::integer,
+      coalesce((p_product ->> 'stockQuantity')::integer, 0) > 0,
+      case when coalesce((p_product ->> 'stockQuantity')::integer, 0) > 0
+        then 'ready' else 'unavailable' end,
+      true,
+      true
+    );
+  end if;
+end;
+$$;
+
+revoke all on function public.complete_store_setup(uuid, jsonb, jsonb, uuid, text) from public, anon, authenticated;
+grant execute on function public.complete_store_setup(uuid, jsonb, jsonb, uuid, text) to service_role;
+
+>>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 notify pgrst, 'reload schema';
