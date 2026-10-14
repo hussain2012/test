@@ -2314,7 +2314,7 @@ function StoreSetup({ preview = false }) {
   const [storeName, setStoreName] = useState('');
   const [tagline, setTagline] = useState('');
   const [taglineFont, setTaglineFont] = useState('cairo');
-  const taglineColor = '#1B1813';
+  const taglineColor = '#102F29';
   const [aboutText, setAboutText] = useState('');
   const [policyText, setPolicyText] = useState('');
   const [ownerName, setOwnerName] = useState('');
@@ -2332,10 +2332,10 @@ function StoreSetup({ preview = false }) {
   const [successMessage, setSuccessMessage] = useState('');
   const steps = ['هوية المتجر', 'من نحن وسياساتنا', 'إضافة مالك', 'إضافة مشرف', 'إضافة أول منتج'];
   const colors = [
-    { value: '#1B1813', label: 'فحمي' },
-    { value: '#C8A25B', label: 'ذهبي' },
-    { value: '#53715B', label: 'أخضر' },
-    { value: '#765849', label: 'بني' },
+    { value: '#102F29', label: 'فحمي' },
+    { value: '#D8AB4E', label: 'ذهبي' },
+    { value: '#607C2D', label: 'أخضر' },
+    { value: '#795039', label: 'بني' },
   ];
 
   const validateStep = (step) => {
@@ -2807,7 +2807,7 @@ function SiteSettingsAdmin() {
           </label>
           <label>لون الشعار
             <select value={settings.taglineColor} onChange={(event) => setSettings({ ...settings, taglineColor: event.target.value })}>
-              <option value="#1B1813">فحمي</option><option value="#C8A25B">ذهبي</option><option value="#53715B">أخضر</option><option value="#765849">بني</option>
+              <option value="#102F29">فحمي</option><option value="#D8AB4E">ذهبي</option><option value="#607C2D">أخضر</option><option value="#795039">بني</option>
             </select>
           </label>
           <label>عنوان الواجهة<input value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} /></label>

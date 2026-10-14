@@ -97,7 +97,7 @@ const defaultSiteSettings = {
   storeName: '',
   tagline: '',
   taglineFont: 'cairo',
-  taglineColor: '#1B1813',
+  taglineColor: '#102F29',
   logoUrl: '',
   heroTitle: '',
   heroDescription: '',

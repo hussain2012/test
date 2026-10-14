@@ -130,7 +130,7 @@ export const defaultSettings = {
   storeName: '', tagline: '', logoUrl: '', heroTitle: '', heroDescription: '', heroImageUrl: '', heroButtonText: '',
   featuredSectionTitle: '', featuredProductIds: null, storeCategories: null, deliveryFee: 5000, taxRate: 0,
   instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: '', aboutText: '',
-  policyTitle: '', policyText: '', taglineFont: 'cairo', taglineColor: '#1B1813', maintenanceMode: false,
+  policyTitle: '', policyText: '', taglineFont: 'cairo', taglineColor: '#102F29', maintenanceMode: false,
 };
 
 let siteSettingsCache = null;
