@@ -9,6 +9,7 @@
   --accent: #90AB4C;
   --accent-soft: #EAF0E3;
   --text: #102F29;
+  --product-text: #2C4742;
   --muted: #7C8982;
   --placeholder: #7C8982;
   --danger: #C84D4D;
@@ -476,7 +477,7 @@ button { cursor: pointer; }
 .product-name h3 {
   font-size: 21px;
   margin: 8px 0 6px;
-  color: #102F29;
+  color: var(--product-text);
 }
 
 .product-info > span, .category-badge {
@@ -523,7 +524,7 @@ button { cursor: pointer; }
   font-size: 12px;
 }
 
-.product-bottom strong, .price-stack strong { font-size: 18px; color: #102F29; }
+.product-bottom strong, .price-stack strong { font-size: 18px; color: var(--product-text); }
 
 .sold {
   position: absolute;
@@ -680,10 +681,13 @@ button { cursor: pointer; }
 .detail-thumbnails img { width: 60px; height: 60px; object-fit: cover; }
 
 .detail-content {
+  --text: var(--product-text);
+  --muted: var(--product-text);
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding: 22px 20px;
+  color: var(--product-text);
   background: rgba(255,255,255,0.72);
   border: 1px solid var(--line);
   border-radius: 22px;
@@ -738,7 +742,7 @@ button { cursor: pointer; }
   margin: 0;
   font-size: clamp(2rem, 2.6vw, 2.8rem);
   line-height: 1.2;
-  color: var(--primary);
+  color: var(--product-text);
 }
 
 .detail-meta-row {
@@ -749,7 +753,7 @@ button { cursor: pointer; }
   margin-top: -2px;
 }
 
-.product-stock-count { color: var(--success); font-size: 12px; font-weight: 700; }
+.product-stock-count { color: var(--product-text); font-size: 12px; font-weight: 700; }
 
 .detail-product-code {
   display: inline-flex;
@@ -769,7 +773,7 @@ button { cursor: pointer; }
   padding: 4px 0 2px;
 }
 
-.price-stack strong { color: var(--primary); font-size: 30px; }
+.price-stack strong { color: var(--product-text); font-size: 30px; }
 
 .old-price {
   color: var(--muted);
@@ -2786,4 +2790,3 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
     transition-duration: 0.01ms !important;
   }
 }
-
