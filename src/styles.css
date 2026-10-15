@@ -993,8 +993,8 @@ button { cursor: pointer; }
 .discount-field button {
   height: 43px;
   padding: 0 16px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--paper);
+  background: var(--danger);
   border-radius: 6px;
   font-weight: 700;
 }
@@ -1294,7 +1294,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 
 .admin-side {
   width: 220px;
-  background: linear-gradient(180deg, var(--dark-surface) 0%, var(--primary) 100%);
+  background: var(--dark-surface);
   color: var(--soft-gold);
   padding: 18px 14px;
   display: flex;
@@ -1401,8 +1401,8 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .stats strong { display: block; font-size: 36px; margin: 8px 0; }
 .stats small { color: var(--muted); font-size: 11px; }
 .stats .best-seller strong { font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
-.stats .highlight { background: var(--accent); color: var(--primary); }
-.stats .highlight span, .stats .highlight strong, .stats .highlight small { color: var(--primary); }
+.stats .highlight { background: var(--accent); color: var(--soft-gold); }
+.stats .highlight span, .stats .highlight strong, .stats .highlight small { color: var(--soft-gold); }
 
 .dashboard-overview { display: grid; gap: 18px; }
 .product-analytics { border-top: 1px solid var(--line); padding-top: 20px; }
