@@ -8,10 +8,10 @@
   --primary-soft: #EAF0E3;
   --accent: #90AB4C;
   --accent-soft: #EAF0E3;
-  --text: #102F29;
-  --product-text: #2C4742;
-  --muted: #7C8982;
-  --placeholder: #7C8982;
+  --text: #303733;
+  --product-text: #37413B;
+  --muted: #737B75;
+  --placeholder: #737B75;
   --danger: #C84D4D;
   --line: #DCE5E0;
   --divider: #DCE5E0;
@@ -682,7 +682,6 @@ button { cursor: pointer; }
 
 .detail-content {
   --text: var(--product-text);
-  --muted: var(--product-text);
   display: flex;
   flex-direction: column;
   gap: 14px;
