@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-﻿import 'dotenv/config';
-=======
 import 'dotenv/config';
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
@@ -16,10 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const port = 3000;
 const generateProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
-<<<<<<< HEAD
-=======
 const imageExtensions = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const supabaseUrl = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const supabaseKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 const supabaseServer = supabaseUrl && supabaseKey
@@ -27,17 +20,6 @@ const supabaseServer = supabaseUrl && supabaseKey
   : null;
 const uploadDir = path.join(__dirname, 'uploads');
 fs.mkdirSync(uploadDir, { recursive: true });
-<<<<<<< HEAD
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, callback) => {
-      const extension = path.extname(file.originalname || '').toLowerCase();
-      callback(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${extension}`);
-    },
-  }),
-});
-=======
 const uploadStorage = multer.diskStorage({
   destination: uploadDir,
   filename: (req, file, callback) => callback(null, `${crypto.randomUUID()}${imageExtensions[file.mimetype] || '.bin'}`),
@@ -58,7 +40,6 @@ const setupStoreUpload = multer({
     ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype),
   ),
 }).single('productImage');
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const productUpload = upload.fields([
   { name: 'primaryImage', maxCount: 1 },
   { name: 'productImages', maxCount: 10 },
@@ -72,8 +53,6 @@ const isOwnerRequest = (req) => {
   const session = getSession(req);
   return session?.role === 'admin' && session?.isOwner === true;
 };
-<<<<<<< HEAD
-=======
 const securityPinHash = async (pin, salt) => {
   const key = await globalThis.crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
   const bits = await globalThis.crypto.subtle.deriveBits({
@@ -91,7 +70,6 @@ const equalHashes = (first, second) => {
   return difference === 0;
 };
 const hashResetToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const parseItems = (value) => {
   if (Array.isArray(value)) return value;
   try {
@@ -118,11 +96,8 @@ const getBestSeller = (orders) => {
 const defaultSiteSettings = {
   storeName: '',
   tagline: '',
-<<<<<<< HEAD
-=======
   taglineFont: 'cairo',
   taglineColor: '#102F29',
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   logoUrl: '',
   heroTitle: '',
   heroDescription: '',
@@ -137,12 +112,6 @@ const defaultSiteSettings = {
   policyTitle: '',
   policyText: '',
   maintenanceMode: false,
-<<<<<<< HEAD
-};
-
-app.use(cors());
-app.use(express.json());
-=======
   taxRate: 0,
 };
 
@@ -157,7 +126,6 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '1mb' }));
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 app.use('/uploads', express.static(uploadDir));
 app.use(async (req, res, next) => {
   const authorization = String(req.headers.authorization || '');
@@ -195,11 +163,8 @@ app.use((req, res, next) => {
 const normalizeSiteSettings = (row) => ({
     ...defaultSiteSettings,
     ...row,
-<<<<<<< HEAD
-=======
     taglineFont: ['cairo', 'sans', 'serif'].includes(row.taglineFont) ? row.taglineFont : defaultSiteSettings.taglineFont,
     taglineColor: /^#[0-9a-fA-F]{6}$/.test(row.taglineColor || '') ? row.taglineColor.toUpperCase() : defaultSiteSettings.taglineColor,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     instagramUrl: row.instagramUrl || '',
     tiktokUrl: row.tiktokUrl || '',
     facebookUrl: row.facebookUrl || '',
@@ -209,10 +174,7 @@ const normalizeSiteSettings = (row) => ({
     policyTitle: row.policyTitle || defaultSiteSettings.policyTitle,
     policyText: row.policyText || defaultSiteSettings.policyText,
     maintenanceMode: Boolean(row.maintenanceMode),
-<<<<<<< HEAD
-=======
     taxRate: Number.isFinite(Number(row.taxRate)) ? Math.min(100, Math.max(0, Number(row.taxRate))) : 0,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 const getSiteSettings = async () => {
@@ -257,8 +219,6 @@ const parseImageList = (value) => {
     return [];
   }
 };
-<<<<<<< HEAD
-=======
 const publicDiscountData = (row) => row ? ({
   id: row.id,
   code: row.code,
@@ -266,7 +226,6 @@ const publicDiscountData = (row) => row ? ({
   value: Number(row.value),
   active: Boolean(row.active),
 }) : null;
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
 const publicProductData = (row) => ({
   id: row.id,
@@ -274,13 +233,9 @@ const publicProductData = (row) => ({
   description: row.description,
   productCode: String(row?.product_code ?? row?.productCode ?? '').trim().toUpperCase(),
   price: Number(row.price || 0),
-<<<<<<< HEAD
-  discountPercentage: Number(row.discountPercentage || 0),
-=======
   discountType: row.discountType === 'amount' ? 'amount' : 'percentage',
   discountValue: Number(row.discountValue ?? row.discountPercentage ?? 0),
   discountPercentage: row.discountType === 'amount' ? 0 : Number(row.discountValue ?? row.discountPercentage ?? 0),
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   discountedPrice: getDiscountedPrice(row),
   imageUrl: row.imageUrl || '',
   productImages: getProductImages(row),
@@ -363,8 +318,6 @@ app.delete('/api/admin/admins/:identifier', async (req, res) => {
   res.status(204).end();
 });
 
-<<<<<<< HEAD
-=======
 app.post('/api/admin/owners', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إنشاء حساب مالك جديد' });
   if (!requireSupabase(res)) return;
@@ -448,7 +401,6 @@ app.post('/api/admin/owners', async (req, res) => {
   }
 });
 
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 app.post('/api/admin/transfer-ownership', async (req, res) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يمكنه تحويل الملكية' });
   if (!requireSupabase(res)) return;
@@ -505,11 +457,7 @@ app.get('/api/account/coupons', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { data, error } = await supabaseServer.from('account_coupons').select('savedAt, discounts(*)').eq('accountId', session.accountId).order('savedAt', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-<<<<<<< HEAD
-  res.json((data || []).map((row) => ({ ...row.discounts, active: Boolean(row.discounts?.active), savedAt: row.savedAt })));
-=======
   res.json((data || []).map((row) => ({ ...publicDiscountData(row.discounts), savedAt: row.savedAt })));
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.post('/api/account/coupons/:code', async (req, res) => {
@@ -521,11 +469,7 @@ app.post('/api/account/coupons/:code', async (req, res) => {
   if (!coupon) return res.status(404).json({ error: 'كود الخصم غير صالح أو غير فعال' });
   const { error: saveError } = await supabaseServer.from('account_coupons').upsert({ accountId: session.accountId, discountId: coupon.id }, { onConflict: 'accountId,discountId' });
   if (saveError) return res.status(400).json({ error: saveError.message });
-<<<<<<< HEAD
-  res.status(201).json({ ...coupon, active: Boolean(coupon.active), saved: true });
-=======
   res.status(201).json({ ...publicDiscountData(coupon), saved: true });
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.get('/api/site-settings', async (req, res) => {
@@ -539,12 +483,8 @@ app.get('/api/site-settings', async (req, res) => {
 app.post('/api/analytics/view', async (req, res) => {
   if (!requireSupabase(res)) return;
   const type = req.body?.type === 'product' ? 'product' : 'home';
-<<<<<<< HEAD
-  const { error } = await supabaseServer.from('page_views').insert({ type });
-=======
   const payload = type === 'product' && req.body?.productId != null ? { type, productId: req.body.productId } : { type };
   const { error } = await supabaseServer.from('page_views').insert(payload);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ ok: true, type });
 });
@@ -582,11 +522,7 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   if (!requireSupabase(res)) return;
   const { name, description, price, costPrice, discountPercentage, category, stockQuantity, inStock, imageUrl, featured, isNew } = req.body;
-<<<<<<< HEAD
-  if (!name || !description || !price) return res.status(400).json({ error: 'يرجى إكمال بيانات المنتج' });
-=======
   if (!name || !description || !Number.isFinite(Number(price)) || Number(price) <= 0) return res.status(400).json({ error: 'يرجى إدخال سعر صحيح وإكمال بيانات المنتج' });
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   const uploadedImages = (req.files?.productImages ?? []).map(uploadedImageUrl);
   const images = [...parseImageList(req.body?.existingProductImages), ...uploadedImages];
@@ -597,15 +533,11 @@ app.post('/api/admin/products', productUpload, async (req, res) => {
     description,
     price: Number(price),
     costPrice: Number(costPrice || 0),
-<<<<<<< HEAD
-    discountPercentage: Number(discountPercentage || 0),
-=======
     discountType: req.body.discountType === 'amount' ? 'amount' : 'percentage',
     discountValue: Number(req.body.discountValue ?? discountPercentage ?? 0),
     discountPercentage: Number(discountPercentage || 0),
     availabilityMode: ['ready', 'preorder', 'unavailable'].includes(req.body.availabilityMode) ? req.body.availabilityMode : (Number(stockQuantity ?? 10) > 0 ? 'ready' : 'unavailable'),
     variants: parseItems(req.body.variants),
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     product_code: generateProductCode(),
     imageUrl: primaryImage,
     productImages: images ?? [],
@@ -631,15 +563,11 @@ app.put('/api/admin/products/:id', productUpload, async (req, res) => {
     description: req.body.description ?? existingProduct.description,
     price: Number(req.body.price ?? existingProduct.price),
     costPrice: Number(req.body.costPrice ?? existingProduct.costPrice ?? 0),
-<<<<<<< HEAD
-    discountPercentage: Number(req.body.discountPercentage ?? existingProduct.discountPercentage ?? 0),
-=======
     discountType: req.body.discountType === 'amount' ? 'amount' : (req.body.discountType || existingProduct.discountType || 'percentage'),
     discountValue: Number(req.body.discountValue ?? req.body.discountPercentage ?? existingProduct.discountValue ?? existingProduct.discountPercentage ?? 0),
     discountPercentage: Number(req.body.discountPercentage ?? existingProduct.discountPercentage ?? 0),
     availabilityMode: ['ready', 'preorder', 'unavailable'].includes(req.body.availabilityMode) ? req.body.availabilityMode : existingProduct.availabilityMode,
     variants: req.body.variants !== undefined ? parseItems(req.body.variants) : existingProduct.variants,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     ...((req.body.productCode !== undefined || req.body.product_code !== undefined)
       ? { product_code: String(req.body.productCode ?? req.body.product_code ?? '').trim().toUpperCase() || null }
       : {}),
@@ -703,11 +631,7 @@ app.get('/api/discounts/validate/:code', async (req, res) => {
   if (!requireSupabase(res)) return;
   const { data, error } = await supabaseServer.from('discounts').select('*').eq('code', String(req.params.code).toUpperCase()).eq('active', true).maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
-<<<<<<< HEAD
-  res.json(data ? { ...data, active: Boolean(data.active) } : null);
-=======
   res.json(publicDiscountData(data));
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.get('/api/orders', async (req, res) => {
@@ -758,9 +682,6 @@ app.get('/api/account/orders', async (req, res) => {
   res.json((orders || []).map((order) => {
     const normalized = normalizeOrderRow(order);
     const discount = discountMap.get(order.discountCode);
-<<<<<<< HEAD
-    return { ...normalized, discountType: discount?.type || null, discountValue: discount?.value || 0 };
-=======
     return {
       ...normalized,
       items: normalized.items.map((item) => {
@@ -770,21 +691,12 @@ app.get('/api/account/orders', async (req, res) => {
       discountType: discount?.type || null,
       discountValue: discount?.value || 0,
     };
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   }));
 });
 
 app.patch('/api/orders/:id', async (req, res) => {
   if (!isAdminRequest(req)) return res.status(401).json({ error: 'غير مصرح' });
   if (!requireSupabase(res)) return;
-<<<<<<< HEAD
-  const updates = {};
-  if (req.body.status) updates.status = req.body.status;
-  if (req.body.isRead !== undefined) updates.isRead = Boolean(req.body.isRead);
-  if (!Object.keys(updates).length) return res.json({ ok: true });
-  const { error } = await supabaseServer.from('orders').update(updates).eq('id', req.params.id);
-  if (error) return res.status(400).json({ error: error.message });
-=======
   if (req.body.status !== undefined) {
     if (!['processing', 'delivered', 'cancelled'].includes(req.body.status)) {
       return res.status(400).json({ error: 'حالة الطلب غير صحيحة' });
@@ -800,7 +712,6 @@ app.patch('/api/orders/:id', async (req, res) => {
     const { error } = await supabaseServer.from('orders').update({ isRead: Boolean(req.body.isRead) }).eq('id', req.params.id);
     if (error) return res.status(400).json({ error: error.message });
   }
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   res.json({ ok: true });
 });
 
@@ -872,15 +783,6 @@ app.get('/api/admin/site-settings', async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
-app.post('/api/admin/reset-store', async (req, res) => {
-  if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إعادة ضبطه' });
-  if (!requireSupabase(res)) return;
-  const { error } = await supabaseServer.rpc('reset_store', { p_owner_id: getSession(req).accountId });
-  if (error) return res.status(500).json({ error: error.message });
-
-  res.json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
-=======
 app.post('/api/admin/setup-store', (req, res, next) => {
   if (!isOwnerRequest(req)) return res.status(403).json({ error: 'فقط مالك المتجر يستطيع إنشاء المتجر' });
   if (!requireSupabase(res)) return;
@@ -1069,7 +971,6 @@ app.post('/api/admin/reset-security/confirm', async (req, res) => {
 
 app.post('/api/admin/reset-store', async (req, res) => {
   return res.status(410).json({ error: 'يجب التحقق من رمز الأمان قبل إعادة ضبط المتجر' });
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 
 app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCount: 1 }, { name: 'heroImage', maxCount: 1 }]), async (req, res) => {
@@ -1087,11 +988,8 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
   const settings = {
     storeName: req.body.storeName || previous.storeName,
     tagline: req.body.tagline || previous.tagline,
-<<<<<<< HEAD
-=======
     taglineFont: ['cairo', 'sans', 'serif'].includes(req.body.taglineFont) ? req.body.taglineFont : previous.taglineFont,
     taglineColor: /^#[0-9a-fA-F]{6}$/.test(req.body.taglineColor || '') ? req.body.taglineColor.toUpperCase() : previous.taglineColor,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     logoUrl,
     heroTitle: req.body.heroTitle || previous.heroTitle,
     heroDescription: req.body.heroDescription || previous.heroDescription,
@@ -1117,8 +1015,6 @@ app.post('/api/admin/site-settings', upload.fields([{ name: 'logoImage', maxCoun
   res.json({ ...defaultSiteSettings, ...settings, maintenanceMode: Boolean(settings.maintenanceMode) });
 });
 
-<<<<<<< HEAD
-=======
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   console.error('API request failed', error);
@@ -1126,5 +1022,4 @@ app.use((error, req, res, next) => {
   res.status(status).json({ error: status === 500 ? 'حدث خطأ داخلي. حاول مرة أخرى.' : error.message });
 });
 
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 app.listen(port, () => console.log(`الخادم يعمل على http://localhost:${port}`));

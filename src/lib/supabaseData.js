@@ -4,10 +4,6 @@ const asArray = (value) => Array.isArray(value) ? value : [];
 const asJsonArray = (value) => Array.isArray(value) ? value : (() => {
   try { const parsed = JSON.parse(value || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
 })();
-<<<<<<< HEAD
-const ensureProductQuery = (query) => (query && typeof query.order === 'function' ? query : supabase.from('products').select('*'));
-=======
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const asProductRows = (value) => asArray(value).filter((row) => row && typeof row === 'object');
 const getBestSeller = (orders) => {
   const quantities = new Map();
@@ -86,35 +82,6 @@ const productView = (row) => {
 };
 const orderView = (row) => ({ ...row, items: asJsonArray(row?.items), isRead: Boolean(row?.isRead), accountOrderNumber: row?.accountOrderNumber || null });
 const throwIfError = ({ data, error }) => { if (error) throw error; return data; };
-<<<<<<< HEAD
-const isMissingColumnError = (error) => {
-  const message = error?.message || '';
-  return error?.code === '42703' || /Could not find the '.*' column|column .* does not exist/i.test(message);
-};
-const queryProducts = async ({ includeAvailabilityMode = true } = {}) => {
-  try {
-    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
-    if (error && isMissingColumnError(error)) {
-      return ensureProductQuery(supabase.from('products').select('*'));
-    }
-    if (error) throw error;
-    return ensureProductQuery(includeAvailabilityMode ? supabase.from('products').select('*') : supabase.from('products').select('*'));
-  } catch (error) {
-    if (isMissingColumnError(error)) return ensureProductQuery(supabase.from('products').select('*'));
-    throw error;
-  }
-};
-const productPayloadWithAvailability = async (payload) => {
-  try {
-    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
-    if (error && isMissingColumnError(error)) return payload;
-    if (error) throw error;
-    return { ...payload, availabilityMode: payload.availabilityMode };
-  } catch (error) {
-    if (isMissingColumnError(error)) return payload;
-    throw error;
-  }
-=======
 async function apiRequest(path, method = 'GET', payload) {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw sessionError;
@@ -150,7 +117,6 @@ const productFormData = (payload) => {
     form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
   }
   return form;
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 };
 const getFeaturedProductIds = (data) => {
   const fromCurrent = data?.featuredProductIds;
@@ -162,15 +128,6 @@ const getFeaturedProductIds = (data) => {
 
 export const defaultSettings = {
   storeName: '', tagline: '', logoUrl: '', heroTitle: '', heroDescription: '', heroImageUrl: '', heroButtonText: '',
-<<<<<<< HEAD
-  featuredSectionTitle: '', featuredProductIds: null, storeCategories: null, deliveryFee: 5000,
-  instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: '', aboutText: '',
-  policyTitle: '', policyText: '', maintenanceMode: false,
-};
-
-const normalizeSettings = (data) => {
-  const deliveryFee = Number(data?.deliveryFee);
-=======
   featuredSectionTitle: '', featuredProductIds: null, storeCategories: null, deliveryFee: 5000, taxRate: 0,
   instagramUrl: '', tiktokUrl: '', facebookUrl: '', whatsappUrl: '', aboutTitle: '', aboutText: '',
   policyTitle: '', policyText: '', taglineFont: 'cairo', taglineColor: '#102F29', maintenanceMode: false,
@@ -186,7 +143,6 @@ const clearProductsCache = () => { productsCache = null; };
 const normalizeSettings = (data) => {
   const deliveryFee = Number(data?.deliveryFee);
   const taxRate = Number(data?.taxRate);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   return {
     ...defaultSettings,
     ...(data || {}),
@@ -196,42 +152,22 @@ const normalizeSettings = (data) => {
     featuredProductIds: getFeaturedProductIds(data),
     storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
     deliveryFee: Number.isFinite(deliveryFee) && deliveryFee >= 0 ? deliveryFee : defaultSettings.deliveryFee,
-<<<<<<< HEAD
-=======
     taxRate: Number.isFinite(taxRate) && taxRate >= 0 && taxRate <= 100 ? taxRate : 0,
     taglineFont: ['cairo', 'sans', 'serif'].includes(data?.taglineFont) ? data.taglineFont : defaultSettings.taglineFont,
     taglineColor: /^#[0-9a-fA-F]{6}$/.test(data?.taglineColor || '') ? data.taglineColor.toUpperCase() : defaultSettings.taglineColor,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     maintenanceMode: Boolean(data?.maintenanceMode),
   };
 };
 
 export async function getSiteSettings() {
-<<<<<<< HEAD
-  const data = throwIfError(await supabase.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle());
-  return normalizeSettings(data);
-=======
   if (siteSettingsCache) return siteSettingsCache;
   const data = throwIfError(await supabase.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle());
   siteSettingsCache = normalizeSettings(data);
   return siteSettingsCache;
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 }
 export async function recordView(type, productId) {
   const viewType = type === 'product' ? 'product' : 'home';
   const payload = viewType === 'product' && productId != null ? { type: viewType, productId } : { type: viewType };
-<<<<<<< HEAD
-  return throwIfError(await supabase.from('page_views').insert(payload).select().single());
-}
-export async function listProducts() {
-  const query = ensureProductQuery(await queryProducts());
-  const data = throwIfError(await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false }));
-  return asProductRows(data).map(productView);
-}
-export async function getProduct(id) {
-  const query = ensureProductQuery(await queryProducts());
-  const data = throwIfError(await query.eq('id', id).maybeSingle());
-=======
   return apiRequest('/api/analytics/view', 'POST', payload);
 }
 export async function listProducts({ forceRefresh = false } = {}) {
@@ -245,26 +181,10 @@ export async function getProduct(id) {
     if (String(error?.message || '').includes('المنتج غير موجود')) return null;
     throw error;
   });
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   return data && typeof data === 'object' ? productView(data) : null;
 }
 export async function getCart(userId) { const data = throwIfError(await supabase.from('account_carts').select('items').eq('accountId', userId).maybeSingle()); return asArray(data?.items); }
 export async function saveCart(userId, items) { return throwIfError(await supabase.from('account_carts').upsert({ accountId: userId, items: asArray(items), updatedAt: new Date().toISOString() }, { onConflict: 'accountId' })); }
-<<<<<<< HEAD
-export async function validateDiscount(code) { return throwIfError(await supabase.from('discounts').select('*').eq('code', String(code).toUpperCase()).eq('active', true).maybeSingle()); }
-export async function saveCoupon(userId, discountId) { return throwIfError(await supabase.from('account_coupons').upsert({ accountId: userId, discountId }, { onConflict: 'accountId,discountId' })); }
-export async function createOrder(payload, userId) {
-  return throwIfError(await supabase.rpc('create_order_with_stock', {
-    p_account_id: userId,
-    p_payload: payload,
-  }));
-}
-export async function getAccountOrders(userId) { const data = throwIfError(await supabase.from('orders').select('*').eq('accountId', userId).order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
-
-export async function adminProducts() {
-  const query = ensureProductQuery(await queryProducts());
-  const data = throwIfError(await query.order('id', { ascending: false }));
-=======
 export async function validateDiscount(code) {
   return apiRequest(`/api/discounts/validate/${encodeURIComponent(String(code).trim().toUpperCase())}`);
 }
@@ -289,23 +209,18 @@ export async function getAccountOrders() {
 
 export async function adminProducts() {
   const data = await apiRequest('/api/admin/products');
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   return asProductRows(data).map((row) => ({
     ...productView(row),
     costPrice: Number(row.costPrice || 0),
     profit: Number((Number(row.price || 0) - Number(row.costPrice || 0)).toFixed(2)),
   }));
 }
-<<<<<<< HEAD
-const safeUploadName = (file) => String(file?.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
-=======
 const safeImageExtensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
 const validateUploadImage = (file) => {
   const extension = safeImageExtensions[file?.type];
   if (!extension || file.size > 5 * 1024 * 1024) throw new Error('اختر صورة بصيغة مدعومة وحجم لا يتجاوز 5 ميغابايت');
   return extension;
 };
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const generatedProductCode = () => `PRD-${crypto.randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
 const productCodeColumn = (form, generateIfMissing = false) => {
   if (!Object.prototype.hasOwnProperty.call(form ?? {}, 'productCode') && !Object.prototype.hasOwnProperty.call(form ?? {}, 'product_code')) {
@@ -314,11 +229,6 @@ const productCodeColumn = (form, generateIfMissing = false) => {
   const value = String(form?.productCode ?? form?.product_code ?? '').trim().toUpperCase();
   return { product_code: value || (generateIfMissing ? generatedProductCode() : null) };
 };
-<<<<<<< HEAD
-async function uploadFiles(primaryImageFile, additionalImageFiles = []) { const urls = []; for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) { const path = `products/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); urls.push(supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl); } return urls; }
-export async function uploadCategoryImage(file) { const path = `categories/${crypto.randomUUID()}-${safeUploadName(file)}`; throwIfError(await supabase.storage.from('uploads').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false })); return supabase.storage.from('uploads').getPublicUrl(path).data.publicUrl; }
-export async function moveProductsToCategory(currentCategory, nextCategory) { if (currentCategory === nextCategory) return; return throwIfError(await supabase.from('products').update({ category: nextCategory }).eq('category', currentCategory)); }
-=======
 async function uploadFiles(primaryImageFile, additionalImageFiles = []) {
   const urls = [];
   for (const file of [primaryImageFile, ...asArray(additionalImageFiles)].filter(Boolean)) {
@@ -341,7 +251,6 @@ export async function moveProductsToCategory(currentCategory, nextCategory) {
   clearProductsCache();
   return result;
 }
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 export async function createProduct(form, primaryFile, additionalFiles) {
   const productForm = form ?? {};
   const uploaded = await uploadFiles(primaryFile, additionalFiles);
@@ -358,10 +267,7 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     discountType: productForm.discountType === 'amount' ? 'amount' : 'percentage',
     discountValue: Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
     discountPercentage: productForm.discountType === 'amount' ? 0 : Number(productForm.discountValue ?? productForm.discountPercentage ?? 0),
-<<<<<<< HEAD
-=======
     availabilityMode,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     category: String(productForm.category || '').trim(),
     imageUrl: (primaryFile ? uploaded[0] : '') || productForm.imageUrl || images[0] || '',
     productImages: images ?? [],
@@ -371,12 +277,8 @@ export async function createProduct(form, primaryFile, additionalFiles) {
     featured: Boolean(productForm.featured),
     isNew: Boolean(productForm.isNew),
   };
-<<<<<<< HEAD
-  const data = throwIfError(await supabase.from('products').insert(await productPayloadWithAvailability({ ...payload, availabilityMode })).select().single());
-=======
   const data = await apiRequest('/api/admin/products', 'POST', productFormData({ ...payload, availabilityMode }));
   clearProductsCache();
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   return productView(data);
 }
 
@@ -420,40 +322,15 @@ export async function updateProduct(idOrForm, form, primaryFile, additionalFiles
     imageUrl: (primaryFile ? uploaded[0] : '') || actualForm?.imageUrl || productImages[0] || '',
     productImages,
   };
-<<<<<<< HEAD
-  const payloadWithAvailability = await productPayloadWithAvailability(rawPayload);
-
-  const payload = typeof sanitizeProductPayload === 'function' 
-    ? sanitizeProductPayload(payloadWithAvailability) 
-    : { ...payloadWithAvailability };
-=======
   const payload = typeof sanitizeProductPayload === 'function'
     ? sanitizeProductPayload(rawPayload)
     : { ...rawPayload };
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 
   // حذف الـ id من الحمولة حتى لا يتعارض مع استعلام Supabase
   delete payload.id;
   delete payload.productCode;
 
   // 5. تنفيذ التحديث في Supabase
-<<<<<<< HEAD
-  const { data, error } = await supabase
-    .from('products')
-    .update(payload)
-    .eq('id', Number(productId))
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-export async function deleteProduct(id) { return throwIfError(await supabase.from('products').delete().eq('id', id)); }
-export async function listOrders() { const data = throwIfError(await supabase.from('orders').select('*').order('createdAt', { ascending: false })); return asArray(data).map(orderView); }
-export async function updateOrder(id, updates) { return throwIfError(await supabase.from('orders').update(updates).eq('id', id)); }
-export async function unreadOrderCount() { const { count } = throwIfError(await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('isRead', false)); return count || 0; }
-export async function listDiscounts() { return asArray(throwIfError(await supabase.from('discounts').select('*').order('id', { ascending: false }))); }
-=======
   const data = await apiRequest(`/api/admin/products/${encodeURIComponent(productId)}`, 'PUT', productFormData(payload));
   clearProductsCache();
   return productView(data);
@@ -470,7 +347,6 @@ export async function unreadOrderCount() {
   return Number(result?.count || 0);
 }
 export async function listDiscounts() { return asArray(await apiRequest('/api/discounts')); }
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const discountPayload = (form) => {
   const type = form.type === 'fixed' ? 'fixed' : 'percentage';
   const value = Number(form.value);
@@ -479,15 +355,9 @@ const discountPayload = (form) => {
   }
   return { code: String(form.code).trim().toUpperCase(), type, value, active: form.active !== false };
 };
-<<<<<<< HEAD
-export async function createDiscount(form) { return throwIfError(await supabase.from('discounts').insert(discountPayload(form)).select().single()); }
-export async function updateDiscount(id, form) { return throwIfError(await supabase.from('discounts').update(discountPayload(form)).eq('id', id).select().single()); }
-export async function deleteDiscount(id) { return throwIfError(await supabase.from('discounts').delete().eq('id', id)); }
-=======
 export async function createDiscount(form) { return apiRequest('/api/discounts', 'POST', discountPayload(form)); }
 export async function updateDiscount(id, form) { return apiRequest(`/api/discounts/${encodeURIComponent(id)}`, 'PUT', discountPayload(form)); }
 export async function deleteDiscount(id) { return apiRequest(`/api/discounts/${encodeURIComponent(id)}`, 'DELETE'); }
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 export async function analytics() {
   const [{ count: homeViews }, { data: productViews, error: productViewsError }, orders] = await Promise.all([
     supabase.from('page_views').select('id', { count: 'exact', head: true }).eq('type', 'home'),
@@ -526,28 +396,6 @@ export async function accountCount() { const { count, error } = await supabase.f
 export async function listAdmins() { const [admins, invites] = await Promise.all([supabase.from('profiles').select('id,identifier,createdAt,isOwner').eq('role', 'admin').order('createdAt'), supabase.from('admin_invites').select('identifier,createdAt').order('createdAt', { ascending: false })]); return { admins: asArray(throwIfError(admins)), invites: asArray(throwIfError(invites)) }; }
 export async function inviteAdmin(identifier) { const normalized = String(identifier).trim().toLowerCase(); const profile = throwIfError(await supabase.from('profiles').select('id,role').eq('identifier', normalized).maybeSingle()); if (profile?.role === 'admin') throw new Error('هذا الحساب مشرف مسبقاً'); if (profile) return throwIfError(await supabase.from('profiles').update({ role: 'admin' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').upsert({ identifier: normalized }, { onConflict: 'identifier' })); }
 export async function removeAdmin(identifier) { const profile = throwIfError(await supabase.from('profiles').select('id,isOwner').eq('identifier', String(identifier).toLowerCase()).eq('role', 'admin').maybeSingle()); if (profile?.isOwner) throw new Error('لا يمكن حذف مالك المتجر'); if (profile) throwIfError(await supabase.from('profiles').update({ role: 'customer' }).eq('id', profile.id)); return throwIfError(await supabase.from('admin_invites').delete().eq('identifier', String(identifier).toLowerCase())); }
-<<<<<<< HEAD
-export async function saveSiteSettings(settings) {
-  const current = await getSiteSettings();
-  const payload = { ...settings, id: undefined };
-  if (Object.prototype.hasOwnProperty.call(current || {}, 'featuredProducts') && !Object.prototype.hasOwnProperty.call(payload, 'featuredProducts')) {
-    payload.featuredProducts = payload.featuredProductIds ?? null;
-    delete payload.featuredProductIds;
-  }
-  const query = current.id
-    ? supabase.from('site_settings').update(payload).eq('id', current.id)
-    : supabase.from('site_settings').insert(payload);
-  const data = throwIfError(await query.select().single());
-  return {
-    ...defaultSettings,
-    ...data,
-    featuredProductIds: getFeaturedProductIds(data),
-    storeCategories: Array.isArray(data?.storeCategories) ? data.storeCategories : null,
-    deliveryFee: normalizeSettings(data).deliveryFee,
-  };
-}
-export async function resetStore() { return throwIfError(await supabase.rpc('reset_store')); }
-=======
 export async function createOwnerAccount(name, email, password) {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw sessionError;
@@ -622,4 +470,3 @@ export async function getResetSecurityStatus() { return resetSecurityRequest('')
 export async function createResetSecurityPin(pin) { return resetSecurityRequest('', { pin }); }
 export async function verifyResetSecurityPin(pin) { return resetSecurityRequest('/verify', { pin }); }
 export async function confirmResetStore(resetToken) { return resetSecurityRequest('/confirm', { resetToken }); }
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301

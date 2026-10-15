@@ -1,10 +1,6 @@
-<<<<<<< HEAD
--- Run after supabase_schema_fix.sql when only the order RPC needs to be refreshed.
-=======
 -- Run after supabase_schema_fix.sql when the order RPCs need to be refreshed.
 alter table public.orders alter column status set default 'new';
 
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 create or replace function public.create_order_with_stock(p_account_id uuid, p_payload jsonb)
 returns integer
 language plpgsql
@@ -213,11 +209,7 @@ begin
     v_order_items, btrim(p_payload->>'customerName'), btrim(p_payload->>'province'),
     btrim(p_payload->>'address'), btrim(p_payload->>'nearestLandmark'),
     p_payload->>'phoneNumber', v_subtotal, v_discount_code, v_discount_amount,
-<<<<<<< HEAD
-    v_delivery_fee, v_final_total, p_account_id, v_order_number, v_request_key, 'processing', now()
-=======
     v_delivery_fee, v_final_total, p_account_id, v_order_number, v_request_key, 'new', now()
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   );
   return v_order_number;
 end;
@@ -227,8 +219,6 @@ revoke all on function public.create_order_with_stock(uuid, jsonb) from public;
 revoke all on function public.create_order_with_stock(uuid, jsonb) from anon;
 grant execute on function public.create_order_with_stock(uuid, jsonb) to authenticated;
 grant execute on function public.create_order_with_stock(uuid, jsonb) to service_role;
-<<<<<<< HEAD
-=======
 
 create or replace function public.prevent_late_order_cancellation()
 returns trigger
@@ -273,5 +263,4 @@ revoke all on function public.cancel_order_if_new(bigint) from public;
 revoke all on function public.cancel_order_if_new(bigint) from anon;
 grant execute on function public.cancel_order_if_new(bigint) to authenticated;
 notify pgrst, 'reload schema';
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 notify pgrst, 'reload schema';

@@ -5,12 +5,8 @@
   "scripts": {
     "dev": "vite",
     "server": "node server.js",
-<<<<<<< HEAD
-    "build": "vite build"
-=======
     "build": "vite build",
     "test": "node --test"
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

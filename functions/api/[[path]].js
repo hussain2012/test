@@ -2,13 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
-<<<<<<< HEAD
-  headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
-});
-const empty = (status = 204) => new Response(null, {
-  status,
-  headers: { 'Access-Control-Allow-Origin': '*' },
-=======
   headers: {
     'Content-Type': 'application/json; charset=utf-8',
     'X-Content-Type-Options': 'nosniff',
@@ -27,7 +20,6 @@ const empty = (status = 204) => new Response(null, {
     'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   },
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 });
 const errorResponse = (message, status = 500) => json({ error: message }, status);
 const bool = (value) => value === true || value === 'true' || value === 1 || value === '1';
@@ -60,11 +52,8 @@ const parseJson = (value, fallback = []) => {
 const defaultSettings = {
   storeName: '',
   tagline: '',
-<<<<<<< HEAD
-=======
   taglineFont: 'cairo',
   taglineColor: '#102F29',
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   logoUrl: '',
   heroTitle: '',
   heroDescription: '',
@@ -77,10 +66,7 @@ const defaultSettings = {
   aboutTitle: '',
   aboutText: '',
   maintenanceMode: false,
-<<<<<<< HEAD
-=======
   taxRate: 0,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 };
 
 const createSupabase = (env) => createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -90,26 +76,7 @@ const isMissingColumnError = (error) => {
   const message = error?.message || '';
   return error?.code === '42703' || /Could not find the '.*' column|column .* does not exist/i.test(message);
 };
-<<<<<<< HEAD
-const productQuery = async (supabase, { allowLegacyFallback = true } = {}) => {
-  try {
-    const { error } = await supabase.from('products').select('availabilityMode').limit(1);
-    if (error && isMissingColumnError(error)) {
-      if (!allowLegacyFallback) throw error;
-      return supabase.from('products').select('*');
-    }
-    if (error) throw error;
-    return supabase.from('products').select('*');
-  } catch (error) {
-    if (allowLegacyFallback && isMissingColumnError(error)) {
-      return supabase.from('products').select('*');
-    }
-    throw error;
-  }
-};
-=======
 const productQuery = async (supabase) => ({ query: supabase.from('products').select('*') });
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const productPayloadWithAvailability = async (supabase, payload) => {
   try {
     const { error } = await supabase.from('products').select('availabilityMode').limit(1);
@@ -132,8 +99,6 @@ const getSession = async (request, supabase) => {
 };
 const requireAdmin = (session) => session?.role === 'admin';
 const requireOwner = (session) => session?.role === 'admin' && session.isOwner === true;
-<<<<<<< HEAD
-=======
 const securityPinHash = async (pin, salt) => {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({
@@ -154,7 +119,6 @@ const hashResetToken = async (token) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 };
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
 const parseBody = async (request) => {
   const contentType = request.headers.get('content-type') || '';
   if (contentType.includes('multipart/form-data')) {
@@ -192,15 +156,6 @@ const normalizeOrder = (row) => ({
   items: Array.isArray(row.items) ? row.items : parseJson(row.items),
   isRead: Boolean(row.isRead), accountOrderNumber: row.accountOrderNumber || null,
 });
-<<<<<<< HEAD
-const uploadFormFiles = async (request, form, supabase) => {
-  const uploaded = {};
-  for (const [key, value] of [...form.entries()]) {
-    if (!value || typeof value === 'string' || !value.name) continue;
-    const fileName = String(value.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '-');
-    const path = `uploads/${crypto.randomUUID()}-${fileName}`;
-    const { error } = await supabase.storage.from('uploads').upload(path, value, { contentType: value.type || 'application/octet-stream', upsert: false });
-=======
 const publicDiscountData = (row) => row ? ({
   id: row.id,
   code: row.code,
@@ -217,7 +172,6 @@ const uploadFormFiles = async (request, form, supabase) => {
     if (!extension || value.size > 5 * 1024 * 1024) throw new Error('نوع الملف أو حجمه غير مدعوم');
     const path = `uploads/${crypto.randomUUID()}.${extension}`;
     const { error } = await supabase.storage.from('uploads').upload(path, value, { contentType: value.type, upsert: false });
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     if (error) throw error;
     const { data } = supabase.storage.from('uploads').getPublicUrl(path);
     uploaded[key] = data.publicUrl;
@@ -227,20 +181,6 @@ const uploadFormFiles = async (request, form, supabase) => {
 const getSettings = async (supabase) => {
   const { data, error } = await supabase.from('site_settings').select('*').order('id', { ascending: false }).limit(1).maybeSingle();
   if (error) throw error;
-<<<<<<< HEAD
-  return { ...defaultSettings, ...(data || {}), maintenanceMode: Boolean(data?.maintenanceMode) };
-};
-const pathParts = (request) => new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
-
-export async function onRequest(context) {
-  const { request, env } = context;
-  if (request.method === 'OPTIONS') return empty(204);
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return errorResponse('Supabase server environment variables are missing.', 503);
-  const supabase = createSupabase(env);
-  const session = await getSession(request, supabase);
-  const method = request.method;
-  const parts = pathParts(request);
-=======
   return {
     ...defaultSettings,
     ...(data || {}),
@@ -272,23 +212,16 @@ export async function onRequest(context) {
   const session = await getSession(request, supabase);
   const method = request.method;
   const parts = pathParts(request, params);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   const route = parts.join('/');
   try {
     if (route === 'site-settings' && method === 'GET') return json(await getSettings(supabase));
     if (route === 'analytics/view' && method === 'POST') {
       const body = await parseBody(request);
-<<<<<<< HEAD
-      const { error } = await supabase.from('page_views').insert({ type: body.type === 'product' ? 'product' : 'home' });
-      if (error) throw error;
-      return json({ ok: true, type: body.type === 'product' ? 'product' : 'home' }, 201);
-=======
       const type = body.type === 'product' ? 'product' : 'home';
       const payload = type === 'product' && body.productId != null ? { type, productId: body.productId } : { type };
       const { error } = await supabase.from('page_views').insert(payload);
       if (error) throw error;
       return json({ ok: true, type }, 201);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     }
     if (route === 'auth/account-count' && method === 'GET') {
       const { count, error } = await supabase.from('profiles').select('id', { count: 'exact', head: true });
@@ -297,32 +230,20 @@ export async function onRequest(context) {
     }
 
     if (route === 'products' && method === 'GET') {
-<<<<<<< HEAD
-      const query = await productQuery(supabase);
-=======
       const { query } = await productQuery(supabase);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       const { data, error } = await query.order('featured', { ascending: false }).order('isNew', { ascending: false }).order('discountPercentage', { ascending: false }).order('id', { ascending: false });
       if (error) throw error;
       return json((data || []).filter(Boolean).map(normalizeProduct).filter(Boolean));
     }
     if (parts[0] === 'products' && parts.length === 2 && method === 'GET') {
-<<<<<<< HEAD
-      const query = await productQuery(supabase);
-=======
       const { query } = await productQuery(supabase);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       const { data, error } = await query.eq('id', parts[1]).maybeSingle();
       if (error) throw error;
       return data ? json(normalizeProduct(data)) : errorResponse('المنتج غير موجود', 404);
     }
     if (route === 'admin/products' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
-<<<<<<< HEAD
-      const query = await productQuery(supabase);
-=======
       const { query } = await productQuery(supabase);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       const { data, error } = await query.order('id', { ascending: false });
       if (error) throw error;
       return json((data || []).filter(Boolean).map((row) => ({ ...normalizeProduct(row), costPrice: number(row.costPrice), profit: Number((number(row.price) - number(row.costPrice)).toFixed(2)) })).filter(Boolean));
@@ -340,21 +261,14 @@ export async function onRequest(context) {
       const insertPayload = {
         name: body.name, description: body.description, price: number(body.price), costPrice: number(body.costPrice),
         discountType: body.discountType === 'amount' ? 'amount' : 'percentage', discountValue: number(body.discountValue, number(body.discountPercentage)), discountPercentage: body.discountType === 'amount' ? 0 : number(body.discountValue, number(body.discountPercentage)),
-<<<<<<< HEAD
-=======
         variants: parseJson(body.variants), availabilityMode,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         ...productCodeColumn(body, true),
         imageUrl: files?.primaryImage || body.imageUrl || images[0] || '', productImages: images ?? [], category: String(body.category || '').trim(), stockQuantity,
         inStock: availabilityMode === 'ready', featured: bool(body.featured), isNew: bool(body.isNew),
       };
       const { data, error } = await supabase.from('products').insert(await productPayloadWithAvailability(supabase, { ...insertPayload, availabilityMode })).select().single();
       if (error) throw error;
-<<<<<<< HEAD
-      return json(normalizeProduct(data), 201);
-=======
       return json({ ...normalizeProduct(data), costPrice: number(data.costPrice), profit: Number((number(data.price) - number(data.costPrice)).toFixed(2)) }, 201);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     }
     if (parts[0] === 'admin' && parts[1] === 'products' && parts.length === 3 && ['PUT', 'DELETE'].includes(method)) {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
@@ -377,11 +291,8 @@ export async function onRequest(context) {
         : (stockQuantity <= 0 && existingAvailabilityMode === 'ready' ? 'unavailable' : existingAvailabilityMode);
       const updatePayload = {
         name: body.name ?? existing?.name, description: body.description ?? existing?.description, price: number(body.price, existing?.price), costPrice: number(body.costPrice, existing?.costPrice),
-<<<<<<< HEAD
-=======
         variants: body.variants === undefined ? existing?.variants : parseJson(body.variants),
         availabilityMode,
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
         ...productCodeColumn(body),
         discountType: body.discountType === 'amount' ? 'amount' : (body.discountType || existing?.discountType || 'percentage'),
         discountValue: number(body.discountValue, number(body.discountPercentage, number(existing?.discountValue, number(existing?.discountPercentage)))),
@@ -413,9 +324,6 @@ export async function onRequest(context) {
       if (!session) return errorResponse('يجب تسجيل الدخول', 401);
       const { data, error } = await supabase.from('orders').select('*').eq('accountId', session.accountId).order('createdAt', { ascending: false });
       if (error) throw error;
-<<<<<<< HEAD
-      return json((data || []).map(normalizeOrder));
-=======
       return json((data || []).map((row) => {
         const normalized = normalizeOrder(row);
         return {
@@ -426,17 +334,12 @@ export async function onRequest(context) {
           }),
         };
       }));
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     }
     if (route === 'account/coupons' && method === 'GET') {
       if (!session) return errorResponse('يجب تسجيل الدخول', 401);
       const { data, error } = await supabase.from('account_coupons').select('savedAt, discounts(*)').eq('accountId', session.accountId).order('savedAt', { ascending: false });
       if (error) throw error;
-<<<<<<< HEAD
-      return json((data || []).map((row) => ({ ...row.discounts, active: Boolean(row.discounts?.active), savedAt: row.savedAt })));
-=======
       return json((data || []).map((row) => ({ ...publicDiscountData(row.discounts), savedAt: row.savedAt })));
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     }
     if (parts[0] === 'account' && parts[1] === 'coupons' && parts.length === 3 && method === 'POST') {
       if (!session) return errorResponse('يجب تسجيل الدخول', 401);
@@ -445,21 +348,13 @@ export async function onRequest(context) {
       if (!discount) return errorResponse('كود الخصم غير صالح أو غير فعال', 404);
       const { error } = await supabase.from('account_coupons').upsert({ accountId: session.accountId, discountId: discount.id }, { onConflict: 'accountId,discountId' });
       if (error) throw error;
-<<<<<<< HEAD
-      return json({ ...discount, active: true, saved: true }, 201);
-=======
       return json({ ...publicDiscountData(discount), saved: true }, 201);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     }
 
     if (parts[0] === 'discounts' && parts[1] === 'validate' && parts.length === 3 && method === 'GET') {
       const { data, error } = await supabase.from('discounts').select('*').eq('code', parts[2].toUpperCase()).eq('active', true).maybeSingle();
       if (error) throw error;
-<<<<<<< HEAD
-      return json(data ? { ...data, active: true } : null);
-=======
       return json(publicDiscountData(data));
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     }
     if (route === 'discounts' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
@@ -513,13 +408,6 @@ export async function onRequest(context) {
     }
     if (parts[0] === 'orders' && parts.length === 2 && method === 'PATCH') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
-<<<<<<< HEAD
-      const body = await parseBody(request); const updates = {};
-      if (body.status) updates.status = body.status;
-      if (body.isRead !== undefined) updates.isRead = bool(body.isRead);
-      const { error } = await supabase.from('orders').update(updates).eq('id', parts[1]);
-      if (error) throw error;
-=======
       const body = await parseBody(request);
       if (body.status !== undefined) {
         if (!['processing', 'delivered', 'cancelled'].includes(body.status)) return errorResponse('حالة الطلب غير صحيحة', 400);
@@ -534,7 +422,6 @@ export async function onRequest(context) {
         const { error } = await supabase.from('orders').update({ isRead: bool(body.isRead) }).eq('id', parts[1]);
         if (error) throw error;
       }
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
       return json({ ok: true });
     }
 
@@ -566,14 +453,6 @@ export async function onRequest(context) {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
       return json(await getSettings(supabase));
     }
-<<<<<<< HEAD
-    if (route === 'admin/site-settings' && method === 'POST') {
-      if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع تعديل الإعدادات', 403);
-      const form = await request.formData(); const body = Object.fromEntries([...form.entries()].filter(([key, value]) => typeof value === 'string')); const files = await uploadFormFiles(request, form, supabase); const previous = await getSettings(supabase);
-      const settings = { ...previous, ...body, logoUrl: files.logoImage || body.logoUrl || previous.logoUrl, heroImageUrl: files.heroImage || body.heroImageUrl || previous.heroImageUrl, maintenanceMode: bool(body.maintenanceMode) }; delete settings.id;
-      const { error } = await supabase.from('site_settings').update(settings).eq('id', previous.id); if (error) throw error;
-      return json({ ...settings, id: previous.id });
-=======
     if (route === 'admin/setup-store' && method === 'POST') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إنشاء المتجر', 403);
       const form = await request.formData();
@@ -796,7 +675,6 @@ export async function onRequest(context) {
       const { error } = await supabase.rpc('reset_store', { p_owner_id: session.accountId });
       if (error) throw error;
       return json({ ok: true, message: 'تمت إعادة ضبط المتجر' });
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
     }
     if (route === 'admin/admins' && method === 'GET') {
       if (!requireAdmin(session)) return errorResponse('غير مصرح', 401);
@@ -826,15 +704,6 @@ export async function onRequest(context) {
     }
     if (route === 'admin/reset-store' && method === 'POST') {
       if (!requireOwner(session)) return errorResponse('فقط مالك المتجر يستطيع إعادة ضبطه', 403);
-<<<<<<< HEAD
-      const { error } = await supabase.rpc('reset_store', { p_owner_id: session.accountId });
-      if (error) throw error;
-      return json({ ok: true, message: 'تمت إعادة ضبط المتجر إلى الحالة الافتراضية' });
-    }
-    return errorResponse('المسار غير موجود', 404);
-  } catch (error) {
-    return errorResponse(error.message || 'حدث خطأ غير متوقع', 500);
-=======
       return errorResponse('يجب التحقق من رمز الأمان قبل إعادة ضبط المتجر', 410);
     }
     return errorResponse('المسار غير موجود', 404);
@@ -848,6 +717,5 @@ export async function onRequest(context) {
       return errorResponse('مخطط قاعدة البيانات غير محدث. طبّق scripts/repair-admin-settings-schema.sql في Supabase ثم أعد المحاولة.', 503);
     }
     return errorResponse('حدث خطأ داخلي. حاول مرة أخرى.', 500);
->>>>>>> b486d065cb59b63d9f1bc6445334ca0122d71301
   }
 }
