@@ -2794,16 +2794,6 @@ function SiteSettingsAdmin() {
         <div className="settings-section-heading"><span>01</span><div><h3 id="settings-appearance-title">واجهة المتجر</h3></div></div>
         <div className="settings-fields">
           <label>اسم المتجر<input value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
-          <label>خط الشعار
-            <select value={settings.taglineFont} onChange={(event) => setSettings({ ...settings, taglineFont: event.target.value })}>
-              <option value="cairo">كايرو</option><option value="sans">نسخي بسيط</option><option value="serif">كلاسيكي</option>
-            </select>
-          </label>
-          <label>لون الشعار
-            <select value={settings.taglineColor} onChange={(event) => setSettings({ ...settings, taglineColor: event.target.value })}>
-              <option value="#102F29">فحمي</option><option value="#D8AB4E">ذهبي</option><option value="#607C2D">أخضر</option><option value="#795039">بني</option>
-            </select>
-          </label>
           <label>عنوان الواجهة<input value={settings.heroTitle} onChange={(event) => setSettings({ ...settings, heroTitle: event.target.value })} /></label>
         </div>
       </section>
