@@ -476,6 +476,7 @@ button { cursor: pointer; }
 .product-name h3 {
   font-size: 21px;
   margin: 8px 0 6px;
+  color: #102F29;
 }
 
 .product-info > span, .category-badge {
