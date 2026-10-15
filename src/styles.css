@@ -8,10 +8,10 @@
   --primary-soft: #EAF0E3;
   --accent: #90AB4C;
   --accent-soft: #EAF0E3;
-  --text: #8B2E2E;
-  --product-text: #963B3B;
-  --muted: #9A6F6F;
-  --placeholder: #9A6F6F;
+  --text: #102F29;
+  --product-text: #2C4742;
+  --muted: #7C8982;
+  --placeholder: #7C8982;
   --danger: #C84D4D;
   --line: #DCE5E0;
   --divider: #DCE5E0;
@@ -682,6 +682,7 @@ button { cursor: pointer; }
 
 .detail-content {
   --text: var(--product-text);
+  --muted: var(--product-text);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1293,7 +1294,7 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 
 .admin-side {
   width: 220px;
-  background: var(--dark-surface);
+  background: linear-gradient(180deg, var(--dark-surface) 0%, var(--primary) 100%);
   color: var(--soft-gold);
   padding: 18px 14px;
   display: flex;
@@ -1400,8 +1401,8 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .stats strong { display: block; font-size: 36px; margin: 8px 0; }
 .stats small { color: var(--muted); font-size: 11px; }
 .stats .best-seller strong { font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
-.stats .highlight { background: var(--paper); color: var(--text); }
-.stats .highlight span, .stats .highlight strong, .stats .highlight small { color: var(--text); }
+.stats .highlight { background: var(--accent); color: var(--primary); }
+.stats .highlight span, .stats .highlight strong, .stats .highlight small { color: var(--primary); }
 
 .dashboard-overview { display: grid; gap: 18px; }
 .product-analytics { border-top: 1px solid var(--line); padding-top: 20px; }

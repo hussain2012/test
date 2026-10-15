@@ -2624,12 +2624,7 @@ function SiteSettingsAdmin() {
     setStatusError('');
     setSavingSettings(true);
     try {
-      const taxRate = Number(nextSettings.taxRate);
-      if (nextSettings.taxRate === '' || !Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
-        setStatusError('أدخل نسبة ضريبة من صفر إلى 100');
-        return;
-      }
-      const data = await saveSiteSettings({ ...nextSettings, deliveryFee, taxRate });
+      const data = await saveSiteSettings({ ...nextSettings, deliveryFee });
       const savedSettings = { ...defaultSettings, ...data };
       lastSavedSettings.current = JSON.stringify(savedSettings);
       setSettings(savedSettings);
@@ -2799,7 +2794,6 @@ function SiteSettingsAdmin() {
         <div className="settings-section-heading"><span>01</span><div><h3 id="settings-appearance-title">واجهة المتجر</h3></div></div>
         <div className="settings-fields">
           <label>اسم المتجر<input value={settings.storeName} onChange={(event) => setSettings({ ...settings, storeName: event.target.value })} /></label>
-          <label>الشعار النصي<input value={settings.tagline} onChange={(event) => setSettings({ ...settings, tagline: event.target.value })} /></label>
           <label>خط الشعار
             <select value={settings.taglineFont} onChange={(event) => setSettings({ ...settings, taglineFont: event.target.value })}>
               <option value="cairo">كايرو</option><option value="sans">نسخي بسيط</option><option value="serif">كلاسيكي</option>
@@ -2855,7 +2849,6 @@ function SiteSettingsAdmin() {
         <div className="settings-section-heading"><span>04</span><div><h3 id="settings-delivery-title">التوصيل</h3></div></div>
         <div className="settings-fields">
           <label>سعر التوصيل لجميع المحافظات<input type="number" min="0" step="1" required value={settings.deliveryFee ?? defaultSettings.deliveryFee} onChange={(event) => setSettings({ ...settings, deliveryFee: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
-          <label>نسبة الضريبة (%)<input type="number" min="0" max="100" step="0.01" required value={settings.taxRate ?? 0} onChange={(event) => setSettings({ ...settings, taxRate: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
         </div>
       </section>
 
