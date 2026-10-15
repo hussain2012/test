@@ -1401,8 +1401,8 @@ input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 
 .stats strong { display: block; font-size: 36px; margin: 8px 0; }
 .stats small { color: var(--muted); font-size: 11px; }
 .stats .best-seller strong { font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
-.stats .highlight { background: var(--accent); color: var(--soft-gold); }
-.stats .highlight span, .stats .highlight strong, .stats .highlight small { color: var(--soft-gold); }
+.stats .highlight { background: var(--soft-gold); color: var(--text); }
+.stats .highlight span, .stats .highlight strong, .stats .highlight small { color: var(--text); }
 
 .dashboard-overview { display: grid; gap: 18px; }
 .product-analytics { border-top: 1px solid var(--line); padding-top: 20px; }

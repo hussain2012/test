@@ -1099,7 +1099,7 @@ function Checkout() {
     if (isSubmitting) return;
     setError('');
     if (discountApplicationPending(form.discountCode, discount?.code)) {
-      return setError('طبّق كود الخصم أو امسحه قبل إكمال الطلب');
+      return setError('كود الخصم غير صالح أو غير فعال');
     }
     if (!user) return setError('لا يمكنك إكمال الطلب إلا بعد تسجيل الدخول');
     if (needsPassword) return setError('قبل إرسال الطلب، اذهب إلى الحساب وعيّن كلمة مرور أولاً.');
@@ -1197,7 +1197,7 @@ function Checkout() {
               </div>
               {couponMessage && <p className="success-message" role="status">{couponMessage}</p>}
               {error && <p className="error">{error}{!user && <>. <Link to="/login">تسجيل الدخول</Link></>}{needsPassword && <><br /><Link to="/account">الذهاب إلى الحساب وتعيين كلمة المرور</Link></>}</p>}
-              <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading || couponApplying || discountApplicationPending(form.discountCode, discount?.code)} aria-busy={isSubmitting}>
+              <button type="submit" className="primary full" disabled={settings.maintenanceMode || isSubmitting || cartLoading || couponApplying} aria-busy={isSubmitting}>
                 {settings.maintenanceMode ? 'الطلبات متوقفة للصيانة' : (isSubmitting ? 'جارٍ إرسال الطلب...' : 'تأكيد وإرسال الطلب')}
               </button>
             </form>
@@ -2065,8 +2065,14 @@ function OrdersAdmin() {
 
   const changeOrderStatus = async (id, status) => {
     const order = orders.find((item) => item.id === id);
-    if (status === 'cancelled' && order?.status !== 'new') {
-      setError('لا يمكن إلغاء طلب قيد التجهيز أو تم توصيله.');
+    const allowedTransitions = {
+      new: ['processing', 'cancelled'],
+      processing: ['delivered'],
+      delivered: [],
+      cancelled: [],
+    };
+    if (!order || !allowedTransitions[order.status]?.includes(status)) {
+      setError('تغيير حالة الطلب غير مسموح. حدّث الحالة بالتدرج: جديد، قيد التجهيز، ثم تم التوصيل.');
       return;
     }
     setError('');
@@ -2074,8 +2080,11 @@ function OrdersAdmin() {
     try {
       await updateOrder(id, { status, isRead: true });
       setOrders((current) => current.map((order) => order.id === id ? { ...order, status, isRead: true } : order));
-    } catch {
-      setError('تعذر تحديث حالة الطلب. حاول مرة أخرى.');
+    } catch (reason) {
+      console.error('OrdersAdmin changeOrderStatus failed:', reason);
+      const message = String(reason?.message || '');
+      const apiError = message.match(/failed \(HTTP \d+\): (.+)$/);
+      setError(apiError?.[1] || message || 'تعذر تحديث حالة الطلب. حاول مرة أخرى.');
     } finally {
       setUpdatingOrderId(null);
     }
@@ -2107,9 +2116,9 @@ function OrdersAdmin() {
               {!order.isRead && <b className="unread-badge">طلب غير مقروء</b>}
             </div>
             <select value={order.status} disabled={updatingOrderId === order.id} onChange={(event) => changeOrderStatus(order.id, event.target.value)}>
-              <option value="new">جديد</option>
-              <option value="processing">قيد التجهيز</option>
-              <option value="delivered">تم التوصيل</option>
+              <option value="new" disabled={order.status !== 'new'}>جديد</option>
+              <option value="processing" disabled={!['new', 'processing'].includes(order.status)}>قيد التجهيز</option>
+              <option value="delivered" disabled={!['processing', 'delivered'].includes(order.status)}>تم التوصيل</option>
               <option value="cancelled" disabled={!['new', 'cancelled'].includes(order.status)}>ملغي</option>
             </select>
           </div>
